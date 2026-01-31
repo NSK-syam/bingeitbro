@@ -1,0 +1,207 @@
+{
+  "recommenders": [
+    {
+      "id": "syam",
+      "name": "Syam",
+      "avatar": "🎬"
+    },
+    {
+      "id": "ravi",
+      "name": "Ravi",
+      "avatar": "🍿"
+    },
+    {
+      "id": "priya",
+      "name": "Priya",
+      "avatar": "🎭"
+    }
+  ],
+  "recommendations": [
+    {
+      "id": "1",
+      "title": "Baahubali: The Beginning",
+      "originalTitle": "బాహుబలి: ది బిగినింగ్",
+      "year": 2015,
+      "type": "movie",
+      "poster": "https://upload.wikimedia.org/wikipedia/en/2/2a/Baahubali_The_Beginning_poster.jpg",
+      "genres": ["Action", "Drama", "Fantasy"],
+      "language": "Telugu",
+      "duration": "2h 39m",
+      "rating": 8.0,
+      "recommendedBy": {
+        "id": "syam",
+        "name": "Syam",
+        "avatar": "🎬"
+      },
+      "personalNote": "This is where Indian cinema proved it can compete with Hollywood on scale. The VFX, the story, the sheer ambition - you'll be asking 'Kattappa ne Baahubali ko kyun maara?' for days.",
+      "mood": ["epic", "thrilling", "inspiring"],
+      "watchWith": "Watch with the whole family - it's a theatrical experience",
+      "ottLinks": [
+        {
+          "platform": "Hotstar",
+          "url": "https://www.hotstar.com/in/movies/baahubali-the-beginning/1260009055",
+          "availableIn": "Telugu, Hindi, Tamil, Malayalam"
+        },
+        {
+          "platform": "Netflix",
+          "url": "https://www.netflix.com/title/80094994",
+          "availableIn": "Multiple languages"
+        }
+      ],
+      "addedOn": "2024-01-15T10:00:00Z"
+    },
+    {
+      "id": "2",
+      "title": "C/O Kancharapalem",
+      "originalTitle": "సి/ఓ కంచరపాలెం",
+      "year": 2018,
+      "type": "movie",
+      "poster": "https://upload.wikimedia.org/wikipedia/en/thumb/8/85/C%2FO_Kancharapalem_Poster.jpg/220px-C%2FO_Kancharapalem_Poster.jpg",
+      "genres": ["Drama", "Romance"],
+      "language": "Telugu",
+      "duration": "2h 32m",
+      "rating": 8.5,
+      "recommendedBy": {
+        "id": "priya",
+        "name": "Priya",
+        "avatar": "🎭"
+      },
+      "personalNote": "Real people. Real stories. Real Vizag. This film uses actual residents of Kancharapalem as actors, and you can feel the authenticity in every frame. Four love stories that feel like conversations you've overheard.",
+      "mood": ["heartwarming", "slice-of-life", "thought-provoking"],
+      "watchWith": "Perfect for a quiet evening when you want something meaningful",
+      "ottLinks": [
+        {
+          "platform": "Netflix",
+          "url": "https://www.netflix.com/title/81154455",
+          "availableIn": "Telugu with English subtitles"
+        }
+      ],
+      "addedOn": "2024-02-20T14:30:00Z"
+    },
+    {
+      "id": "3",
+      "title": "Interstellar",
+      "year": 2014,
+      "type": "movie",
+      "poster": "https://upload.wikimedia.org/wikipedia/en/b/bc/Interstellar_film_poster.jpg",
+      "genres": ["Sci-Fi", "Drama", "Adventure"],
+      "language": "English",
+      "duration": "2h 49m",
+      "rating": 9.0,
+      "recommendedBy": {
+        "id": "ravi",
+        "name": "Ravi",
+        "avatar": "🍿"
+      },
+      "personalNote": "This isn't just a movie, it's an experience. Nolan made a film about physics that will make you cry about love. Watch it on the biggest screen possible with the best sound system you have.",
+      "mood": ["mind-bending", "emotional", "epic"],
+      "watchWith": "Best watched alone or with someone who won't talk during it",
+      "ottLinks": [
+        {
+          "platform": "Prime Video",
+          "url": "https://www.primevideo.com/detail/Interstellar/0JXGFZ1C8QLXSR6JVLJ5B3V4Z4",
+          "availableIn": "English, Hindi dubbed"
+        },
+        {
+          "platform": "Jio Cinema",
+          "url": "https://www.jiocinema.com/movies/interstellar",
+          "availableIn": "English"
+        }
+      ],
+      "addedOn": "2024-01-10T09:00:00Z"
+    },
+    {
+      "id": "4",
+      "title": "Jersey",
+      "originalTitle": "జెర్సీ",
+      "year": 2019,
+      "type": "movie",
+      "poster": "https://upload.wikimedia.org/wikipedia/en/thumb/3/3e/Jersey_poster.jpg/220px-Jersey_poster.jpg",
+      "genres": ["Drama", "Sports"],
+      "language": "Telugu",
+      "duration": "2h 40m",
+      "rating": 8.4,
+      "recommendedBy": {
+        "id": "syam",
+        "name": "Syam",
+        "avatar": "🎬"
+      },
+      "personalNote": "Nani delivers his career-best performance. A 36-year-old cricketer trying to make a comeback for his son - it sounds simple but every scene hits different. Keep tissues ready.",
+      "mood": ["emotional", "inspiring", "heartbreaking"],
+      "watchWith": "Watch with your dad if you can - trust me",
+      "ottLinks": [
+        {
+          "platform": "Netflix",
+          "url": "https://www.netflix.com/title/81154510",
+          "availableIn": "Telugu with subtitles"
+        },
+        {
+          "platform": "Aha",
+          "url": "https://www.aha.video/movie/jersey",
+          "availableIn": "Telugu"
+        }
+      ],
+      "addedOn": "2024-03-05T16:45:00Z"
+    },
+    {
+      "id": "5",
+      "title": "Breaking Bad",
+      "year": 2008,
+      "type": "series",
+      "poster": "https://upload.wikimedia.org/wikipedia/en/6/61/Breaking_Bad_title_card.png",
+      "genres": ["Crime", "Drama", "Thriller"],
+      "language": "English",
+      "duration": "5 seasons",
+      "rating": 9.5,
+      "recommendedBy": {
+        "id": "ravi",
+        "name": "Ravi",
+        "avatar": "🍿"
+      },
+      "personalNote": "The greatest character transformation in TV history. You'll start rooting for Walter White and end up questioning everything. Every episode is a masterclass in tension.",
+      "mood": ["intense", "thrilling", "thought-provoking"],
+      "watchWith": "Binge-watch it over a weekend when you have zero obligations",
+      "ottLinks": [
+        {
+          "platform": "Netflix",
+          "url": "https://www.netflix.com/title/70143836",
+          "availableIn": "English with subtitles"
+        }
+      ],
+      "addedOn": "2024-01-28T20:00:00Z"
+    },
+    {
+      "id": "6",
+      "title": "Arjun Reddy",
+      "originalTitle": "అర్జున్ రెడ్డి",
+      "year": 2017,
+      "type": "movie",
+      "poster": "https://upload.wikimedia.org/wikipedia/en/6/60/Arjun_Reddy_poster.jpg",
+      "genres": ["Drama", "Romance"],
+      "language": "Telugu",
+      "duration": "3h 7m",
+      "rating": 7.8,
+      "recommendedBy": {
+        "id": "priya",
+        "name": "Priya",
+        "avatar": "🎭"
+      },
+      "personalNote": "Controversial? Yes. Polarizing? Absolutely. But you cannot deny Vijay Deverakonda's raw, unhinged performance. This film changed Telugu cinema's visual language. Watch it and form your own opinion.",
+      "mood": ["intense", "raw", "rebellious"],
+      "watchWith": "Watch alone and be ready for a conversation afterwards",
+      "ottLinks": [
+        {
+          "platform": "Prime Video",
+          "url": "https://www.primevideo.com/detail/Arjun-Reddy/0H06VVMWK3TKT0HCLYHKL0IUUO",
+          "availableIn": "Telugu with subtitles"
+        },
+        {
+          "platform": "Hotstar",
+          "url": "https://www.hotstar.com/in/movies/arjun-reddy/1260022163",
+          "availableIn": "Telugu"
+        }
+      ],
+      "addedOn": "2024-02-14T12:00:00Z"
+    }
+  ]
+}
