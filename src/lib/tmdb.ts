@@ -196,13 +196,31 @@ export function tmdbToRecommendation(
   recommendedBy: { id: string; name: string; avatar: string },
   personalNote: string,
   ottLinks: { platform: string; url: string; availableIn?: string }[] = []
-) {
+): {
+  id: string;
+  title: string;
+  originalTitle: string | undefined;
+  year: number;
+  type: 'movie';
+  poster: string;
+  backdrop: string;
+  genres: string[];
+  language: string;
+  duration: string;
+  rating: number;
+  recommendedBy: { id: string; name: string; avatar: string };
+  personalNote: string;
+  mood: string[];
+  watchWith: string;
+  ottLinks: { platform: string; url: string; availableIn?: string }[];
+  addedOn: string;
+} {
   return {
     id: `tmdb-${movie.id}`,
     title: movie.title,
     originalTitle: movie.original_title !== movie.title ? movie.original_title : undefined,
     year: new Date(movie.release_date).getFullYear(),
-    type: 'movie' as const,
+    type: 'movie',
     poster: getImageUrl(movie.poster_path),
     backdrop: getImageUrl(movie.backdrop_path, 'original'),
     genres: movie.genres.map((g) => g.name),
@@ -211,7 +229,7 @@ export function tmdbToRecommendation(
     rating: Math.round(movie.vote_average * 10) / 10,
     recommendedBy,
     personalNote,
-    mood: [],
+    mood: [] as string[],
     watchWith: '',
     ottLinks,
     addedOn: new Date().toISOString(),
