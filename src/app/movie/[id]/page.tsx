@@ -1,5 +1,7 @@
 'use client';
 
+export const runtime = 'edge';
+
 import { Recommendation, OTTLink } from '@/types';
 import data from '@/data/recommendations.json';
 import Link from 'next/link';
