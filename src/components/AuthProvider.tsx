@@ -165,10 +165,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? window.location.origin
       : 'https://bingeitbro.com';
 
+    // Clear any existing session first to ensure fresh login
+    try {
+      await supabase.auth.signOut();
+      // Also clear storage manually
+      if (typeof window !== 'undefined') {
+        sessionStorage.removeItem('cinema-chudu-auth');
+        Object.keys(sessionStorage).forEach(key => {
+          if (key.startsWith('sb-') || key.includes('supabase')) {
+            sessionStorage.removeItem(key);
+          }
+        });
+      }
+    } catch (e) {
+      // Ignore signout errors
+    }
+
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
         redirectTo: `${siteUrl}/auth/callback`,
+        queryParams: {
+          prompt: 'select_account',  // Force Google to show account picker
+          access_type: 'offline',
+        },
       },
     });
 
