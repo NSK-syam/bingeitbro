@@ -28,6 +28,7 @@ export interface Recommendation {
   language: string;
   duration?: string; // "2h 15m" or "6 episodes"
   rating?: number; // IMDb or personal rating out of 10
+  certification?: string; // Age rating: "R", "NC-17", "A", "18+", etc.
 
   // The heart - why this matters
   recommendedBy: Recommender;

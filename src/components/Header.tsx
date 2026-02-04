@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 
 interface HeaderProps {
@@ -13,14 +13,121 @@ interface HeaderProps {
   nudgeCount?: number;
 }
 
+interface MovieSuggestion {
+  id: number;
+  title: string;
+}
+
 export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, onNudgesClick, nudgeCount = 0 }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [suggestions, setSuggestions] = useState<MovieSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const searchRef = useRef<HTMLDivElement>(null);
   const { user, loading, signOut, isConfigured } = useAuth();
+
+  // Fetch autocomplete suggestions from TMDB
+  useEffect(() => {
+    const fetchSuggestions = async () => {
+      if (searchQuery.length < 2) {
+        setSuggestions([]);
+        setShowSuggestions(false);
+        return;
+      }
+
+      setLoadingSuggestions(true);
+
+      try {
+        const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
+        if (!apiKey) {
+          setLoadingSuggestions(false);
+          return;
+        }
+
+        const response = await fetch(
+          `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(searchQuery)}&page=1&include_adult=false`
+        );
+        const data = await response.json();
+
+        const movieSuggestions: MovieSuggestion[] = data.results
+          .slice(0, 8)
+          .map((movie: any) => ({
+            id: movie.id,
+            title: movie.title,
+          }));
+
+        setSuggestions(movieSuggestions);
+        setShowSuggestions(movieSuggestions.length > 0);
+      } catch (error) {
+        console.error('Failed to fetch suggestions:', error);
+      } finally {
+        setLoadingSuggestions(false);
+      }
+    };
+
+    const timer = setTimeout(() => {
+      fetchSuggestions();
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
+  // Handle click outside to close suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const handleSearch = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(e.target.value);
-    onSearch?.(e.target.value);
+    setSelectedIndex(-1);
+  };
+
+  const handleSuggestionClick = (suggestion: string) => {
+    setSearchQuery(suggestion);
+    onSearch?.(suggestion);
+    setShowSuggestions(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSuggestions || suggestions.length === 0) {
+      if (e.key === 'Enter' && searchQuery) {
+        onSearch?.(searchQuery);
+      }
+      return;
+    }
+
+    switch (e.key) {
+      case 'ArrowDown':
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev < suggestions.length - 1 ? prev + 1 : prev));
+        break;
+      case 'ArrowUp':
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        break;
+      case 'Enter':
+        e.preventDefault();
+        if (selectedIndex >= 0) {
+          handleSuggestionClick(suggestions[selectedIndex].title);
+        } else if (searchQuery) {
+          onSearch?.(searchQuery);
+          setShowSuggestions(false);
+        }
+        break;
+      case 'Escape':
+        setShowSuggestions(false);
+        setSelectedIndex(-1);
+        break;
+    }
   };
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
@@ -58,13 +165,19 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
 
           {/* Actions */}
           <div className="flex items-center gap-3">
-            {/* Search */}
-            <div className="relative">
+            {/* Search with Autocomplete */}
+            <div className="relative" ref={searchRef}>
               <input
                 type="text"
                 placeholder="Search movies..."
                 value={searchQuery}
                 onChange={handleSearch}
+                onKeyDown={handleKeyDown}
+                onFocus={() => {
+                  if (suggestions.length > 0) {
+                    setShowSuggestions(true);
+                  }
+                }}
                 className="w-32 sm:w-48 px-4 py-2 pl-10 text-sm bg-[var(--bg-secondary)] border border-white/5 rounded-full text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50 transition-all"
               />
               <svg
@@ -80,6 +193,45 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                   d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
                 />
               </svg>
+
+              {/* Autocomplete Dropdown */}
+              {showSuggestions && suggestions.length > 0 && (
+                <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--bg-card)] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 max-w-md">
+                  {loadingSuggestions && suggestions.length === 0 ? (
+                    <div className="px-4 py-3 text-sm text-[var(--text-muted)]">
+                      Searching...
+                    </div>
+                  ) : (
+                    suggestions.map((suggestion, index) => (
+                      <button
+                        key={suggestion.id}
+                        onClick={() => handleSuggestionClick(suggestion.title)}
+                        onMouseEnter={() => setSelectedIndex(index)}
+                        className={`w-full px-4 py-2.5 text-left flex items-center gap-3 transition-colors ${index === selectedIndex
+                            ? 'bg-[var(--accent)]/10 text-[var(--accent)]'
+                            : 'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
+                          }`}
+                      >
+                        <svg
+                          className={`w-4 h-4 flex-shrink-0 ${index === selectedIndex ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'
+                            }`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                          />
+                        </svg>
+                        <span className="text-sm truncate">{suggestion.title}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Nudges, Watchlist & Add Buttons */}

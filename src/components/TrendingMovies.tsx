@@ -59,102 +59,116 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
       setError('');
 
       try {
-        // Get date ranges
-        const today = new Date().toISOString().split('T')[0];
-        const sixMonthsFromNow = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-
-        // Base URLs for released and upcoming movies
-        // Sort by release date (newest first), require minimum votes for quality
-        const releasedBaseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.desc&primary_release_date.lte=${today}&vote_count.gte=10`;
-        const upcomingBaseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.asc&primary_release_date.gte=${today}&primary_release_date.lte=${sixMonthsFromNow}`;
-
         let allMovies: TrendingMovie[] = [];
         let allUpcoming: TrendingMovie[] = [];
-        const pagesToFetch = [1, 2, 3, 4, 5];
 
-        if (selectedLang) {
-          // Fetch for selected language
-          const [releasedResponses, upcomingResponses] = await Promise.all([
-            Promise.all(pagesToFetch.map(page =>
-              fetch(`${releasedBaseUrl}&with_original_language=${selectedLang}&page=${page}`, { signal: controller.signal })
-            )),
-            Promise.all([1, 2].map(page =>
-              fetch(`${upcomingBaseUrl}&with_original_language=${selectedLang}&page=${page}`, { signal: controller.signal })
-            ))
-          ]);
+        // If there's a search query, use the search API instead of discover
+        if (searchQuery && searchQuery.trim()) {
+          const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(searchQuery)}&page=1&include_adult=false`;
+          const response = await fetch(searchUrl, { signal: controller.signal });
+          const data = await response.json();
 
-          const releasedData = await Promise.all(releasedResponses.map(r => r.json()));
-          const upcomingData = await Promise.all(upcomingResponses.map(r => r.json()));
+          allMovies = (data.results || []).filter((movie: TrendingMovie) => movie.poster_path && movie.vote_average > 0);
 
-          allMovies = releasedData.flatMap(d => d.results || []);
-          allUpcoming = upcomingData.flatMap(d => d.results || []);
+          // Don't fetch upcoming movies when searching
+          setComingSoonByLang({});
         } else {
-          // Fetch for ALL languages
-          const langCodes = LANGUAGES.map(l => l.code);
-          const releasedPromises: Promise<Response>[] = [];
-          const upcomingPromises: Promise<Response>[] = [];
+          // Original discover logic when no search query
+          // Get date ranges
+          const today = new Date().toISOString().split('T')[0];
+          const sixMonthsFromNow = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-          for (const lang of langCodes) {
-            for (const page of pagesToFetch) {
-              releasedPromises.push(
-                fetch(`${releasedBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
-              );
+          // Base URLs for released and upcoming movies
+          // Sort by release date (newest first), require minimum votes for quality
+          const releasedBaseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.desc&primary_release_date.lte=${today}&vote_count.gte=10`;
+          const upcomingBaseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.asc&primary_release_date.gte=${today}&primary_release_date.lte=${sixMonthsFromNow}`;
+
+          const pagesToFetch = [1, 2, 3, 4, 5];
+
+          if (selectedLang) {
+            // Fetch for selected language
+            const [releasedResponses, upcomingResponses] = await Promise.all([
+              Promise.all(pagesToFetch.map(page =>
+                fetch(`${releasedBaseUrl}&with_original_language=${selectedLang}&page=${page}`, { signal: controller.signal })
+              )),
+              Promise.all([1, 2].map(page =>
+                fetch(`${upcomingBaseUrl}&with_original_language=${selectedLang}&page=${page}`, { signal: controller.signal })
+              ))
+            ]);
+
+            const releasedData = await Promise.all(releasedResponses.map(r => r.json()));
+            const upcomingData = await Promise.all(upcomingResponses.map(r => r.json()));
+
+            allMovies = releasedData.flatMap(d => d.results || []);
+            allUpcoming = upcomingData.flatMap(d => d.results || []);
+          } else {
+            // Fetch for ALL languages
+            const langCodes = LANGUAGES.map(l => l.code);
+            const releasedPromises: Promise<Response>[] = [];
+            const upcomingPromises: Promise<Response>[] = [];
+
+            for (const lang of langCodes) {
+              for (const page of pagesToFetch) {
+                releasedPromises.push(
+                  fetch(`${releasedBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                );
+              }
+              // Fetch 2 pages of upcoming per language
+              for (const page of [1, 2]) {
+                upcomingPromises.push(
+                  fetch(`${upcomingBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                );
+              }
             }
-            // Fetch 2 pages of upcoming per language
-            for (const page of [1, 2]) {
-              upcomingPromises.push(
-                fetch(`${upcomingBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
-              );
-            }
+
+            const [releasedResponses, upcomingResponses] = await Promise.all([
+              Promise.all(releasedPromises),
+              Promise.all(upcomingPromises)
+            ]);
+
+            const releasedData = await Promise.all(releasedResponses.map(r => r.json()));
+            const upcomingData = await Promise.all(upcomingResponses.map(r => r.json()));
+
+            allMovies = releasedData.flatMap(d => d.results || []);
+            allUpcoming = upcomingData.flatMap(d => d.results || []);
+
+            // Sort released movies by date (newest first)
+            allMovies.sort((a, b) =>
+              new Date(b.release_date || '1900-01-01').getTime() -
+              new Date(a.release_date || '1900-01-01').getTime()
+            );
           }
 
-          const [releasedResponses, upcomingResponses] = await Promise.all([
-            Promise.all(releasedPromises),
-            Promise.all(upcomingPromises)
-          ]);
+          // Filter out movies without posters
+          // For released movies, also filter out those with 0 rating (not yet rated)
+          allMovies = allMovies.filter(movie => movie.poster_path && movie.vote_average > 0);
+          // For upcoming movies, keep them even with 0 rating (they're not released yet)
+          allUpcoming = allUpcoming.filter(movie => movie.poster_path);
 
-          const releasedData = await Promise.all(releasedResponses.map(r => r.json()));
-          const upcomingData = await Promise.all(upcomingResponses.map(r => r.json()));
-
-          allMovies = releasedData.flatMap(d => d.results || []);
-          allUpcoming = upcomingData.flatMap(d => d.results || []);
-
-          // Sort released movies by date (newest first)
-          allMovies.sort((a, b) =>
-            new Date(b.release_date || '1900-01-01').getTime() -
-            new Date(a.release_date || '1900-01-01').getTime()
-          );
-
-        }
-
-        // Filter out movies without posters
-        // For released movies, also filter out those with 0 rating (not yet rated)
-        allMovies = allMovies.filter(movie => movie.poster_path && movie.vote_average > 0);
-        // For upcoming movies, keep them even with 0 rating (they're not released yet)
-        allUpcoming = allUpcoming.filter(movie => movie.poster_path);
-
-        // Group upcoming movies by language
-        const upcomingByLang: Record<string, TrendingMovie[]> = {};
-        for (const movie of allUpcoming) {
-          const lang = movie.original_language;
-          if (!upcomingByLang[lang]) {
-            upcomingByLang[lang] = [];
+          // Group upcoming movies by language
+          const upcomingByLang: Record<string, TrendingMovie[]> = {};
+          for (const movie of allUpcoming) {
+            const lang = movie.original_language;
+            if (!upcomingByLang[lang]) {
+              upcomingByLang[lang] = [];
+            }
+            upcomingByLang[lang].push(movie);
           }
-          upcomingByLang[lang].push(movie);
-        }
 
-        // Sort each language's movies by release date (soonest first)
-        for (const lang in upcomingByLang) {
-          upcomingByLang[lang].sort((a, b) =>
-            new Date(a.release_date || '2099-01-01').getTime() -
-            new Date(b.release_date || '2099-01-01').getTime()
-          );
+          // Sort each language's movies by release date (soonest first)
+          for (const lang in upcomingByLang) {
+            upcomingByLang[lang].sort((a, b) =>
+              new Date(a.release_date || '2099-01-01').getTime() -
+              new Date(b.release_date || '2099-01-01').getTime()
+            );
+          }
+
+          setComingSoonByLang(upcomingByLang);
         }
 
         setMovies(allMovies);
-        setComingSoonByLang(upcomingByLang);
 
-        if (allMovies.length === 0 && Object.keys(upcomingByLang).length === 0) {
+        if (allMovies.length === 0) {
           setError('No results');
         }
       } catch (err: any) {
@@ -169,7 +183,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
     loadMovies();
 
     return () => controller.abort();
-  }, [selectedLang]);
+  }, [selectedLang, searchQuery]);
 
   const handleLanguageClick = (code: string) => {
     if (selectedLang === code) {
@@ -187,13 +201,6 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
 
   const currentLang = selectedLang ? getLangInfo(selectedLang) : null;
 
-  // Filter movies based on search query
-  const filteredMovies = searchQuery
-    ? movies.filter(movie =>
-      movie.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      movie.original_title.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-    : movies;
 
   return (
     <div>
@@ -330,7 +337,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
           )}
         </h3>
         <span className="text-sm text-[var(--text-muted)]">
-          {loading ? '...' : `${filteredMovies.length} movies`}
+          {loading ? '...' : `${movies.length} movies`}
         </span>
       </div>
 
@@ -344,9 +351,9 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : filteredMovies.length > 0 ? (
+      ) : movies.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {filteredMovies.map((movie) => {
+          {movies.map((movie) => {
             const langInfo = getLangInfo(movie.original_language);
             return (
               <Link
