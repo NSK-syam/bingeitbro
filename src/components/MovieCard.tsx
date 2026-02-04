@@ -35,7 +35,7 @@ interface MovieCardProps {
 }
 
 export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
-  const { id, title, year, type, poster, genres, rating, recommendedBy, personalNote, ottLinks, addedOn } = recommendation;
+  const { id, title, year, type, poster, genres, rating, recommendedBy, personalNote, ottLinks, addedOn, certification } = recommendation;
   const [imageError, setImageError] = useState(false);
   const [nudgeSent, setNudgeSent] = useState(false);
   const { isWatched } = useWatched();
@@ -125,11 +125,16 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
           </div>
         )}
 
-        {/* Type badge */}
-        <div className="absolute top-3 left-3">
+        {/* Type badge + 18+ badge */}
+        <div className="absolute top-3 left-3 flex flex-col gap-1">
           <span className="px-2 py-1 text-xs font-medium bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md text-[var(--text-secondary)]">
             {typeLabels[type]}
           </span>
+          {certification && ['R', 'NC-17', 'A', '18+', '18', 'X', 'UA'].some(c => certification.toUpperCase().includes(c)) && (
+            <span className="px-2 py-0.5 text-[10px] font-bold bg-red-600/90 backdrop-blur-sm rounded-md text-white">
+              18+
+            </span>
+          )}
         </div>
 
         {/* Action buttons */}
@@ -138,11 +143,10 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
           {user && (
             <button
               onClick={handleWatchlistClick}
-              className={`p-1.5 rounded-lg backdrop-blur-sm transition-all ${
-                inWatchlist
-                  ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
-                  : 'bg-[var(--bg-primary)]/70 text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)]'
-              }`}
+              className={`p-1.5 rounded-lg backdrop-blur-sm transition-all ${inWatchlist
+                ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
+                : 'bg-[var(--bg-primary)]/70 text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)]'
+                }`}
               title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
             >
               <svg className="w-4 h-4" fill={inWatchlist ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
@@ -231,11 +235,10 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
               <button
                 onClick={handleNudgeClick}
                 disabled={alreadyNudged}
-                className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all ${
-                  alreadyNudged
-                    ? 'bg-green-500/20 text-green-400'
-                    : 'bg-pink-500/20 text-pink-400 hover:bg-pink-500/30'
-                }`}
+                className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all ${alreadyNudged
+                  ? 'bg-green-500/20 text-green-400'
+                  : 'bg-pink-500/20 text-pink-400 hover:bg-pink-500/30'
+                  }`}
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />

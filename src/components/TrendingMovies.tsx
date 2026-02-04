@@ -15,6 +15,7 @@ interface TrendingMovie {
   overview: string;
   original_language: string;
   popularity: number;
+  adult?: boolean;
 }
 
 const LANGUAGES = [
@@ -389,10 +390,15 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                     </div>
                   )}
 
-                  <div className="absolute top-3 left-3">
+                  <div className="absolute top-3 left-3 flex flex-col gap-1">
                     <span className="px-2 py-1 text-xs font-medium bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md text-[var(--text-secondary)]">
                       {langInfo.flag}
                     </span>
+                    {movie.adult && (
+                      <span className="px-2 py-0.5 text-[10px] font-bold bg-red-600/90 backdrop-blur-sm rounded-md text-white">
+                        18+
+                      </span>
+                    )}
                   </div>
                 </div>
 

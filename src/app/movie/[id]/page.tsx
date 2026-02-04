@@ -119,10 +119,11 @@ export default function MoviePage({ params }: PageProps) {
             return;
           }
 
-          // Fetch movie details and watch providers in parallel
-          const [movieResponse, providersResponse] = await Promise.all([
+          // Fetch movie details, watch providers, and release dates in parallel
+          const [movieResponse, providersResponse, releaseDatesResponse] = await Promise.all([
             fetch(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}&append_to_response=credits`),
-            fetch(`https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers?api_key=${apiKey}`)
+            fetch(`https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers?api_key=${apiKey}`),
+            fetch(`https://api.themoviedb.org/3/movie/${tmdbId}/release_dates?api_key=${apiKey}`)
           ]);
 
           if (!movieResponse.ok) {
@@ -132,6 +133,21 @@ export default function MoviePage({ params }: PageProps) {
 
           const tmdbData = await movieResponse.json();
           const providersData = await providersResponse.json();
+          const releaseDatesData = await releaseDatesResponse.json();
+
+          // Extract certification from release dates (prioritize IN, then US)
+          let certification: string | undefined;
+          const releaseResults = releaseDatesData.results || [];
+          const indiaRelease = releaseResults.find((r: { iso_3166_1: string }) => r.iso_3166_1 === 'IN');
+          const usRelease = releaseResults.find((r: { iso_3166_1: string }) => r.iso_3166_1 === 'US');
+
+          if (indiaRelease?.release_dates?.[0]?.certification) {
+            certification = indiaRelease.release_dates[0].certification;
+          } else if (usRelease?.release_dates?.[0]?.certification) {
+            certification = usRelease.release_dates[0].certification;
+          } else if (tmdbData.adult) {
+            certification = '18+';
+          }
 
           // Map language codes to full names
           const languageMap: Record<string, string> = {
@@ -285,6 +301,7 @@ export default function MoviePage({ params }: PageProps) {
             language: languageMap[tmdbData.original_language] || tmdbData.original_language?.toUpperCase() || 'Unknown',
             duration: tmdbData.runtime ? `${Math.floor(tmdbData.runtime / 60)}h ${tmdbData.runtime % 60}m` : undefined,
             rating: tmdbData.vote_average || undefined,
+            certification: certification,
             personalNote: tmdbData.overview || 'No description available.',
             mood: [],
             watchWith: undefined,
@@ -384,6 +401,7 @@ export default function MoviePage({ params }: PageProps) {
     language,
     duration,
     rating,
+    certification,
     recommendedBy,
     personalNote,
     mood,
@@ -517,6 +535,11 @@ export default function MoviePage({ params }: PageProps) {
                   {rating.toFixed(1)}
                 </span>
               )}
+              {certification && ['R', 'NC-17', 'A', '18+', '18', 'X', 'UA'].some(c => certification.toUpperCase().includes(c)) && (
+                <span className="px-2 py-1 bg-red-600 rounded text-white font-bold">
+                  18+
+                </span>
+              )}
             </div>
 
             {/* Genres */}
@@ -572,13 +595,12 @@ export default function MoviePage({ params }: PageProps) {
             Where to watch
           </h2>
           {regionNote && (
-            <div className={`mb-4 px-4 py-2 rounded-lg text-sm ${
-              regionNote.includes('not streaming in India')
-                ? 'bg-orange-500/10 border border-orange-500/30 text-orange-400'
-                : regionNote.includes('not streaming in USA')
+            <div className={`mb-4 px-4 py-2 rounded-lg text-sm ${regionNote.includes('not streaming in India')
+              ? 'bg-orange-500/10 border border-orange-500/30 text-orange-400'
+              : regionNote.includes('not streaming in USA')
                 ? 'bg-blue-500/10 border border-blue-500/30 text-blue-400'
                 : 'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
-            }`}>
+              }`}>
               {regionNote}
             </div>
           )}
