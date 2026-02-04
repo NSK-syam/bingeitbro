@@ -178,11 +178,11 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                         </button>
                         <button
                           type="button"
-                          onClick={async () => {
-                            setShowUserMenu(false);
-                            await signOut();
-                            // Force a full page reload to clear all state
-                            window.location.replace('/');
+                          onClick={() => {
+                            // Synchronous: clear cookies/storage, then reload
+                            signOut().then(() => {
+                              window.location.href = '/';
+                            });
                           }}
                           className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer"
                         >

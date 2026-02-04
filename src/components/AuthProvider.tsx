@@ -176,33 +176,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    if (!isConfigured) return;
-    try {
-      const supabase = createClient();
-      // Sign out from all sessions
-      await supabase.auth.signOut({ scope: 'global' });
+    // Clear React state first
+    setUser(null);
+    setSession(null);
 
-      // Clear local state
-      setUser(null);
-      setSession(null);
+    if (typeof window === 'undefined') return;
 
-      // Clear all Supabase-related items from localStorage
-      if (typeof window !== 'undefined') {
-        const keysToRemove = Object.keys(localStorage).filter(key =>
-          key.startsWith('sb-') || key.includes('supabase')
-        );
-        keysToRemove.forEach(key => localStorage.removeItem(key));
+    // 1. Delete all Supabase cookies (this is where @supabase/ssr stores the session)
+    document.cookie.split(';').forEach(cookie => {
+      const name = cookie.split('=')[0].trim();
+      if (name.startsWith('sb-') || name.includes('supabase')) {
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=${window.location.hostname}`;
+        document.cookie = `${name}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/; domain=.${window.location.hostname}`;
       }
-    } catch (err) {
-      console.error('Sign out failed:', err);
-      // Even if signOut fails, clear local state and storage
-      setUser(null);
-      setSession(null);
-      if (typeof window !== 'undefined') {
-        const keysToRemove = Object.keys(localStorage).filter(key =>
-          key.startsWith('sb-') || key.includes('supabase')
-        );
-        keysToRemove.forEach(key => localStorage.removeItem(key));
+    });
+
+    // 2. Clear localStorage (backup)
+    Object.keys(localStorage).forEach(key => {
+      if (key.startsWith('sb-') || key.includes('supabase')) {
+        localStorage.removeItem(key);
+      }
+    });
+
+    // 3. Clear sessionStorage (backup)
+    Object.keys(sessionStorage).forEach(key => {
+      if (key.startsWith('sb-') || key.includes('supabase')) {
+        sessionStorage.removeItem(key);
+      }
+    });
+
+    // 4. Call Supabase signOut (may fail but cookies already cleared)
+    if (isConfigured) {
+      try {
+        const supabase = createClient();
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error('Supabase signOut error (ignored):', err);
       }
     }
   };
