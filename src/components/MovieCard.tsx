@@ -5,7 +5,29 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { WatchedButton } from './WatchedButton';
 import { ReactionBadges } from './ReactionBar';
-import { useWatched } from '@/hooks';
+import { useWatched, useWatchlist, useNudges } from '@/hooks';
+import { useAuth } from './AuthProvider';
+
+// Relative time helper
+function getRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffSecs = Math.floor(diffMs / 1000);
+  const diffMins = Math.floor(diffSecs / 60);
+  const diffHours = Math.floor(diffMins / 60);
+  const diffDays = Math.floor(diffHours / 24);
+  const diffWeeks = Math.floor(diffDays / 7);
+  const diffMonths = Math.floor(diffDays / 30);
+
+  if (diffSecs < 60) return 'just now';
+  if (diffMins < 60) return `${diffMins}m ago`;
+  if (diffHours < 24) return `${diffHours}h ago`;
+  if (diffDays === 1) return 'yesterday';
+  if (diffDays < 7) return `${diffDays} days ago`;
+  if (diffWeeks < 4) return `${diffWeeks}w ago`;
+  return `${diffMonths}mo ago`;
+}
 
 interface MovieCardProps {
   recommendation: Recommendation;
@@ -13,10 +35,39 @@ interface MovieCardProps {
 }
 
 export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
-  const { id, title, year, type, poster, genres, rating, recommendedBy, personalNote, ottLinks } = recommendation;
+  const { id, title, year, type, poster, genres, rating, recommendedBy, personalNote, ottLinks, addedOn } = recommendation;
   const [imageError, setImageError] = useState(false);
+  const [nudgeSent, setNudgeSent] = useState(false);
   const { isWatched } = useWatched();
+  const { user } = useAuth();
+  const { isInWatchlist, toggleWatchlist } = useWatchlist();
+  const { sendNudge, hasNudged } = useNudges();
   const watched = isWatched(id);
+  const inWatchlist = isInWatchlist(id);
+  const alreadyNudged = hasNudged(id) || nudgeSent;
+
+  // Check if this is a friend's recommendation (not the user's own)
+  const isFriendRecommendation = user && recommendedBy.id !== user.id;
+
+  const handleWatchlistClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (user) {
+      toggleWatchlist(id);
+    }
+  };
+
+  const handleNudgeClick = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (user && isFriendRecommendation && !alreadyNudged) {
+      // Send nudge to the recommender about their own recommendation
+      const { error } = await sendNudge(recommendedBy.id, id);
+      if (!error) {
+        setNudgeSent(true);
+      }
+    }
+  };
 
   const typeLabels = {
     movie: 'Movie',
@@ -81,9 +132,24 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
           </span>
         </div>
 
-        {/* Watched toggle button */}
-        <div className="absolute top-3 right-3">
+        {/* Action buttons */}
+        <div className="absolute top-3 right-3 flex flex-col gap-1">
           <WatchedButton movieId={id} size="sm" />
+          {user && (
+            <button
+              onClick={handleWatchlistClick}
+              className={`p-1.5 rounded-lg backdrop-blur-sm transition-all ${
+                inWatchlist
+                  ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
+                  : 'bg-[var(--bg-primary)]/70 text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)]'
+              }`}
+              title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
+            >
+              <svg className="w-4 h-4" fill={inWatchlist ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
+              </svg>
+            </button>
+          )}
         </div>
 
         {/* Rating badge */}
@@ -103,9 +169,14 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-lg">{recommendedBy.avatar}</span>
-              <span className="text-xs text-[var(--text-secondary)]">
-                {recommendedBy.name}&apos;s pick
-              </span>
+              <div className="flex flex-col">
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {recommendedBy.name}
+                </span>
+                <span className="text-[10px] text-[var(--text-muted)]">
+                  {addedOn ? getRelativeTime(addedOn) : ''}
+                </span>
+              </div>
             </div>
             <ReactionBadges movieId={id} />
           </div>
@@ -146,6 +217,34 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
             )}
           </div>
         </div>
+
+        {/* Yet to watch & Nudge */}
+        {!watched && user && (
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
+            <span className="text-xs text-orange-400 flex items-center gap-1">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              Yet to watch
+            </span>
+            {isFriendRecommendation && (
+              <button
+                onClick={handleNudgeClick}
+                disabled={alreadyNudged}
+                className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all ${
+                  alreadyNudged
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-pink-500/20 text-pink-400 hover:bg-pink-500/30'
+                }`}
+              >
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                </svg>
+                {alreadyNudged ? 'Nudged!' : 'Nudge'}
+              </button>
+            )}
+          </div>
+        )}
       </div>
     </Link>
   );

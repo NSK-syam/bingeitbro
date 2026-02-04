@@ -1,9 +1,9 @@
 // The soul of Cinema Chudu - every recommendation tells a story
 
 export interface OTTLink {
-  platform: 'Netflix' | 'Prime Video' | 'Hotstar' | 'Aha' | 'YouTube' | 'Apple TV+' | 'Zee5' | 'SonyLiv' | 'Jio Cinema' | 'Other';
+  platform: string;
   url: string;
-  availableIn?: string; // e.g., "Telugu", "Hindi Dubbed"
+  availableIn?: string; // e.g., "India", "USA", "India & USA"
 }
 
 export interface Recommender {
