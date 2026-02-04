@@ -1,0 +1,13 @@
+name = "bingeitbro"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+pages_build_output_dir = ".open-next/assets"
+
+# Durable Objects are required for caching
+[[durable_objects.bindings]]
+name = "NEXT_CACHE_DO"
+class_name = "DOCache"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["DOCache"]
