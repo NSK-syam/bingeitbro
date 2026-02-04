@@ -47,26 +47,36 @@ export default function ProfilePage() {
 
         console.log('Fetching profile for userId:', userId);
 
-        // First try to fetch by ID (UUID)
-        let { data: userData, error } = await supabase
-          .from('users')
-          .select('*')
-          .eq('id', userId)
-          .single();
+        // Check if the userId looks like a UUID
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
 
-        // If not found by ID, try by username
-        if (error || !userData) {
-          console.log('User not found by ID, trying username lookup...');
-          const { data: userByUsername, error: usernameError } = await supabase
+        let userData = null;
+        let error = null;
+
+        if (isUUID) {
+          // Fetch by UUID
+          const result = await supabase
             .from('users')
             .select('*')
-            .eq('username', userId.toLowerCase())
+            .eq('id', userId)
             .single();
-
-          if (userByUsername) {
-            userData = userByUsername;
-            error = null;
-            console.log('Found user by username:', userByUsername.name);
+          userData = result.data;
+          error = result.error;
+        } else {
+          // Try to fetch by username (non-UUID format)
+          try {
+            const result = await supabase
+              .from('users')
+              .select('*')
+              .eq('username', userId.toLowerCase())
+              .single();
+            userData = result.data;
+            error = result.error;
+            if (userData) {
+              console.log('Found user by username:', userData.name);
+            }
+          } catch (usernameErr) {
+            console.log('Username lookup failed (column may not exist):', usernameErr);
           }
         }
 
