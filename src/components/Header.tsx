@@ -1,7 +1,6 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useAuth } from './AuthProvider';
 
@@ -15,7 +14,6 @@ interface HeaderProps {
 }
 
 export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, onNudgesClick, nudgeCount = 0 }: HeaderProps) {
-  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { user, loading, signOut, isConfigured } = useAuth();
@@ -166,8 +164,7 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                         <button
                           type="button"
                           onClick={() => {
-                            setShowUserMenu(false);
-                            router.push(`/profile/${user.id}`);
+                            window.location.href = `/profile/${user.id}`;
                           }}
                           className="w-full px-4 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 cursor-pointer"
                         >
