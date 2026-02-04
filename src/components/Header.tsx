@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { useAuth } from './AuthProvider';
 
@@ -14,6 +15,7 @@ interface HeaderProps {
 }
 
 export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, onNudgesClick, nudgeCount = 0 }: HeaderProps) {
+  const router = useRouter();
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const { user, loading, signOut, isConfigured } = useAuth();
@@ -161,22 +163,26 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                           </svg>
                           Share Profile Link
                         </button>
-                        <Link
-                          href={`/profile/${user.id}`}
-                          onClick={() => setShowUserMenu(false)}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowUserMenu(false);
+                            router.push(`/profile/${user.id}`);
+                          }}
                           className="w-full px-4 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 cursor-pointer"
                         >
                           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                           </svg>
                           View My Profile
-                        </Link>
+                        </button>
                         <button
                           type="button"
-                          onClick={async () => {
+                          onClick={() => {
                             setShowUserMenu(false);
-                            await signOut();
-                            window.location.href = '/';
+                            signOut();
+                            router.push('/');
+                            router.refresh();
                           }}
                           className="w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer"
                         >
