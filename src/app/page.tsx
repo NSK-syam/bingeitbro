@@ -325,11 +325,10 @@ export default function Home() {
         <div className="flex gap-2 mb-6">
           <button
             onClick={() => setActiveView('trending')}
-            className={`px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 ${
-              activeView === 'trending'
+            className={`px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 ${activeView === 'trending'
                 ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
                 : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
-            }`}
+              }`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
@@ -338,11 +337,10 @@ export default function Home() {
           </button>
           <button
             onClick={() => setActiveView('friends')}
-            className={`px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 ${
-              activeView === 'friends'
+            className={`px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 ${activeView === 'friends'
                 ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
                 : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
-            }`}
+              }`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
@@ -363,11 +361,10 @@ export default function Home() {
               <span className="text-xs text-[var(--text-muted)] w-16">Filter:</span>
               <button
                 onClick={() => handleFilterChange('recommendedBy', null)}
-                className={`px-3 py-1.5 text-sm rounded-full transition-all ${
-                  !filters.recommendedBy
+                className={`px-3 py-1.5 text-sm rounded-full transition-all ${!filters.recommendedBy
                     ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
                     : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
-                }`}
+                  }`}
               >
                 All Friends
               </button>
@@ -380,11 +377,10 @@ export default function Home() {
                         filters.recommendedBy === person.id ? null : person.id
                       )
                     }
-                    className={`px-3 py-1.5 text-sm rounded-l-full transition-all ${
-                      filters.recommendedBy === person.id
+                    className={`px-3 py-1.5 text-sm rounded-l-full transition-all ${filters.recommendedBy === person.id
                         ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
                         : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
-                    }`}
+                      }`}
                   >
                     {person.avatar} {person.name}
                   </button>
@@ -455,7 +451,7 @@ export default function Home() {
               <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             </div>
           }>
-            <TrendingMovies />
+            <TrendingMovies searchQuery={searchQuery} />
           </Suspense>
         ) : (
           <>
