@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components';
@@ -22,74 +22,97 @@ export default function ProfilePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
 
-  const fetchProfile = useCallback(async () => {
-    if (!isSupabaseConfigured()) return;
-
-    const supabase = createClient();
-
-    // Fetch user profile
-    const { data: userData } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', userId)
-      .single();
-
-    if (userData) {
-      setProfileUser(userData);
-
-      // Fetch their recommendations
-      const { data: recs } = await supabase
-        .from('recommendations')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-
-      if (recs) {
-        const mapped: Recommendation[] = recs.map((rec: DBRecommendation) => ({
-          id: rec.id,
-          title: rec.title,
-          originalTitle: rec.original_title,
-          year: rec.year,
-          type: rec.type,
-          poster: rec.poster,
-          backdrop: rec.backdrop,
-          genres: rec.genres,
-          language: rec.language,
-          duration: rec.duration,
-          rating: rec.rating,
-          personalNote: rec.personal_note,
-          mood: rec.mood,
-          watchWith: rec.watch_with,
-          ottLinks: rec.ott_links as OTTLink[],
-          recommendedBy: {
-            id: userData.id,
-            name: userData.name,
-            avatar: userData.avatar,
-          },
-          addedOn: rec.created_at,
-        }));
-        setRecommendations(mapped);
-      }
-    }
-
-    // Check if already friends
-    if (user && user.id !== userId) {
-      const { data: friendData } = await supabase
-        .from('friends')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('friend_id', userId)
-        .single();
-
-      setIsFriend(!!friendData);
-    }
-
-    setIsLoading(false);
-  }, [userId, user]);
-
+  // Fetch profile data (doesn't depend on auth user)
   useEffect(() => {
+    const fetchProfile = async () => {
+      if (!isSupabaseConfigured()) {
+        setIsLoading(false);
+        return;
+      }
+
+      try {
+        const supabase = createClient();
+
+        // Fetch user profile
+        const { data: userData, error } = await supabase
+          .from('users')
+          .select('*')
+          .eq('id', userId)
+          .single();
+
+        if (error || !userData) {
+          setIsLoading(false);
+          return;
+        }
+
+        setProfileUser(userData);
+
+        // Fetch their recommendations
+        const { data: recs } = await supabase
+          .from('recommendations')
+          .select('*')
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false });
+
+        if (recs) {
+          const mapped: Recommendation[] = recs.map((rec: DBRecommendation) => ({
+            id: rec.id,
+            title: rec.title,
+            originalTitle: rec.original_title,
+            year: rec.year,
+            type: rec.type,
+            poster: rec.poster,
+            backdrop: rec.backdrop,
+            genres: rec.genres,
+            language: rec.language,
+            duration: rec.duration,
+            rating: rec.rating,
+            personalNote: rec.personal_note,
+            mood: rec.mood,
+            watchWith: rec.watch_with,
+            ottLinks: rec.ott_links as OTTLink[],
+            recommendedBy: {
+              id: userData.id,
+              name: userData.name,
+              avatar: userData.avatar,
+            },
+            addedOn: rec.created_at,
+          }));
+          setRecommendations(mapped);
+        }
+      } catch (err) {
+        console.error('Error fetching profile:', err);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
     fetchProfile();
-  }, [fetchProfile]);
+  }, [userId]);
+
+  // Check friend status separately (depends on auth user)
+  useEffect(() => {
+    const checkFriendStatus = async () => {
+      if (!user || !userId || user.id === userId || !isSupabaseConfigured()) return;
+
+      try {
+        const supabase = createClient();
+        const { data: friendData } = await supabase
+          .from('friends')
+          .select('id')
+          .eq('user_id', user.id)
+          .eq('friend_id', userId)
+          .single();
+
+        setIsFriend(!!friendData);
+      } catch (err) {
+        // Not friends or error
+        setIsFriend(false);
+      }
+    };
+
+    checkFriendStatus();
+  }, [user, userId]);
 
   const addFriend = async () => {
     if (!user || !profileUser) return;
