@@ -45,12 +45,30 @@ export default function ProfilePage() {
       try {
         const supabase = createClient();
 
-        // Fetch user profile
+        console.log('Fetching profile for userId:', userId);
+
+        // First try to fetch by ID (UUID)
         let { data: userData, error } = await supabase
           .from('users')
           .select('*')
           .eq('id', userId)
           .single();
+
+        // If not found by ID, try by username
+        if (error || !userData) {
+          console.log('User not found by ID, trying username lookup...');
+          const { data: userByUsername, error: usernameError } = await supabase
+            .from('users')
+            .select('*')
+            .eq('username', userId.toLowerCase())
+            .single();
+
+          if (userByUsername) {
+            userData = userByUsername;
+            error = null;
+            console.log('Found user by username:', userByUsername.name);
+          }
+        }
 
         clearTimeout(timeout);
 
@@ -95,16 +113,18 @@ export default function ProfilePage() {
         }
 
         if (error && !userData) {
-          console.error('Error fetching user:', error);
+          console.error('Error fetching user by id:', userId, 'Error:', error);
           setIsLoading(false);
           return;
         }
 
         if (!userData) {
+          console.log('No user data found for:', userId);
           setIsLoading(false);
           return;
         }
 
+        console.log('Profile loaded successfully:', userData.name);
         setProfileUser(userData);
 
         // Fetch their recommendations
