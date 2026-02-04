@@ -9,8 +9,10 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
-  signInWithOtp: (email: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, name: string, username: string, phone: string) => Promise<{ error: Error | null; needsPhoneVerification?: boolean }>;
+  sendPhoneOtp: (phone: string) => Promise<{ error: Error | null }>;
+  verifyPhoneOtp: (phone: string, token: string) => Promise<{ error: Error | null }>;
+  checkUsernameAvailable: (username: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   isConfigured: boolean;
 }
@@ -67,6 +69,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           id: data.user.id,
           email: data.user.email || email,
           name: data.user.user_metadata?.name || email.split('@')[0],
+          username: data.user.user_metadata?.username || email.split('@')[0],
           avatar: getRandomEmoji()
         });
       }
@@ -75,21 +78,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
-  const signUp = async (email: string, password: string, name: string) => {
+  const checkUsernameAvailable = async (username: string): Promise<boolean> => {
+    if (!isConfigured) return false;
+
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('users')
+      .select('id')
+      .eq('username', username.toLowerCase())
+      .single();
+
+    return !data; // Available if no user found
+  };
+
+  const signUp = async (email: string, password: string, name: string, username: string, phone: string) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
 
     const supabase = createClient();
 
+    // Check if username is available
+    const isAvailable = await checkUsernameAvailable(username);
+    if (!isAvailable) {
+      return { error: new Error('Username is already taken') };
+    }
+
+    // Check if email already exists
+    const { data: existingEmail } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', email.toLowerCase())
+      .single();
+
+    if (existingEmail) {
+      return { error: new Error('An account with this email already exists') };
+    }
+
     // Get the current site URL for redirect
     const siteUrl = typeof window !== 'undefined'
       ? window.location.origin
-      : 'https://cinema-chudu.vercel.app';
+      : 'https://bingeitbro.com';
 
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
+      phone,
       options: {
-        data: { name },
+        data: { name, username: username.toLowerCase(), phone },
         emailRedirectTo: `${siteUrl}/auth/callback`
       }
     });
@@ -98,28 +132,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Create user profile
       await supabase.from('users').insert({
         id: data.user.id,
-        email: email,
+        email: email.toLowerCase(),
         name: name,
+        username: username.toLowerCase(),
+        phone: phone,
         avatar: getRandomEmoji()
       });
+
+      // Send phone OTP for verification
+      return { error: null, needsPhoneVerification: true };
     }
 
     return { error };
   };
 
-  const signInWithOtp = async (email: string) => {
+  const sendPhoneOtp = async (phone: string) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
 
     const supabase = createClient();
-    const siteUrl = typeof window !== 'undefined'
-      ? window.location.origin
-      : 'https://bingeitbro.com';
-
     const { error } = await supabase.auth.signInWithOtp({
-      email,
-      options: {
-        emailRedirectTo: `${siteUrl}/auth/callback`,
-      },
+      phone,
+    });
+
+    return { error };
+  };
+
+  const verifyPhoneOtp = async (phone: string, token: string) => {
+    if (!isConfigured) return { error: new Error('Supabase not configured') };
+
+    const supabase = createClient();
+    const { error } = await supabase.auth.verifyOtp({
+      phone,
+      token,
+      type: 'sms',
     });
 
     return { error };
@@ -132,7 +177,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signInWithOtp, signOut, isConfigured }}>
+    <AuthContext.Provider value={{
+      user,
+      session,
+      loading,
+      signIn,
+      signUp,
+      sendPhoneOtp,
+      verifyPhoneOtp,
+      checkUsernameAvailable,
+      signOut,
+      isConfigured
+    }}>
       {children}
     </AuthContext.Provider>
   );
