@@ -30,6 +30,12 @@ export default function ProfilePage() {
         return;
       }
 
+      // Timeout after 10 seconds
+      const timeout = setTimeout(() => {
+        console.error('Profile fetch timeout');
+        setIsLoading(false);
+      }, 10000);
+
       try {
         const supabase = createClient();
 
@@ -40,7 +46,15 @@ export default function ProfilePage() {
           .eq('id', userId)
           .single();
 
-        if (error || !userData) {
+        clearTimeout(timeout);
+
+        if (error) {
+          console.error('Error fetching user:', error);
+          setIsLoading(false);
+          return;
+        }
+
+        if (!userData) {
           setIsLoading(false);
           return;
         }
@@ -82,7 +96,9 @@ export default function ProfilePage() {
         }
       } catch (err) {
         console.error('Error fetching profile:', err);
+        clearTimeout(timeout);
       } finally {
+        clearTimeout(timeout);
         setIsLoading(false);
       }
     };
