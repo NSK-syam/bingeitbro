@@ -9,9 +9,8 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, name: string, username: string, phone: string) => Promise<{ error: Error | null; needsPhoneVerification?: boolean }>;
-  sendPhoneOtp: (phone: string) => Promise<{ error: Error | null }>;
-  verifyPhoneOtp: (phone: string, token: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, name: string, username: string) => Promise<{ error: Error | null }>;
+  signInWithGoogle: () => Promise<{ error: Error | null }>;
   checkUsernameAvailable: (username: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   isConfigured: boolean;
@@ -41,9 +40,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+
+      // Create user profile for OAuth users if it doesn't exist
+      if (session?.user && _event === 'SIGNED_IN') {
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!existingUser) {
+          const metadata = session.user.user_metadata;
+          await supabase.from('users').insert({
+            id: session.user.id,
+            email: session.user.email,
+            name: metadata?.full_name || metadata?.name || session.user.email?.split('@')[0],
+            username: session.user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') + '_' + Math.random().toString(36).slice(2, 6),
+            avatar: getRandomEmoji()
+          });
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -53,28 +72,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
 
     const supabase = createClient();
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
-    // Ensure user profile exists
-    if (!error && data.user) {
-      const { data: existingUser } = await supabase
-        .from('users')
-        .select('id')
-        .eq('id', data.user.id)
-        .single();
-
-      if (!existingUser) {
-        // Create user profile if it doesn't exist
-        await supabase.from('users').insert({
-          id: data.user.id,
-          email: data.user.email || email,
-          name: data.user.user_metadata?.name || email.split('@')[0],
-          username: data.user.user_metadata?.username || email.split('@')[0],
-          avatar: getRandomEmoji()
-        });
-      }
-    }
-
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error };
   };
 
@@ -88,10 +86,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .eq('username', username.toLowerCase())
       .single();
 
-    return !data; // Available if no user found
+    return !data;
   };
 
-  const signUp = async (email: string, password: string, name: string, username: string, phone: string) => {
+  const signUp = async (email: string, password: string, name: string, username: string) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
 
     const supabase = createClient();
@@ -113,7 +111,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: new Error('An account with this email already exists') };
     }
 
-    // Get the current site URL for redirect
     const siteUrl = typeof window !== 'undefined'
       ? window.location.origin
       : 'https://bingeitbro.com';
@@ -121,50 +118,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      phone,
       options: {
-        data: { name, username: username.toLowerCase(), phone },
+        data: { name, username: username.toLowerCase() },
         emailRedirectTo: `${siteUrl}/auth/callback`
       }
     });
 
     if (!error && data.user) {
-      // Create user profile
       await supabase.from('users').insert({
         id: data.user.id,
         email: email.toLowerCase(),
         name: name,
         username: username.toLowerCase(),
-        phone: phone,
         avatar: getRandomEmoji()
       });
-
-      // Send phone OTP for verification
-      return { error: null, needsPhoneVerification: true };
     }
 
     return { error };
   };
 
-  const sendPhoneOtp = async (phone: string) => {
+  const signInWithGoogle = async () => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithOtp({
-      phone,
-    });
+    const siteUrl = typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://bingeitbro.com';
 
-    return { error };
-  };
-
-  const verifyPhoneOtp = async (phone: string, token: string) => {
-    if (!isConfigured) return { error: new Error('Supabase not configured') };
-
-    const supabase = createClient();
-    const { error } = await supabase.auth.verifyOtp({
-      phone,
-      token,
-      type: 'sms',
+    const { error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: `${siteUrl}/auth/callback`,
+      },
     });
 
     return { error };
@@ -183,8 +168,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signIn,
       signUp,
-      sendPhoneOtp,
-      verifyPhoneOtp,
+      signInWithGoogle,
       checkUsernameAvailable,
       signOut,
       isConfigured
