@@ -29,8 +29,11 @@ const LANGUAGES = [
   { name: 'French', code: 'fr', flag: '🇫🇷' },
   { name: 'Spanish', code: 'es', flag: '🇪🇸' },
 ];
+interface TrendingMoviesProps {
+  searchQuery?: string;
+}
 
-export function TrendingMovies() {
+export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [movies, setMovies] = useState<TrendingMovie[]>([]);
@@ -184,6 +187,14 @@ export function TrendingMovies() {
 
   const currentLang = selectedLang ? getLangInfo(selectedLang) : null;
 
+  // Filter movies based on search query
+  const filteredMovies = searchQuery
+    ? movies.filter(movie =>
+      movie.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      movie.original_title.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+    : movies;
+
   return (
     <div>
       {/* Language filters */}
@@ -202,11 +213,10 @@ export function TrendingMovies() {
             <button
               key={lang.code}
               onClick={() => handleLanguageClick(lang.code)}
-              className={`px-3 py-1.5 text-sm rounded-full transition-all flex items-center gap-1.5 ${
-                selectedLang === lang.code
-                  ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                  : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-              }`}
+              className={`px-3 py-1.5 text-sm rounded-full transition-all flex items-center gap-1.5 ${selectedLang === lang.code
+                ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
+                : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
+                }`}
             >
               <span>{lang.flag}</span>
               <span>{lang.name}</span>
@@ -304,7 +314,11 @@ export function TrendingMovies() {
       {/* Section title */}
       <div className="flex items-center justify-between mb-6">
         <h3 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
-          {currentLang ? (
+          {searchQuery ? (
+            <>
+              🔍 <span>Search: "{searchQuery}"</span>
+            </>
+          ) : currentLang ? (
             <>
               {currentLang.flag}
               <span>{currentLang.name} Movies</span>
@@ -316,7 +330,7 @@ export function TrendingMovies() {
           )}
         </h3>
         <span className="text-sm text-[var(--text-muted)]">
-          {loading ? '...' : `${movies.length} movies`}
+          {loading ? '...' : `${filteredMovies.length} movies`}
         </span>
       </div>
 
@@ -330,9 +344,9 @@ export function TrendingMovies() {
         <div className="flex items-center justify-center py-20">
           <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
         </div>
-      ) : movies.length > 0 ? (
+      ) : filteredMovies.length > 0 ? (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-          {movies.map((movie) => {
+          {filteredMovies.map((movie) => {
             const langInfo = getLangInfo(movie.original_language);
             return (
               <Link
