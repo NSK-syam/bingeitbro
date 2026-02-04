@@ -45,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      setLoading(false);
 
       // Create user profile for OAuth users if it doesn't exist
       if (session?.user && _event === 'SIGNED_IN') {
