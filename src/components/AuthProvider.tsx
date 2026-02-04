@@ -10,6 +10,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
+  signInWithOtp: (email: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
   isConfigured: boolean;
 }
@@ -106,6 +107,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
+  const signInWithOtp = async (email: string) => {
+    if (!isConfigured) return { error: new Error('Supabase not configured') };
+
+    const supabase = createClient();
+    const siteUrl = typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://bingeitbro.com';
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: `${siteUrl}/auth/callback`,
+      },
+    });
+
+    return { error };
+  };
+
   const signOut = async () => {
     if (!isConfigured) return;
     const supabase = createClient();
@@ -113,7 +132,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signOut, isConfigured }}>
+    <AuthContext.Provider value={{ user, session, loading, signIn, signUp, signInWithOtp, signOut, isConfigured }}>
       {children}
     </AuthContext.Provider>
   );
