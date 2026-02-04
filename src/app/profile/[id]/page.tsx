@@ -40,7 +40,7 @@ export default function ProfilePage() {
         const supabase = createClient();
 
         // Fetch user profile
-        const { data: userData, error } = await supabase
+        let { data: userData, error } = await supabase
           .from('users')
           .select('*')
           .eq('id', userId)
@@ -48,7 +48,33 @@ export default function ProfilePage() {
 
         clearTimeout(timeout);
 
-        if (error) {
+        // If no profile exists and this is the logged-in user viewing their own profile, create it
+        if ((error || !userData) && user && user.id === userId) {
+          console.log('Creating profile for OAuth user...');
+          const metadata = user.user_metadata;
+          const newProfile = {
+            id: user.id,
+            email: user.email || '',
+            name: metadata?.full_name || metadata?.name || user.email?.split('@')[0] || 'User',
+            avatar: ['🎬', '🍿', '🎭', '🎪', '🎯', '🎲'][Math.floor(Math.random() * 6)]
+          };
+
+          const { error: insertError } = await supabase.from('users').insert(newProfile);
+
+          if (!insertError) {
+            // Fetch the newly created profile
+            const { data: newUserData } = await supabase
+              .from('users')
+              .select('*')
+              .eq('id', userId)
+              .single();
+            userData = newUserData;
+          } else {
+            console.error('Failed to create profile:', insertError);
+          }
+        }
+
+        if (error && !userData) {
           console.error('Error fetching user:', error);
           setIsLoading(false);
           return;
@@ -104,7 +130,7 @@ export default function ProfilePage() {
     };
 
     fetchProfile();
-  }, [userId]);
+  }, [userId, user]);
 
   // Check friend status separately (depends on auth user)
   useEffect(() => {
