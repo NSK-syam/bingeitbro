@@ -12,6 +12,7 @@ export interface DBUser {
   id: string;
   email: string;
   name: string;
+  username: string;
   avatar: string;
   created_at: string;
 }
