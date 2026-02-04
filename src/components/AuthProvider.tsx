@@ -49,21 +49,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Create user profile for OAuth users if it doesn't exist
       if (session?.user && _event === 'SIGNED_IN') {
-        const { data: existingUser } = await supabase
-          .from('users')
-          .select('id')
-          .eq('id', session.user.id)
-          .single();
+        try {
+          const { data: existingUser } = await supabase
+            .from('users')
+            .select('id')
+            .eq('id', session.user.id)
+            .single();
 
-        if (!existingUser) {
-          const metadata = session.user.user_metadata;
-          await supabase.from('users').insert({
-            id: session.user.id,
-            email: session.user.email,
-            name: metadata?.full_name || metadata?.name || session.user.email?.split('@')[0],
-            username: session.user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') + '_' + Math.random().toString(36).slice(2, 6),
-            avatar: getRandomEmoji()
-          });
+          if (!existingUser) {
+            const metadata = session.user.user_metadata;
+            const generatedUsername = session.user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') + '_' + Math.random().toString(36).slice(2, 6);
+
+            const { error: insertError } = await supabase.from('users').insert({
+              id: session.user.id,
+              email: session.user.email,
+              name: metadata?.full_name || metadata?.name || session.user.email?.split('@')[0],
+              username: generatedUsername,
+              avatar: getRandomEmoji()
+            });
+
+            if (insertError) {
+              console.error('Failed to create user profile:', insertError);
+              // Try without username in case column doesn't exist
+              await supabase.from('users').insert({
+                id: session.user.id,
+                email: session.user.email,
+                name: metadata?.full_name || metadata?.name || session.user.email?.split('@')[0],
+                avatar: getRandomEmoji()
+              });
+            }
+          }
+        } catch (err) {
+          console.error('Error in auth state change:', err);
         }
       }
     });
@@ -160,8 +177,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     if (!isConfigured) return;
-    const supabase = createClient();
-    await supabase.auth.signOut();
+    try {
+      const supabase = createClient();
+      const { error } = await supabase.auth.signOut();
+      if (error) console.error('Sign out error:', error);
+      // Clear local state immediately
+      setUser(null);
+      setSession(null);
+    } catch (err) {
+      console.error('Sign out failed:', err);
+    }
   };
 
   return (
