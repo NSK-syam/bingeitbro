@@ -25,6 +25,9 @@ export default function ProfilePage() {
   // Fetch profile data (doesn't depend on auth user)
   useEffect(() => {
     const fetchProfile = async () => {
+      // Reset loading state on every fetch attempt
+      setIsLoading(true);
+
       if (!isSupabaseConfigured()) {
         setIsLoading(false);
         return;
@@ -52,14 +55,28 @@ export default function ProfilePage() {
         if ((error || !userData) && user && user.id === userId) {
           console.log('Creating profile for OAuth user...');
           const metadata = user.user_metadata;
-          const newProfile = {
+          const generatedUsername = user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') + '_' + Math.random().toString(36).slice(2, 6);
+
+          // Try with username first
+          let insertError;
+          ({ error: insertError } = await supabase.from('users').insert({
             id: user.id,
             email: user.email || '',
             name: metadata?.full_name || metadata?.name || user.email?.split('@')[0] || 'User',
+            username: generatedUsername,
             avatar: ['🎬', '🍿', '🎭', '🎪', '🎯', '🎲'][Math.floor(Math.random() * 6)]
-          };
+          }));
 
-          const { error: insertError } = await supabase.from('users').insert(newProfile);
+          // If failed (maybe username column doesn't exist), try without
+          if (insertError) {
+            console.error('Insert with username failed, trying without:', insertError);
+            ({ error: insertError } = await supabase.from('users').insert({
+              id: user.id,
+              email: user.email || '',
+              name: metadata?.full_name || metadata?.name || user.email?.split('@')[0] || 'User',
+              avatar: ['🎬', '🍿', '🎭', '🎪', '🎯', '🎲'][Math.floor(Math.random() * 6)]
+            }));
+          }
 
           if (!insertError) {
             // Fetch the newly created profile
