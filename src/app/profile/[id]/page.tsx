@@ -12,7 +12,7 @@ import { useWatched, useWatchlist } from '@/hooks';
 export default function ProfilePage() {
   const params = useParams();
   const userId = params.id as string;
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const { getWatchedCount } = useWatched();
   const { getWatchlistCount } = useWatchlist();
 
@@ -25,6 +25,9 @@ export default function ProfilePage() {
   // Fetch profile data (doesn't depend on auth user)
   useEffect(() => {
     const fetchProfile = async () => {
+      // Don't fetch until auth is loaded
+      if (authLoading) return;
+
       // Reset loading state on every fetch attempt
       setIsLoading(true);
 
@@ -147,7 +150,7 @@ export default function ProfilePage() {
     };
 
     fetchProfile();
-  }, [userId, user]);
+  }, [userId, user, authLoading]);
 
   // Check friend status separately (depends on auth user)
   useEffect(() => {
@@ -204,7 +207,7 @@ export default function ProfilePage() {
     setIsAdding(false);
   };
 
-  if (isLoading) {
+  if (isLoading || authLoading) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
