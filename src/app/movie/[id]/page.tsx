@@ -535,7 +535,7 @@ export default function MoviePage({ params }: PageProps) {
                   {rating.toFixed(1)}
                 </span>
               )}
-              {certification && ['R', 'NC-17', 'A', '18+', '18', 'X', 'UA'].some(c => certification.toUpperCase().includes(c)) && (
+              {certification && ['NC-17', 'X', '18+'].some(c => certification.toUpperCase() === c) && (
                 <span className="px-2 py-1 bg-red-600 rounded text-white font-bold">
                   18+
                 </span>

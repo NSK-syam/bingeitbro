@@ -7,6 +7,7 @@ import { WatchedButton } from './WatchedButton';
 import { ReactionBadges } from './ReactionBar';
 import { useWatched, useWatchlist, useNudges } from '@/hooks';
 import { useAuth } from './AuthProvider';
+import { SendToFriendModal } from './SendToFriendModal';
 
 // Relative time helper
 function getRelativeTime(dateString: string): string {
@@ -38,6 +39,7 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
   const { id, title, year, type, poster, genres, rating, recommendedBy, personalNote, ottLinks, addedOn, certification } = recommendation;
   const [imageError, setImageError] = useState(false);
   const [nudgeSent, setNudgeSent] = useState(false);
+  const [showSendModal, setShowSendModal] = useState(false);
   const { isWatched } = useWatched();
   const { user } = useAuth();
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
@@ -48,6 +50,10 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
 
   // Check if this is a friend's recommendation (not the user's own)
   const isFriendRecommendation = user && recommendedBy.id !== user.id;
+
+  // Extract TMDB ID if this is a TMDB movie
+  const tmdbId = id.startsWith('tmdb-') ? id.replace('tmdb-', '') : undefined;
+  const recommendationId = !tmdbId ? id : undefined;
 
   const handleWatchlistClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -67,6 +73,12 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
         setNudgeSent(true);
       }
     }
+  };
+
+  const handleSendClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowSendModal(true);
   };
 
   const typeLabels = {
@@ -130,7 +142,7 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
           <span className="px-2 py-1 text-xs font-medium bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md text-[var(--text-secondary)]">
             {typeLabels[type]}
           </span>
-          {certification && ['R', 'NC-17', 'A', '18+', '18', 'X', 'UA'].some(c => certification.toUpperCase().includes(c)) && (
+          {certification && ['NC-17', 'X', '18+'].some(c => certification.toUpperCase() === c) && (
             <span className="px-2 py-0.5 text-[10px] font-bold bg-red-600/90 backdrop-blur-sm rounded-md text-white">
               18+
             </span>
@@ -222,33 +234,61 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
           </div>
         </div>
 
-        {/* Yet to watch & Nudge */}
-        {!watched && user && (
+        {/* Yet to watch, Nudge & Send to Friend */}
+        {user && (
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
-            <span className="text-xs text-orange-400 flex items-center gap-1">
-              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              Yet to watch
-            </span>
-            {isFriendRecommendation && (
+            {!watched && (
+              <span className="text-xs text-orange-400 flex items-center gap-1">
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Yet to watch
+              </span>
+            )}
+            <div className="flex items-center gap-2 ml-auto">
+              {/* Send to Friend button */}
               <button
-                onClick={handleNudgeClick}
-                disabled={alreadyNudged}
-                className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all ${alreadyNudged
-                  ? 'bg-green-500/20 text-green-400'
-                  : 'bg-pink-500/20 text-pink-400 hover:bg-pink-500/30'
-                  }`}
+                onClick={handleSendClick}
+                className="text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                title="Send to friend"
               >
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                 </svg>
-                {alreadyNudged ? 'Nudged!' : 'Nudge'}
+                Send
               </button>
-            )}
+              {/* Nudge button - only for friend's recommendations */}
+              {!watched && isFriendRecommendation && (
+                <button
+                  onClick={handleNudgeClick}
+                  disabled={alreadyNudged}
+                  className={`text-xs px-2 py-1 rounded-full flex items-center gap-1 transition-all ${alreadyNudged
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'bg-pink-500/20 text-pink-400 hover:bg-pink-500/30'
+                    }`}
+                >
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
+                  </svg>
+                  {alreadyNudged ? 'Nudged!' : 'Nudge'}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </div>
+
+      {/* Send to Friend Modal */}
+      <SendToFriendModal
+        isOpen={showSendModal}
+        onClose={() => setShowSendModal(false)}
+        movieId={id}
+        movieTitle={title}
+        moviePoster={poster}
+        movieYear={year}
+        tmdbId={tmdbId}
+        recommendationId={recommendationId}
+      />
     </Link>
   );
 }

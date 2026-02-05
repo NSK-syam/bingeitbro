@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
-import { Header, MovieCard, FilterBar, RandomPicker, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, useAuth } from '@/components';
+import { Header, MovieCard, FilterBar, RandomPicker, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, useAuth } from '@/components';
 import { Recommendation, Recommender, OTTLink } from '@/types';
-import { useWatched, useNudges } from '@/hooks';
+import { useWatched, useNudges, useWatchlist } from '@/hooks';
 import { createClient, isSupabaseConfigured, DBRecommendation } from '@/lib/supabase';
 import data from '@/data/recommendations.json';
 
@@ -11,6 +11,7 @@ export default function Home() {
   const staticRecommendations = data.recommendations as Recommendation[];
   const staticRecommenders = data.recommenders as Recommender[];
   const { getWatchedCount, isWatched } = useWatched();
+  const { getWatchlistCount } = useWatchlist();
   const { user } = useAuth();
 
   const [dbRecommendations, setDbRecommendations] = useState<Recommendation[]>([]);
@@ -21,7 +22,10 @@ export default function Home() {
   const [showFriendsManager, setShowFriendsManager] = useState(false);
   const [showWatchlist, setShowWatchlist] = useState(false);
   const [showNudges, setShowNudges] = useState(false);
+  const [showFriendRecommendations, setShowFriendRecommendations] = useState(false);
+  const [showTodayReleases, setShowTodayReleases] = useState(false);
   const [activeView, setActiveView] = useState<'trending' | 'friends'>('trending');
+  const [friendRecommendationsCount, setFriendRecommendationsCount] = useState(0);
   const { unreadCount: nudgeCount } = useNudges();
 
   // Combine static + friends recommendations
@@ -248,7 +252,10 @@ export default function Home() {
         onAddClick={() => setShowSubmitModal(true)}
         onWatchlistClick={() => setShowWatchlist(true)}
         onNudgesClick={() => setShowNudges(true)}
+        onFriendRecommendationsClick={() => setShowFriendRecommendations(true)}
         nudgeCount={nudgeCount}
+        watchlistCount={getWatchlistCount()}
+        friendRecommendationsCount={friendRecommendationsCount}
       />
 
       {/* Auth Modal */}
@@ -278,6 +285,19 @@ export default function Home() {
       <NudgesModal
         isOpen={showNudges}
         onClose={() => setShowNudges(false)}
+      />
+
+      {/* Friend Recommendations Modal */}
+      <FriendRecommendationsModal
+        isOpen={showFriendRecommendations}
+        onClose={() => setShowFriendRecommendations(false)}
+        onCountChange={setFriendRecommendationsCount}
+      />
+
+      {/* Today's Releases Modal - Shows once per day or on button click */}
+      <TodayReleasesModal
+        manualOpen={showTodayReleases}
+        onClose={() => setShowTodayReleases(false)}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
@@ -322,12 +342,12 @@ export default function Home() {
         </div>
 
         {/* Main Tabs - Trending vs Friends */}
-        <div className="flex gap-2 mb-6">
+        <div className="flex flex-wrap gap-2 mb-6">
           <button
             onClick={() => setActiveView('trending')}
             className={`px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 ${activeView === 'trending'
-                ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
-                : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
+              ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
+              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
               }`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -338,8 +358,8 @@ export default function Home() {
           <button
             onClick={() => setActiveView('friends')}
             className={`px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 ${activeView === 'friends'
-                ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
-                : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
+              ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
+              : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)]'
               }`}
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -352,6 +372,17 @@ export default function Home() {
               </span>
             )}
           </button>
+
+          {/* New Today Button */}
+          <button
+            onClick={() => setShowTodayReleases(true)}
+            className="px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-purple-500/25"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            New Today
+          </button>
         </div>
 
         {/* Friends Filter - Only show in friends view */}
@@ -362,8 +393,8 @@ export default function Home() {
               <button
                 onClick={() => handleFilterChange('recommendedBy', null)}
                 className={`px-3 py-1.5 text-sm rounded-full transition-all ${!filters.recommendedBy
-                    ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                    : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                  ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
+                  : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                   }`}
               >
                 All Friends
@@ -378,8 +409,8 @@ export default function Home() {
                       )
                     }
                     className={`px-3 py-1.5 text-sm rounded-l-full transition-all ${filters.recommendedBy === person.id
-                        ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                        : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
+                      ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
+                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
                       }`}
                   >
                     {person.avatar} {person.name}
