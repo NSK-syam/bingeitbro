@@ -62,7 +62,7 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       const { data } = await supabase
         .from('users')
         .select('*')
-        .ilike('name', `%${searchQuery}%`)
+        .or(`name.ilike.%${searchQuery}%,username.ilike.%${searchQuery}%`)
         .neq('id', user.id)
         .limit(10);
 
