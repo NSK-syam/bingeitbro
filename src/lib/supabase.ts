@@ -3,30 +3,10 @@ import { createBrowserClient } from '@supabase/ssr';
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-// Custom storage that uses sessionStorage - session expires when browser/tab is closed
-const sessionOnlyStorage = {
-  getItem: (key: string) => {
-    if (typeof window === 'undefined') return null;
-    return sessionStorage.getItem(key);
-  },
-  setItem: (key: string, value: string) => {
-    if (typeof window === 'undefined') return;
-    sessionStorage.setItem(key, value);
-  },
-  removeItem: (key: string) => {
-    if (typeof window === 'undefined') return;
-    sessionStorage.removeItem(key);
-  },
-};
-
 export function createClient() {
-  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      storage: sessionOnlyStorage,
-      persistSession: true,
-      storageKey: 'cinema-chudu-auth',
-    },
-  });
+  // Use default cookie-based storage from @supabase/ssr
+  // This ensures browser client reads same session that server sets
+  return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }
 
 // Database types

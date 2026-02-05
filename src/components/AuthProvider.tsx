@@ -168,15 +168,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear any existing session first to ensure fresh login
     try {
       await supabase.auth.signOut();
-      // Also clear storage manually
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem('cinema-chudu-auth');
-        Object.keys(sessionStorage).forEach(key => {
-          if (key.startsWith('sb-') || key.includes('supabase')) {
-            sessionStorage.removeItem(key);
-          }
-        });
-      }
     } catch (e) {
       // Ignore signout errors
     }
@@ -219,9 +210,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // 3. Clear sessionStorage (backup)
+    // 3. Clear sessionStorage (backup for legacy)
     Object.keys(sessionStorage).forEach(key => {
-      if (key.startsWith('sb-') || key.includes('supabase')) {
+      if (key.startsWith('sb-') || key.includes('supabase') || key === 'cinema-chudu-auth') {
         sessionStorage.removeItem(key);
       }
     });

@@ -13,3 +13,6 @@ export { MovieBackground } from './MovieBackground';
 export { WatchlistModal } from './WatchlistModal';
 export { NudgesModal } from './NudgesModal';
 export { TrendingMovies } from './TrendingMovies';
+export { TodayReleasesModal } from './TodayReleasesModal';
+export { SendToFriendModal } from './SendToFriendModal';
+export { FriendRecommendationsModal } from './FriendRecommendationsModal';

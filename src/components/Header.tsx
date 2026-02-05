@@ -10,7 +10,10 @@ interface HeaderProps {
   onAddClick?: () => void;
   onWatchlistClick?: () => void;
   onNudgesClick?: () => void;
+  onFriendRecommendationsClick?: () => void;
   nudgeCount?: number;
+  watchlistCount?: number;
+  friendRecommendationsCount?: number;
 }
 
 interface MovieSuggestion {
@@ -18,7 +21,7 @@ interface MovieSuggestion {
   title: string;
 }
 
-export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, onNudgesClick, nudgeCount = 0 }: HeaderProps) {
+export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, onNudgesClick, onFriendRecommendationsClick, nudgeCount = 0, watchlistCount = 0, friendRecommendationsCount = 0 }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [suggestions, setSuggestions] = useState<MovieSuggestion[]>([]);
@@ -234,9 +237,25 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
               )}
             </div>
 
-            {/* Nudges, Watchlist & Add Buttons */}
+            {/* Friend Recommendations, Nudges, Watchlist & Add Buttons */}
             {user ? (
               <>
+                {/* Friend Recommendations */}
+                <button
+                  onClick={onFriendRecommendationsClick}
+                  className="relative p-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
+                  title="Friend Recommendations"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                  {friendRecommendationsCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-blue-500 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                      {friendRecommendationsCount > 9 ? '9+' : friendRecommendationsCount}
+                    </span>
+                  )}
+                </button>
+                {/* Nudges */}
                 <button
                   onClick={onNudgesClick}
                   className="relative p-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
@@ -253,13 +272,18 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                 </button>
                 <button
                   onClick={onWatchlistClick}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
+                  className="relative flex items-center gap-1.5 px-3 py-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
                   title="My Watchlist"
                 >
                   <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M17 3H7c-1.1 0-2 .9-2 2v16l7-3 7 3V5c0-1.1-.9-2-2-2z" />
                   </svg>
                   <span className="hidden sm:inline">Watchlist</span>
+                  {watchlistCount > 0 && (
+                    <span className="absolute -top-1 -right-1 w-5 h-5 bg-[var(--accent)] text-[var(--bg-primary)] text-xs font-bold rounded-full flex items-center justify-center">
+                      {watchlistCount > 9 ? '9+' : watchlistCount}
+                    </span>
+                  )}
                 </button>
                 <button
                   onClick={onAddClick}
