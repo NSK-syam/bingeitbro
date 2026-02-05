@@ -1,4 +1,5 @@
 'use client';
+// Build: 2026-02-05 - Force cache refresh for Send to Friend deployment
 
 import { Recommendation } from '@/types';
 import Link from 'next/link';
