@@ -74,7 +74,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         if (error) {
           setError(error.message);
         } else {
-          setSuccess('Check your email for a confirmation link!');
+          setSuccess('Check your email (and spam folder) for a confirmation link!');
         }
       }
     } catch (err) {
@@ -110,7 +110,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       if (error) {
         setError(error.message);
       } else {
-        setSuccess('Check your email for a password reset link!');
+        setSuccess('Check your email (and spam folder) for a password reset link!');
         setTimeout(() => {
           setMode('login');
           setSuccess('');
