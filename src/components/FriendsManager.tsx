@@ -16,6 +16,7 @@ interface FriendsManagerProps {
 
 export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsManagerProps) {
   const { user } = useAuth();
+  console.log('FriendsManager: Render', { isOpen, userId: user?.id });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<DBUser[]>([]);
@@ -80,8 +81,8 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
     }
   }, [isOpen, user?.id, fetchFriends]); // Use user.id
 
-  // Search users
   useEffect(() => {
+    console.log('FriendsManager: Search Effect Triggered', { searchQuery, userId: user?.id });
     if (!searchQuery.trim() || !user) {
       setSearchResults([]);
       return;
