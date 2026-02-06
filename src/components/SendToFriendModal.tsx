@@ -21,16 +21,16 @@ interface SendToFriendModalProps {
     recommendationId?: string;
 }
 
-export function SendToFriendModal({
-    isOpen,
-    onClose,
-    movieId,
-    movieTitle,
-    moviePoster,
-    movieYear,
-    tmdbId,
-    recommendationId,
-}: SendToFriendModalProps) {
+export function SendToFriendModal(props: SendToFriendModalProps) {
+    const {
+        isOpen,
+        onClose,
+        movieTitle,
+        moviePoster,
+        movieYear,
+        tmdbId,
+        recommendationId,
+    } = props;
     const { user } = useAuth();
     const [friends, setFriends] = useState<Friend[]>([]);
     const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
@@ -49,24 +49,44 @@ export function SendToFriendModal({
 
         const fetchFriends = async () => {
             setIsLoading(true);
-            const supabase = createClient();
-            const { data } = await supabase
-                .from('friends')
-                .select('id, friend_id, friend:users!friends_friend_id_fkey(*)')
-                .eq('user_id', user.id);
+            setError('');
+            try {
+                const supabase = createClient();
+                const { data, error: fetchError } = await supabase
+                    .from('friends')
+                    .select('id, friend_id, friend:users!friends_friend_id_fkey(*)')
+                    .eq('user_id', user.id);
 
-            if (data) {
-                const friendsList: Friend[] = data.map((f: any) => ({
-                    ...f.friend,
-                    friendshipId: f.id,
-                }));
-                setFriends(friendsList);
+                if (fetchError) {
+                    console.error('Error fetching friends:', fetchError);
+                    setError('Could not load friends. Please try again.');
+                    setFriends([]);
+                    return;
+                }
+
+                if (data && Array.isArray(data)) {
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    const friendsList: Friend[] = data
+                        .filter((f: any) => f.friend != null)
+                        .map((f: any) => ({
+                            ...f.friend,
+                            friendshipId: f.id,
+                        }));
+                    setFriends(friendsList);
+                } else {
+                    setFriends([]);
+                }
+            } catch (err) {
+                console.error('Error fetching friends:', err);
+                setError('Could not load friends. Please try again.');
+                setFriends([]);
+            } finally {
+                setIsLoading(false);
             }
-            setIsLoading(false);
         };
 
         fetchFriends();
-    }, [isOpen, user?.id]); // Use user.id for stability
+    }, [isOpen, user]); // Use user for stability
 
     // Filter friends based on search
     const filteredFriends = friends.filter(friend =>
@@ -252,7 +272,7 @@ export function SendToFriendModal({
                                     </div>
                                 ) : filteredFriends.length === 0 ? (
                                     <div className="text-center py-8 text-[var(--text-muted)]">
-                                        <p>No friends found matching "{searchQuery}"</p>
+                                        <p>No friends found matching &quot;{searchQuery}&quot;</p>
                                     </div>
                                 ) : (
                                     <div className="space-y-2 max-h-48 overflow-y-auto">
