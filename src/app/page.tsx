@@ -26,7 +26,19 @@ export default function Home() {
   const [showTodayReleases, setShowTodayReleases] = useState(false);
   const [activeView, setActiveView] = useState<'trending' | 'friends'>('trending');
   const [friendRecommendationsCount, setFriendRecommendationsCount] = useState(0);
+  const [authErrorFromRedirect, setAuthErrorFromRedirect] = useState(false);
   const { unreadCount: nudgeCount } = useNudges();
+
+  // If user was redirected with ?error=auth, open auth modal and show message
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('error') === 'auth') {
+      setAuthErrorFromRedirect(true);
+      setShowAuthModal(true);
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+  }, []);
 
   // Combine static + friends recommendations
   const recommendations = useMemo(() => {
@@ -261,7 +273,11 @@ export default function Home() {
       />
 
       {/* Auth Modal */}
-      <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
+      <AuthModal
+        isOpen={showAuthModal}
+        onClose={() => { setShowAuthModal(false); setAuthErrorFromRedirect(false); }}
+        initialError={authErrorFromRedirect ? 'Sign-in was cancelled or failed. Add https://bingeitbro.com/auth/callback to Supabase Auth → URL Configuration → Redirect URLs, and set NEXT_PUBLIC_SUPABASE_* env vars on Cloudflare. Then try again.' : undefined}
+      />
 
       {/* Submit Recommendation Modal */}
       <SubmitRecommendation

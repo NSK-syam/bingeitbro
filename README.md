@@ -34,3 +34,17 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+## Sign-in (OAuth) on production (Cloudflare / bingeitbro.com)
+
+If sign-in redirects to `/?error=auth`:
+
+1. **Supabase Dashboard** → Authentication → URL Configuration  
+   - **Site URL:** `https://bingeitbro.com`  
+   - **Redirect URLs:** add `https://bingeitbro.com/auth/callback` and `https://bingeitbro.com/**`
+
+2. **Cloudflare Pages** → your project → Settings → Environment variables  
+   - Add for **Production** (and Preview if needed):  
+     - `NEXT_PUBLIC_SUPABASE_URL` = your Supabase project URL  
+     - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your Supabase anon key  
+   - Re-run a build after saving so the built app has these values.
