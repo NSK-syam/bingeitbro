@@ -9,7 +9,6 @@ import data from '@/data/recommendations.json';
 
 export default function Home() {
   const staticRecommendations = data.recommendations as Recommendation[];
-  const staticRecommenders = data.recommenders as Recommender[];
   const { getWatchedCount, isWatched } = useWatched();
   const { getWatchlistCount } = useWatchlist();
   const { user } = useAuth();
@@ -34,6 +33,7 @@ export default function Home() {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
     if (params.get('error') === 'auth') {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setAuthErrorFromRedirect(true);
       setShowAuthModal(true);
       window.history.replaceState({}, '', window.location.pathname);
@@ -105,6 +105,7 @@ export default function Home() {
       .eq('user_id', user.id);
 
     if (friendsData && friendsData.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const friends: Recommender[] = friendsData.map((f: any) => ({
         id: f.friend.id,
         name: f.friend.name,
@@ -153,12 +154,21 @@ export default function Home() {
   }, [user]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchRecommendations();
   }, [fetchRecommendations]);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchFriendsData();
   }, [fetchFriendsData]);
+
+  // Refetch friends when switching to Friends view so list matches Manage Friends
+  useEffect(() => {
+    if (activeView === 'friends' && user) {
+      fetchFriendsData();
+    }
+  }, [activeView, user, fetchFriendsData]);
 
   const handleSubmitSuccess = () => {
     fetchRecommendations();
@@ -250,7 +260,7 @@ export default function Home() {
   }, [filteredRecommendations]);
 
   const activeFilterCount = Object.entries(filters).filter(
-    ([key, value]) => value !== null && value !== 'all'
+    ([, value]) => value !== null && value !== 'all'
   ).length;
 
   const watchedCount = getWatchedCount();
@@ -289,7 +299,11 @@ export default function Home() {
       {/* Friends Manager Modal */}
       <FriendsManager
         isOpen={showFriendsManager}
-        onClose={() => setShowFriendsManager(false)}
+        onClose={() => {
+          setShowFriendsManager(false);
+          // Sync friends list so "Friends" view shows same count as Manage Friends
+          handleFriendsChange();
+        }}
         onFriendsChange={handleFriendsChange}
       />
 
@@ -384,9 +398,9 @@ export default function Home() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
             </svg>
             Friends
-            {friendsRecommendations.length > 0 && (
+            {recommenders.length > 0 && (
               <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">
-                {friendsRecommendations.length}
+                {recommenders.length}
               </span>
             )}
           </button>
