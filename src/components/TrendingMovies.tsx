@@ -271,6 +271,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                         key={`upcoming-${movie.id}`}
                         href={`/movie/tmdb-${movie.id}?from=${lang.code}`}
                         scroll={false}
+                        prefetch={false}
                         className="group flex-shrink-0 w-36 sm:w-40 bg-[var(--bg-card)] rounded-xl overflow-hidden card-hover"
                       >
                         <div className="relative aspect-[2/3] overflow-hidden">
@@ -366,6 +367,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                 key={movie.id}
                 href={`/movie/tmdb-${movie.id}${selectedLang ? `?from=${selectedLang}` : ''}`}
                 scroll={false}
+                prefetch={false}
                 className="group block bg-[var(--bg-card)] rounded-xl overflow-hidden card-hover"
               >
                 <div className="relative aspect-[2/3] overflow-hidden">

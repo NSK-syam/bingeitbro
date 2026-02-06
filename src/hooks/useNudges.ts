@@ -53,8 +53,10 @@ export function useNudges() {
         .eq('to_user_id', user.id)
         .order('created_at', { ascending: false });
 
-      // If table doesn't exist (404), just silently fail
+      // If table doesn't exist or query fails, silently fail
+      // (nudges feature is optional)
       if (receivedError) {
+        // Don't log - this is expected if nudges table isn't set up
         setLoading(false);
         return;
       }

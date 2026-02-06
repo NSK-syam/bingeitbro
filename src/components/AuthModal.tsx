@@ -6,9 +6,10 @@ import { useAuth } from './AuthProvider';
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialError?: string;
 }
 
-export function AuthModal({ isOpen, onClose }: AuthModalProps) {
+export function AuthModal({ isOpen, onClose, initialError }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -21,6 +22,10 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [showPassword, setShowPassword] = useState(false);
 
   const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
+
+  useEffect(() => {
+    if (isOpen && initialError) setError(initialError);
+  }, [isOpen, initialError]);
 
   // Debounced username check
   useEffect(() => {
