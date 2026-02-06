@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useState } from 'react';
+import { Suspense, useEffect, useState, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 
@@ -8,6 +8,7 @@ function AuthCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const exchangeStarted = useRef(false);
 
   useEffect(() => {
     const code = searchParams.get('code');
@@ -15,7 +16,6 @@ function AuthCallbackContent() {
     const errorDescription = searchParams.get('error_description');
     const next = searchParams.get('next') ?? '/';
 
-    // Check for OAuth error from provider
     if (errorParam) {
       setStatus('error');
       setErrorMessage(errorDescription || errorParam || 'Authentication failed');
@@ -34,44 +34,20 @@ function AuthCallbackContent() {
       return;
     }
 
-    // Use sessionStorage to prevent duplicate exchange attempts
-    const exchangeKey = `auth_exchange_${code.substring(0, 16)}`;
-    if (sessionStorage.getItem(exchangeKey) === 'success') {
-      // Already succeeded - redirect
-      const supabase = createClient();
-      supabase.auth.getSession().then(({ data }) => {
-        if (data.session) {
-          setStatus('success');
-          window.location.replace(next);
-        } else {
-          setStatus('error');
-          setErrorMessage('Session expired. Please sign in again.');
-        }
-      });
-      return;
-    }
-
-    if (sessionStorage.getItem(exchangeKey) === 'attempting') {
-      // Already in progress from a remount — just wait
-      return;
-    }
-
-    // Mark as attempting
-    sessionStorage.setItem(exchangeKey, 'attempting');
+    // Prevent duplicate exchange on React Strict Mode double-mount
+    if (exchangeStarted.current) return;
+    exchangeStarted.current = true;
 
     const supabase = createClient();
 
     console.log('[Auth Callback] Starting code exchange...');
 
-    // Timeout to detect hanging
     const timeoutId = setTimeout(() => {
       console.error('[Auth Callback] Code exchange timed out after 15s');
-      sessionStorage.removeItem(exchangeKey);
       setStatus('error');
       setErrorMessage('Sign-in timed out. Please try again.');
     }, 15000);
 
-    // Exchange the code for a session
     supabase.auth.exchangeCodeForSession(code)
       .then(({ data, error }) => {
         clearTimeout(timeoutId);
@@ -83,41 +59,28 @@ function AuthCallbackContent() {
 
         if (error) {
           console.error('Code exchange error:', error);
-          sessionStorage.removeItem(exchangeKey);
           setStatus('error');
           setErrorMessage(error.message || 'Failed to complete sign-in');
           return;
         }
 
         if (!data.session) {
-          sessionStorage.removeItem(exchangeKey);
           setStatus('error');
           setErrorMessage('No session received. Please try again.');
           return;
         }
 
-        // Success!
-        sessionStorage.setItem(exchangeKey, 'success');
         setStatus('success');
         window.location.replace(next);
       })
       .catch((err) => {
         clearTimeout(timeoutId);
-        if (err?.name === 'AbortError') {
-          console.log('[Auth Callback] Request aborted (will retry on remount)');
-          return;
-        }
         console.error('[Auth Callback] Exception:', err);
-        sessionStorage.removeItem(exchangeKey);
         setStatus('error');
         setErrorMessage(err instanceof Error ? err.message : 'An unexpected error occurred');
       });
 
-    return () => {
-      if (sessionStorage.getItem(exchangeKey) !== 'success') {
-        sessionStorage.removeItem(exchangeKey);
-      }
-    };
+    // Don't abort on cleanup — let the exchange complete even if component remounts
   }, [searchParams]);
 
   return (
