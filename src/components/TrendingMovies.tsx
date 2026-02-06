@@ -40,6 +40,10 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { user } = useAuth();
+
+  // Debug log for production
+  console.log('TrendingMovies:', { hasUser: !!user, userId: user?.id });
+
   const [movies, setMovies] = useState<TrendingMovie[]>([]);
   const [comingSoonByLang, setComingSoonByLang] = useState<Record<string, TrendingMovie[]>>({});
   const [loading, setLoading] = useState(true);
