@@ -89,7 +89,7 @@ export default function AddMoviePage() {
 
     const recommendation = tmdbToRecommendation(
       selectedMovie,
-      recommender,
+      { id: recommender.id, name: recommender.name, avatar: recommender.avatar ?? '🎬' },
       personalNote,
       ottLinks.filter((link) => link.url.trim())
     );

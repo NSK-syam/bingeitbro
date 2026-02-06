@@ -37,7 +37,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // that fires when the page loads after OAuth redirect
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
       initializedRef.current = true;
-      console.log('AuthProvider: Auth state changed', _event, session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -91,7 +90,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setLoading(false);
       }
     }).catch(() => {
-      console.log('AuthProvider: getSession failed');
       setLoading(false);
     });
 

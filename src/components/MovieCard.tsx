@@ -44,9 +44,6 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
   const { isWatched } = useWatched();
   const { user } = useAuth();
 
-  // Debug log for production
-  console.log('MovieCard:', { id, title, hasUser: !!user, userId: user?.id });
-
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
   const { sendNudge, hasNudged } = useNudges();
   const watched = isWatched(id);
@@ -189,10 +186,10 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
         <div className="absolute bottom-3 left-3 right-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-lg">{recommendedBy.avatar}</span>
+              <span className="text-lg">{recommendedBy?.avatar ?? '🎬'}</span>
               <div className="flex flex-col">
                 <span className="text-xs text-[var(--text-secondary)]">
-                  {recommendedBy.name}
+                  {recommendedBy?.name ?? 'Anonymous'}
                 </span>
                 <span className="text-[10px] text-[var(--text-muted)]">
                   {addedOn ? getRelativeTime(addedOn) : ''}
@@ -211,19 +208,19 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
           {title}
         </h3>
         <p className="text-sm text-[var(--text-muted)] mt-1">
-          {year} • {genres.slice(0, 2).join(', ')}
+          {year} • {(Array.isArray(genres) ? genres : []).slice(0, 2).join(', ')}
         </p>
 
         {/* Personal note preview */}
         <p className="text-sm text-[var(--text-secondary)] mt-3 line-clamp-2 italic">
-          &ldquo;{personalNote}&rdquo;
+          &ldquo;{personalNote ?? ''}&rdquo;
         </p>
 
         {/* OTT platforms */}
         <div className="flex items-center gap-2 mt-4">
           <span className="text-xs text-[var(--text-muted)]">Watch on:</span>
           <div className="flex gap-1">
-            {ottLinks.slice(0, 3).map((link) => (
+            {(Array.isArray(ottLinks) ? ottLinks : []).slice(0, 3).map((link) => (
               <span
                 key={link.platform}
                 className={`platform-${link.platform.toLowerCase().replace(' ', '-').replace('+', '')} px-2 py-0.5 text-[10px] font-medium rounded text-white`}
@@ -231,7 +228,7 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
                 {link.platform === 'Prime Video' ? 'Prime' : link.platform.replace(' Video', '')}
               </span>
             ))}
-            {ottLinks.length > 3 && (
+            {(Array.isArray(ottLinks) ? ottLinks : []).length > 3 && (
               <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-[var(--text-muted)] text-white">
                 +{ottLinks.length - 3}
               </span>
