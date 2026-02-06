@@ -43,6 +43,10 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
   const [showSendModal, setShowSendModal] = useState(false);
   const { isWatched } = useWatched();
   const { user } = useAuth();
+
+  // Debug log for production
+  console.log('MovieCard:', { id, title, hasUser: !!user, userId: user?.id });
+
   const { isInWatchlist, toggleWatchlist } = useWatchlist();
   const { sendNudge, hasNudged } = useNudges();
   const watched = isWatched(id);
