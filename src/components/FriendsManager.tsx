@@ -16,6 +16,7 @@ interface FriendsManagerProps {
 
 export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsManagerProps) {
   const { user } = useAuth();
+
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<DBUser[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
@@ -71,13 +72,13 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       setIsLoading(false);
       clearTimeout(timeoutId);
     }
-  }, [user]);
+  }, [user?.id]); // Use user.id for stability
 
   useEffect(() => {
     if (isOpen && user) {
       fetchFriends();
     }
-  }, [isOpen, user, fetchFriends]);
+  }, [isOpen, user?.id, fetchFriends]); // Use user.id
 
   // Search users
   useEffect(() => {
@@ -149,7 +150,7 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       if (controller) controller.abort();
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [searchQuery, user]);
+  }, [searchQuery, user?.id]); // Use user.id
 
   const addFriend = async (friendUser: DBUser) => {
     if (!user) return;

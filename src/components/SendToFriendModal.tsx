@@ -66,7 +66,7 @@ export function SendToFriendModal({
         };
 
         fetchFriends();
-    }, [isOpen, user]);
+    }, [isOpen, user?.id]); // Use user.id for stability
 
     // Filter friends based on search
     const filteredFriends = friends.filter(friend =>
