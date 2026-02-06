@@ -19,6 +19,11 @@ export function createClient(): SupabaseClient<any, any, any> {
         persistSession: true,
         autoRefreshToken: true,
         detectSessionInUrl: true,
+        // Disable navigator.locks to prevent AbortError deadlocks
+        // when AuthProvider and other components share this singleton
+        lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => {
+          return await fn();
+        },
       },
     });
   }
