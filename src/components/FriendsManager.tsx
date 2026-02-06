@@ -40,6 +40,24 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
 
     try {
       const supabase = createClient();
+
+      // Verify we have a valid auth session before querying RLS tables
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log('[FriendsManager] Session check:', {
+        hasSession: !!session,
+        userId: session?.user?.id,
+        expiresAt: session?.expires_at,
+        error: sessionError?.message,
+      });
+
+      if (!session) {
+        console.warn('[FriendsManager] No session, skipping friends query');
+        setFriends([]);
+        clearTimeout(timeoutId);
+        setIsLoading(false);
+        return;
+      }
+
       console.log('[FriendsManager] Starting friends query...');
 
       // Step 1: Get friend relationships
