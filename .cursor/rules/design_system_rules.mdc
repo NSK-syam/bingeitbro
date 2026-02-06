@@ -514,3 +514,137 @@ When implementing Figma designs:
 | Filter Pills | `<FilterBar />` |
 | Auth Modal | `<AuthModal />` |
 | Watchlist Modal | `<WatchlistModal />` |
+
+---
+
+## 12. Database Schema
+
+The app uses Supabase (PostgreSQL) with Row Level Security (RLS). Schema defined in `production_migration.sql`.
+
+### Tables Overview
+
+| Table | Purpose |
+|-------|---------|
+| `users` | User profiles linked to Supabase Auth |
+| `recommendations` | User-created movie/show recommendations |
+| `friends` | Friend relationships between users |
+| `friend_recommendations` | Movies sent to friends ("Send to Friend" feature) |
+| `watchlist` | User's saved movies to watch later |
+| `watched_movies` | Movies user has marked as watched |
+| `nudges` | Reminder notifications between friends |
+
+### Key Data Models
+
+#### Users
+```sql
+users (
+  id UUID PRIMARY KEY,           -- Links to auth.users
+  email TEXT NOT NULL,
+  name TEXT NOT NULL,
+  username TEXT UNIQUE,
+  avatar TEXT DEFAULT '🎬',
+  created_at TIMESTAMPTZ
+)
+```
+
+#### Recommendations
+```sql
+recommendations (
+  id UUID PRIMARY KEY,
+  user_id UUID REFERENCES users(id),
+  title TEXT NOT NULL,
+  original_title TEXT,
+  year INTEGER NOT NULL,
+  type TEXT CHECK (type IN ('movie', 'series', 'documentary', 'anime')),
+  poster TEXT NOT NULL,
+  backdrop TEXT,
+  genres TEXT[] DEFAULT '{}',
+  language TEXT NOT NULL,
+  duration TEXT,
+  rating DECIMAL(3,1),
+  personal_note TEXT NOT NULL,
+  mood TEXT[] DEFAULT '{}',
+  watch_with TEXT,
+  ott_links JSONB DEFAULT '[]',
+  tmdb_id INTEGER,
+  certification TEXT,
+  created_at TIMESTAMPTZ,
+  updated_at TIMESTAMPTZ
+)
+```
+
+#### Friend Recommendations (Send to Friend)
+```sql
+friend_recommendations (
+  id UUID PRIMARY KEY,
+  sender_id UUID REFERENCES users(id),
+  recipient_id UUID REFERENCES users(id),
+  recommendation_id UUID REFERENCES recommendations(id),  -- OR
+  tmdb_id TEXT,                    -- For TMDB movies
+  movie_title TEXT,
+  movie_poster TEXT,
+  movie_year INTEGER,
+  personal_message TEXT NOT NULL,
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMPTZ
+)
+```
+
+### TypeScript Interfaces (Frontend)
+
+Located in `src/types/index.ts`:
+
+```typescript
+interface Recommendation {
+  id: string;
+  title: string;
+  originalTitle?: string;
+  year: number;
+  type: 'movie' | 'series' | 'documentary' | 'anime';
+  poster: string;
+  backdrop?: string;
+  genres: string[];
+  language: string;
+  duration?: string;
+  rating?: number;
+  certification?: string;
+  recommendedBy: Recommender;
+  personalNote: string;
+  mood?: string[];
+  watchWith?: string;
+  ottLinks: OTTLink[];
+  addedOn: string;
+}
+
+interface OTTLink {
+  platform: string;
+  url: string;
+  availableIn?: string;
+}
+
+interface Recommender {
+  id: string;
+  name: string;
+  avatar?: string;
+}
+```
+
+### RLS (Row Level Security) Patterns
+
+All tables use RLS with these common patterns:
+
+```sql
+-- Public read access
+FOR SELECT USING (true)
+
+-- Owner-only write access
+FOR INSERT WITH CHECK (auth.uid() = user_id)
+FOR UPDATE USING (auth.uid() = user_id)
+FOR DELETE USING (auth.uid() = user_id)
+
+-- Friend-based access (for friend_recommendations)
+FOR INSERT WITH CHECK (
+  auth.uid() = sender_id AND
+  EXISTS (SELECT 1 FROM friends WHERE user_id = auth.uid() AND friend_id = recipient_id)
+)
+```
