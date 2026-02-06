@@ -207,6 +207,8 @@ export function SendToFriendModal({
                                     Personal Message <span className="text-[var(--text-muted)] font-normal">(optional)</span>
                                 </label>
                                 <textarea
+                                    name="personalMessage"
+                                    id="personalMessage"
                                     value={personalMessage}
                                     onChange={(e) => setPersonalMessage(e.target.value)}
                                     placeholder="Tell your friend why they should watch this..."
@@ -227,6 +229,8 @@ export function SendToFriendModal({
                                 <div className="relative mb-3">
                                     <input
                                         type="text"
+                                        name="friendSelectSearch"
+                                        id="friendSelectSearch"
                                         placeholder="Search friends..."
                                         value={searchQuery}
                                         onChange={(e) => setSearchQuery(e.target.value)}

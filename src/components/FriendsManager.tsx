@@ -24,22 +24,37 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
 
   // Fetch current friends
   const fetchFriends = useCallback(async () => {
-    if (!user) return;
-
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('friends')
-      .select('id, friend_id, friend:users!friends_friend_id_fkey(*)')
-      .eq('user_id', user.id);
-
-    if (data) {
-      const friendsList: Friend[] = data.map((f: any) => ({
-        ...f.friend,
-        friendshipId: f.id,
-      }));
-      setFriends(friendsList);
+    if (!user) {
+      console.log('FriendsManager: No user found, skipping fetch');
+      setIsLoading(false);
+      return;
     }
-    setIsLoading(false);
+
+    try {
+      console.log('FriendsManager: Fetching friends for user', user.id);
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('friends')
+        .select('id, friend_id, friend:users!friends_friend_id_fkey(*)')
+        .eq('user_id', user.id);
+
+      if (error) {
+        console.error('FriendsManager: Error fetching friends:', error);
+      }
+
+      if (data) {
+        console.log('FriendsManager: Found friends:', data.length);
+        const friendsList: Friend[] = data.map((f: any) => ({
+          ...f.friend,
+          friendshipId: f.id,
+        }));
+        setFriends(friendsList);
+      }
+    } catch (err) {
+      console.error('FriendsManager: Exception fetching friends:', err);
+    } finally {
+      setIsLoading(false);
+    }
   }, [user]);
 
   useEffect(() => {
@@ -59,15 +74,41 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       setIsSearching(true);
       const supabase = createClient();
 
-      const { data } = await supabase
-        .from('users')
-        .select('*')
-        .or(`name.ilike.%${searchQuery}%,username.ilike.%${searchQuery}%`)
-        .neq('id', user.id)
-        .limit(10);
+      try {
+        console.log('FriendsManager: Searching for', searchQuery);
 
-      setSearchResults(data || []);
-      setIsSearching(false);
+        // Check if username column exists by trying a simple query first? 
+        // Or just rely on the error returned
+
+        const { data, error } = await supabase
+          .from('users')
+          .select('*')
+          .or(`name.ilike.%${searchQuery}%,username.ilike.%${searchQuery}%`)
+          .neq('id', user.id)
+          .limit(10);
+
+        if (error) {
+          console.error('FriendsManager: Search error:', error);
+          // Fallback to name only search if username fails (e.g. column missing)
+          if (error.code === '42703') { // Undefined column
+            console.log('FriendsManager: Retrying search with name only');
+            const { data: retryData } = await supabase
+              .from('users')
+              .select('*')
+              .ilike('name', `%${searchQuery}%`)
+              .neq('id', user.id)
+              .limit(10);
+            setSearchResults(retryData || []);
+          }
+        } else {
+          console.log('FriendsManager: Search results:', data?.length);
+          setSearchResults(data || []);
+        }
+      } catch (err) {
+        console.error('FriendsManager: Search exception:', err);
+      } finally {
+        setIsSearching(false);
+      }
     }, 300);
 
     return () => clearTimeout(timer);
@@ -134,6 +175,8 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
           <div className="relative">
             <input
               type="text"
+              name="friendSearch"
+              id="friendSearch"
               placeholder="Search users by name..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
