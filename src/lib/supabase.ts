@@ -10,8 +10,12 @@ export function createClient() {
       persistSession: true,
       autoRefreshToken: true,
       detectSessionInUrl: true,
-      // Disable the navigator lock that can cause deadlocks in SPAs
-      lock: 'no-op' as any,
+      // Replace navigator.locks with a simple non-blocking lock to prevent
+      // deadlocks in this static SPA where AuthProvider and components
+      // share the same singleton client
+      lock: async (name: string, acquireTimeout: number, fn: () => Promise<any>) => {
+        return fn();
+      },
     },
   });
 }
