@@ -1,6 +1,6 @@
 'use client';
 
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import type { User, Session } from '@supabase/supabase-js';
 
@@ -23,6 +23,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const isConfigured = isSupabaseConfigured();
+  const initializedRef = useRef(false);
 
   useEffect(() => {
     if (!isConfigured) {
@@ -32,17 +33,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const supabase = createClient();
 
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    }).catch(() => {
-      setLoading(false);
-    });
-
-    // Listen for auth changes
+    // Set up auth listener FIRST - this ensures we catch the SIGNED_IN event
+    // that fires when the page loads after OAuth redirect
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      initializedRef.current = true;
+      console.log('AuthProvider: Auth state changed', _event, session?.user?.id);
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
@@ -83,6 +78,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.error('Error in auth state change:', err);
         }
       }
+    });
+
+    // Get initial session AFTER setting up the listener
+    // This ensures we don't miss any auth events
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      // Only update if onAuthStateChange hasn't already initialized
+      if (!initializedRef.current) {
+        initializedRef.current = true;
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
+    }).catch(() => {
+      console.log('AuthProvider: getSession failed');
+      setLoading(false);
     });
 
     return () => subscription.unsubscribe();
