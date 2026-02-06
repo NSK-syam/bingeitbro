@@ -25,55 +25,95 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
 
   // Fetch current friends
   const fetchFriends = useCallback(async () => {
+    console.log('[FriendsManager] fetchFriends called, user:', user?.id);
     if (!user) {
+      console.log('[FriendsManager] No user, stopping load');
       setIsLoading(false);
       return;
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
-
     try {
       const supabase = createClient();
 
-      const { data, error } = await supabase
-        .from('friends')
-        .select('id, friend_id, friend:users!friends_friend_id_fkey(*)')
-        .eq('user_id', user.id)
-        .abortSignal(controller.signal);
-
-      clearTimeout(timeoutId);
-
-      if (error) {
-        if (error.code === '20') { // Abort error often has specific codes or name
-          console.error('FriendsManager: Fetch aborted/timed out');
-        } else {
-          console.error('FriendsManager: Error fetching friends:', error);
+      // Ensure we have a valid session before querying RLS-protected tables
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        console.warn('[FriendsManager] No active session - trying to refresh...');
+        const { data: { session: refreshed } } = await supabase.auth.refreshSession();
+        if (!refreshed) {
+          console.error('[FriendsManager] No valid session after refresh');
+          setFriends([]);
+          setIsLoading(false);
+          return;
         }
       }
 
-      if (data) {
-        const friendsList: Friend[] = data.map((f: any) => ({
-          ...f.friend,
-          friendshipId: f.id,
-        }));
+      console.log('[FriendsManager] Starting friends query...');
+
+      // Step 1: Get friend relationships
+      const { data: friendships, error: friendsError } = await supabase
+        .from('friends')
+        .select('id, friend_id')
+        .eq('user_id', user.id);
+
+      console.log('[FriendsManager] Friendships query complete:', { friendships, friendsError });
+
+      if (friendsError) {
+        console.error('[FriendsManager] Error fetching friendships:', friendsError);
+        setFriends([]);
+        return;
+      }
+
+      if (!friendships || friendships.length === 0) {
+        console.log('[FriendsManager] No friends found');
+        setFriends([]);
+        return;
+      }
+
+      // Step 2: Get user details for friends
+      const friendIds = friendships.map(f => f.friend_id);
+      const { data: users, error: usersError } = await supabase
+        .from('users')
+        .select('*')
+        .in('id', friendIds);
+
+      console.log('[FriendsManager] Users query complete:', { users, usersError });
+
+      if (usersError) {
+        console.error('[FriendsManager] Error fetching friend users:', usersError);
+        return;
+      }
+
+      if (users) {
+        const friendsList: Friend[] = users.map((u: DBUser) => {
+          const friendship = friendships.find(f => f.friend_id === u.id);
+          return {
+            ...u,
+            friendshipId: friendship?.id,
+          };
+        });
         setFriends(friendsList);
       }
     } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.error('FriendsManager: Request timed out');
-      } else {
-        console.error('FriendsManager: Exception fetching friends:', err);
-      }
+      console.error('[FriendsManager] Exception:', err?.name, err?.message);
+      setFriends([]);
     } finally {
+      console.log('[FriendsManager] Finally block - setting isLoading to false');
       setIsLoading(false);
-      clearTimeout(timeoutId);
     }
-  }, [user?.id]); // Use user.id for stability
+  }, [user?.id]);
 
   useEffect(() => {
-    if (isOpen && user) {
-      fetchFriends();
+    if (isOpen) {
+      if (user) {
+        fetchFriends();
+      } else {
+        // User not available yet, stop loading
+        setIsLoading(false);
+      }
+    } else {
+      // Reset loading state when modal closes so it shows loading on next open
+      setIsLoading(true);
     }
   }, [isOpen, user?.id, fetchFriends]); // Use user.id
 
@@ -83,64 +123,60 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       return;
     }
 
-    let controller: AbortController | null = null;
-    let timeoutId: NodeJS.Timeout | null = null;
+    let cancelled = false;
 
     const timer = setTimeout(async () => {
       setIsSearching(true);
-      controller = new AbortController();
-      timeoutId = setTimeout(() => controller?.abort(), 10000); // 10s timeout
 
       const supabase = createClient();
 
       try {
-        // Check if username column exists by trying a simple query first? 
-        // Or just rely on the error returned
-
         const { data, error } = await supabase
           .from('users')
           .select('*')
           .or(`name.ilike.%${searchQuery}%,username.ilike.%${searchQuery}%`)
           .neq('id', user.id)
-          .limit(10)
-          .abortSignal(controller.signal);
+          .limit(10);
 
-        clearTimeout(timeoutId!);
+        if (cancelled) return;
 
         if (error) {
           console.error('FriendsManager: Search error:', error);
-          // Fallback to name only search if username fails (e.g. column missing)
-          if (error.code === '42703') { // Undefined column
-            // Create new controller for retry
-            controller = new AbortController();
-            const { data: retryData } = await supabase
-              .from('users')
-              .select('*')
-              .ilike('name', `%${searchQuery}%`)
-              .neq('id', user.id)
-              .limit(10)
-              .abortSignal(controller.signal);
-            setSearchResults(retryData || []);
+          // Fallback to name only search if username column doesn't exist
+          if (error.code === '42703') {
+            try {
+              const { data: retryData } = await supabase
+                .from('users')
+                .select('*')
+                .ilike('name', `%${searchQuery}%`)
+                .neq('id', user.id)
+                .limit(10);
+              if (!cancelled) setSearchResults(retryData || []);
+            } catch (retryErr) {
+              console.error('FriendsManager: Retry search failed:', retryErr);
+              if (!cancelled) setSearchResults([]);
+            }
+          } else {
+            setSearchResults([]);
           }
         } else {
           setSearchResults(data || []);
         }
       } catch (err: any) {
-        if (err.name !== 'AbortError') {
+        if (!cancelled) {
           console.error('FriendsManager: Search exception:', err);
+          setSearchResults([]);
         }
       } finally {
-        setIsSearching(false);
-        if (timeoutId) clearTimeout(timeoutId);
+        if (!cancelled) setIsSearching(false);
       }
     }, 300);
 
     return () => {
+      cancelled = true;
       clearTimeout(timer);
-      if (controller) controller.abort();
-      if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [searchQuery, user?.id]); // Use user.id
+  }, [searchQuery, user?.id]);
 
   const addFriend = async (friendUser: DBUser) => {
     if (!user) return;
