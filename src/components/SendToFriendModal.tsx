@@ -40,6 +40,9 @@ export function SendToFriendModal({
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(false);
 
+    // New search state
+    const [searchQuery, setSearchQuery] = useState('');
+
     // Fetch friends
     useEffect(() => {
         if (!isOpen || !user) return;
@@ -65,6 +68,12 @@ export function SendToFriendModal({
         fetchFriends();
     }, [isOpen, user]);
 
+    // Filter friends based on search
+    const filteredFriends = friends.filter(friend =>
+        friend.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        friend.username?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+
     const toggleFriendSelection = (friendId: string) => {
         const newSelection = new Set(selectedFriends);
         if (newSelection.has(friendId)) {
@@ -81,10 +90,7 @@ export function SendToFriendModal({
             return;
         }
 
-        if (!personalMessage.trim()) {
-            setError('Please add a personal message');
-            return;
-        }
+        // Message is optional now so we do not check for it here
 
         setIsSending(true);
         setError('');
@@ -101,7 +107,7 @@ export function SendToFriendModal({
                 movie_title: movieTitle,
                 movie_poster: moviePoster,
                 movie_year: movieYear || null,
-                personal_message: personalMessage.trim(),
+                personal_message: personalMessage.trim(), // Can be empty string
             }));
 
             const { error: insertError } = await supabase
@@ -127,6 +133,7 @@ export function SendToFriendModal({
                 // Reset state
                 setSelectedFriends(new Set());
                 setPersonalMessage('');
+                setSearchQuery('');
                 setSuccess(false);
             }, 1500);
         } catch (err) {
@@ -142,6 +149,7 @@ export function SendToFriendModal({
             onClose();
             setSelectedFriends(new Set());
             setPersonalMessage('');
+            setSearchQuery('');
             setError('');
             setSuccess(false);
         }
@@ -193,10 +201,10 @@ export function SendToFriendModal({
                         </div>
                     ) : (
                         <>
-                            {/* Personal Message */}
+                            {/* Personal Message - Optional */}
                             <div className="mb-6">
                                 <label className="block text-sm font-medium text-[var(--text-primary)] mb-2">
-                                    Personal Message <span className="text-red-400">*</span>
+                                    Personal Message <span className="text-[var(--text-muted)] font-normal">(optional)</span>
                                 </label>
                                 <textarea
                                     value={personalMessage}
@@ -204,19 +212,30 @@ export function SendToFriendModal({
                                     placeholder="Tell your friend why they should watch this..."
                                     disabled={isSending}
                                     className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50 resize-none disabled:opacity-50"
-                                    rows={4}
+                                    rows={3}
                                     maxLength={500}
                                 />
-                                <p className="text-xs text-[var(--text-muted)] mt-1 text-right">
-                                    {personalMessage.length}/500
-                                </p>
                             </div>
 
-                            {/* Friends List */}
+                            {/* Friends List with Search */}
                             <div>
                                 <h3 className="text-sm font-medium text-[var(--text-primary)] mb-3">
                                     Select Friends ({selectedFriends.size} selected)
                                 </h3>
+
+                                {/* Search Box */}
+                                <div className="relative mb-3">
+                                    <input
+                                        type="text"
+                                        placeholder="Search friends..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full px-4 py-2 pl-9 bg-[var(--bg-secondary)] border border-white/5 rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50"
+                                    />
+                                    <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+                                    </svg>
+                                </div>
 
                                 {isLoading ? (
                                     <div className="flex justify-center py-8">
@@ -227,16 +246,20 @@ export function SendToFriendModal({
                                         <p>No friends yet</p>
                                         <p className="text-sm mt-1">Add friends first to send recommendations</p>
                                     </div>
+                                ) : filteredFriends.length === 0 ? (
+                                    <div className="text-center py-8 text-[var(--text-muted)]">
+                                        <p>No friends found matching "{searchQuery}"</p>
+                                    </div>
                                 ) : (
-                                    <div className="space-y-2 max-h-60 overflow-y-auto">
-                                        {friends.map((friend) => (
+                                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                                        {filteredFriends.map((friend) => (
                                             <button
                                                 key={friend.id}
                                                 onClick={() => toggleFriendSelection(friend.id)}
                                                 disabled={isSending}
                                                 className={`w-full flex items-center justify-between p-3 rounded-xl transition-all disabled:opacity-50 ${selectedFriends.has(friend.id)
-                                                        ? 'bg-[var(--accent)]/20 border-2 border-[var(--accent)]'
-                                                        : 'bg-[var(--bg-secondary)] border-2 border-transparent hover:border-white/10'
+                                                    ? 'bg-[var(--accent)]/20 border-2 border-[var(--accent)]'
+                                                    : 'bg-[var(--bg-secondary)] border-2 border-transparent hover:border-white/10'
                                                     }`}
                                             >
                                                 <div className="flex items-center gap-3">
@@ -279,7 +302,7 @@ export function SendToFriendModal({
                         </button>
                         <button
                             onClick={handleSend}
-                            disabled={isSending || selectedFriends.size === 0 || !personalMessage.trim()}
+                            disabled={isSending || selectedFriends.size === 0}
                             className="flex-1 px-4 py-2.5 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             {isSending ? (
