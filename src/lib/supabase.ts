@@ -1,23 +1,28 @@
-import { createBrowserClient } from '@supabase/ssr';
+import { createClient as _createClient, SupabaseClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
-export function createClient() {
-  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      flowType: 'pkce',
-      persistSession: true,
-      autoRefreshToken: true,
-      detectSessionInUrl: true,
-      // Replace navigator.locks with a simple non-blocking lock to prevent
-      // deadlocks in this static SPA where AuthProvider and components
-      // share the same singleton client
-      lock: async (name: string, acquireTimeout: number, fn: () => Promise<any>) => {
-        return fn();
+// Singleton — reuse across the app like @supabase/ssr does
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let client: SupabaseClient<any, any, any> | null = null;
+
+// Using @supabase/supabase-js directly instead of @supabase/ssr to avoid
+// navigator.locks deadlock in this static SPA (output: "export").
+// The @supabase/ssr createBrowserClient uses navigator.locks internally
+// which deadlocks when AuthProvider and components share the singleton.
+export function createClient(): SupabaseClient<any, any, any> {
+  if (!client) {
+    client = _createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        flowType: 'pkce',
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
       },
-    },
-  });
+    });
+  }
+  return client;
 }
 
 // Database types
