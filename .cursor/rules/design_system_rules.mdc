@@ -1,0 +1,516 @@
+# Cinema Chudu (BingeItBro) - Design System Rules
+
+This document defines the design system for integrating Figma designs using the Model Context Protocol.
+
+---
+
+## 1. Token Definitions
+
+### Location
+Design tokens are defined in `src/app/globals.css` using CSS custom properties.
+
+### Color Tokens
+
+```css
+:root {
+  /* Background Colors - Dark cinematic theme */
+  --bg-primary: #0a0a0c;      /* Main background */
+  --bg-secondary: #121215;    /* Secondary surfaces */
+  --bg-card: #18181b;         /* Card backgrounds */
+  --bg-card-hover: #1f1f23;   /* Card hover state */
+
+  /* Text Colors */
+  --text-primary: #fafafa;    /* Primary text */
+  --text-secondary: #a1a1aa;  /* Secondary text */
+  --text-muted: #71717a;      /* Muted/disabled text */
+
+  /* Accent - Cinema Gold */
+  --accent: #f59e0b;          /* Primary accent (amber-500) */
+  --accent-hover: #fbbf24;    /* Accent hover state (amber-400) */
+  --accent-subtle: rgba(245, 158, 11, 0.1);  /* Subtle accent backgrounds */
+
+  /* Platform Brand Colors */
+  --netflix: #e50914;
+  --prime: #00a8e1;
+  --hotstar: #1f80e0;
+  --aha: #ff3366;
+  --youtube: #ff0000;
+  --apple: #000000;
+  --zee5: #8230c6;
+  --sonyliv: #070707;
+  --jio: #0a2885;
+}
+```
+
+### Spacing & Sizing Tokens
+
+```css
+:root {
+  --radius-sm: 0.375rem;   /* 6px - small elements */
+  --radius-md: 0.5rem;     /* 8px - buttons, inputs */
+  --radius-lg: 0.75rem;    /* 12px - cards */
+  --radius-xl: 1rem;       /* 16px - modals, large cards */
+}
+```
+
+### Token Format
+- CSS Custom Properties (CSS Variables)
+- Tailwind CSS v4 with `@theme inline` directive
+- No external token transformation system
+
+---
+
+## 2. Component Library
+
+### Location
+Components are defined in `src/components/` with a barrel export at `src/components/index.ts`.
+
+### Component List
+
+| Component | File | Purpose |
+|-----------|------|---------|
+| `MovieCard` | `MovieCard.tsx` | Movie/show recommendation card with poster, reactions, actions |
+| `Header` | `Header.tsx` | Navigation header with search, user menu, action buttons |
+| `FilterBar` | `FilterBar.tsx` | Filter pills for type, genre, language, friends |
+| `WatchedButton` | `WatchedButton.tsx` | Toggle button for marking movies as watched |
+| `WatchlistButton` | `WatchlistButton.tsx` | Add/remove from watchlist |
+| `ReactionBar` | `ReactionBar.tsx` | Emoji reactions display and picker |
+| `RandomPicker` | `RandomPicker.tsx` | Random movie selector |
+| `AuthProvider` | `AuthProvider.tsx` | Authentication context provider |
+| `AuthModal` | `AuthModal.tsx` | Login/signup modal with Google OAuth |
+| `FriendsManager` | `FriendsManager.tsx` | Friend list management |
+| `WatchlistModal` | `WatchlistModal.tsx` | Watchlist overlay |
+| `NudgesModal` | `NudgesModal.tsx` | Notification nudges |
+| `TrendingMovies` | `TrendingMovies.tsx` | Trending movies carousel |
+| `SendToFriendModal` | `SendToFriendModal.tsx` | Share movie with friend |
+| `FriendRecommendationsModal` | `FriendRecommendationsModal.tsx` | Incoming recommendations |
+| `MovieBackground` | `MovieBackground.tsx` | Animated poster background |
+| `TodayReleasesModal` | `TodayReleasesModal.tsx` | New releases display |
+| `SubmitRecommendation` | `SubmitRecommendation.tsx` | Add new recommendation form |
+
+### Component Architecture
+- **Pattern**: Functional components with React hooks
+- **State**: Client-side with `'use client'` directive
+- **Props**: TypeScript interfaces defined inline
+- **Styling**: Tailwind CSS utility classes with CSS variable references
+
+### Example Component Pattern
+
+```tsx
+'use client';
+
+import { useState } from 'react';
+
+interface ComponentProps {
+  title: string;
+  variant?: 'primary' | 'secondary';
+}
+
+export function Component({ title, variant = 'primary' }: ComponentProps) {
+  const [state, setState] = useState(false);
+
+  return (
+    <div className="bg-[var(--bg-card)] rounded-xl p-4">
+      <h3 className="text-[var(--text-primary)]">{title}</h3>
+    </div>
+  );
+}
+```
+
+---
+
+## 3. Frameworks & Libraries
+
+### UI Framework
+- **React 19.2.3** - Latest React with concurrent features
+- **Next.js 16.1.6** - App Router architecture
+
+### Styling
+- **Tailwind CSS v4** - Utility-first CSS framework
+- **PostCSS** with `@tailwindcss/postcss` plugin
+- No additional component libraries (custom components only)
+
+### State Management
+- React Context (`AuthProvider`)
+- Custom hooks (`useWatched`, `useWatchlist`, `useReactions`, `useNudges`, `useLocalStorage`)
+
+### Build System
+- **Next.js** built-in bundler (Turbopack in dev)
+- **TypeScript 5.x** for type safety
+
+### Authentication & Database
+- **Supabase** - Auth + PostgreSQL database
+- `@supabase/supabase-js` for client
+- `@supabase/ssr` for server-side operations
+
+---
+
+## 4. Asset Management
+
+### Storage Location
+```
+public/
+├── file.svg
+├── globe.svg
+├── next.svg
+├── vercel.svg
+└── window.svg
+```
+
+### Asset References
+- Static assets: `/filename.svg` (from public folder)
+- Movie posters: External URLs from TMDB API
+- User avatars: Emoji characters stored as strings
+
+### Image Optimization
+- Next.js `<Image>` component not currently used
+- Fallback placeholders with dynamic background colors
+- Lazy loading via browser native behavior
+
+### No CDN Configuration
+Assets served directly from Vercel deployment.
+
+---
+
+## 5. Icon System
+
+### Location
+Icons are inline SVGs within components.
+
+### Usage Pattern
+```tsx
+<svg
+  className="w-4 h-4"
+  fill="none"
+  stroke="currentColor"
+  viewBox="0 0 24 24"
+>
+  <path
+    strokeLinecap="round"
+    strokeLinejoin="round"
+    strokeWidth={2}
+    d="M12 4v16m8-8H4"
+  />
+</svg>
+```
+
+### Icon Sizing Convention
+| Size Class | Usage |
+|------------|-------|
+| `w-3 h-3` | Small inline icons |
+| `w-4 h-4` | Button icons, badges |
+| `w-5 h-5` | Navigation icons |
+| `w-6 h-6` | Header icons |
+
+### Icon Style
+- Heroicons-style outlines (stroke-based)
+- `stroke="currentColor"` for color inheritance
+- `strokeWidth={2}` standard weight
+
+---
+
+## 6. Styling Approach
+
+### Methodology
+**Tailwind CSS Utility Classes** with CSS Variable references
+
+### Pattern Examples
+
+#### Backgrounds
+```tsx
+className="bg-[var(--bg-card)]"
+className="bg-[var(--bg-secondary)]"
+className="bg-[var(--accent)]/10"  // With opacity
+```
+
+#### Text Colors
+```tsx
+className="text-[var(--text-primary)]"
+className="text-[var(--text-muted)]"
+className="text-[var(--accent)]"
+```
+
+#### Borders
+```tsx
+className="border border-white/5"
+className="border border-white/10"
+className="border-[var(--accent)]/50"
+```
+
+#### Interactive States
+```tsx
+className="hover:bg-[var(--bg-card)] transition-colors"
+className="hover:text-[var(--accent)] transition-colors"
+className="focus:ring-1 focus:ring-[var(--accent)]/50"
+```
+
+### Global Styles (`globals.css`)
+
+#### Custom Classes
+```css
+.card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, var(--text-primary) 0%, var(--accent) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.animate-fade-in-up {
+  animation: fadeInUp 0.5s ease forwards;
+}
+
+.platform-netflix { background-color: var(--netflix); }
+.platform-prime { background-color: var(--prime); }
+/* ... other platform classes */
+```
+
+### Responsive Design
+```tsx
+// Mobile-first approach
+className="w-32 sm:w-48"           // Width
+className="hidden sm:inline"        // Show on sm+
+className="text-lg sm:text-xl"      // Font size
+className="px-4 sm:px-6 lg:px-8"    // Padding
+```
+
+### Breakpoints (Tailwind defaults)
+| Prefix | Min Width |
+|--------|-----------|
+| `sm` | 640px |
+| `md` | 768px |
+| `lg` | 1024px |
+| `xl` | 1280px |
+
+---
+
+## 7. Project Structure
+
+```
+cinema-chudu/
+├── src/
+│   ├── app/                    # Next.js App Router
+│   │   ├── layout.tsx          # Root layout with AuthProvider
+│   │   ├── page.tsx            # Home page
+│   │   ├── globals.css         # Global styles + tokens
+│   │   ├── add/page.tsx        # Add recommendation page
+│   │   ├── movie/[id]/page.tsx # Movie detail page
+│   │   ├── profile/[id]/page.tsx # User profile page
+│   │   ├── reset-password/page.tsx
+│   │   └── auth/callback/route.ts # OAuth callback
+│   │
+│   ├── components/             # UI Components
+│   │   ├── index.ts            # Barrel export
+│   │   ├── MovieCard.tsx
+│   │   ├── Header.tsx
+│   │   └── ... (15+ components)
+│   │
+│   ├── hooks/                  # Custom React hooks
+│   │   ├── index.ts            # Barrel export
+│   │   ├── useLocalStorage.ts
+│   │   ├── useWatched.ts
+│   │   ├── useWatchlist.ts
+│   │   ├── useReactions.ts
+│   │   └── useNudges.ts
+│   │
+│   ├── lib/                    # Utilities
+│   │   ├── supabase.ts         # Browser Supabase client
+│   │   ├── supabase-server.ts  # Server Supabase client
+│   │   └── tmdb.ts             # TMDB API utilities
+│   │
+│   ├── types/                  # TypeScript types
+│   │   └── index.ts            # Recommendation, OTTLink, etc.
+│   │
+│   └── data/
+│       └── recommendations.json # Static data
+│
+├── public/                     # Static assets
+├── package.json
+├── tsconfig.json
+├── postcss.config.mjs
+└── eslint.config.mjs
+```
+
+### Import Aliases
+```tsx
+import { Component } from '@/components';
+import { useHook } from '@/hooks';
+import { Type } from '@/types';
+import { createClient } from '@/lib/supabase';
+```
+
+---
+
+## 8. Design Patterns for Figma Integration
+
+### Button Variants
+
+```tsx
+// Primary Button (accent color)
+<button className="px-4 py-2 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors">
+  Action
+</button>
+
+// Secondary Button (subtle background)
+<button className="px-3 py-2 bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10">
+  Secondary
+</button>
+
+// Icon Button
+<button className="p-2 rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors">
+  <svg className="w-5 h-5" />
+</button>
+```
+
+### Card Pattern
+
+```tsx
+<div className="bg-[var(--bg-card)] rounded-xl overflow-hidden card-hover">
+  {/* Image area */}
+  <div className="relative aspect-[2/3]">
+    <img className="absolute inset-0 w-full h-full object-cover" />
+    <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-card)] via-transparent to-transparent" />
+  </div>
+
+  {/* Content area */}
+  <div className="p-4">
+    <h3 className="font-semibold text-[var(--text-primary)]">Title</h3>
+    <p className="text-sm text-[var(--text-muted)]">Subtitle</p>
+  </div>
+</div>
+```
+
+### Modal Pattern
+
+```tsx
+<div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+  {/* Backdrop */}
+  <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+
+  {/* Modal Content */}
+  <div className="relative w-full max-w-md bg-[var(--bg-card)] rounded-2xl p-6 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto">
+    {/* Close button */}
+    <button className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)]">
+      <svg className="w-5 h-5" />
+    </button>
+
+    {/* Content */}
+  </div>
+</div>
+```
+
+### Input Pattern
+
+```tsx
+<input
+  type="text"
+  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+  placeholder="Placeholder text..."
+/>
+```
+
+### Badge/Tag Pattern
+
+```tsx
+// Type badge
+<span className="px-2 py-1 text-xs font-medium bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md text-[var(--text-secondary)]">
+  Movie
+</span>
+
+// Accent badge
+<span className="px-2 py-1 text-xs font-bold bg-[var(--accent)]/90 backdrop-blur-sm rounded-md text-[var(--bg-primary)]">
+  8.5
+</span>
+
+// Platform badge
+<span className="platform-netflix px-2 py-0.5 text-[10px] font-medium rounded text-white">
+  Netflix
+</span>
+```
+
+---
+
+## 9. Animation Guidelines
+
+### Transitions
+```css
+/* Standard transition */
+transition-colors
+transition-all
+
+/* Card hover */
+.card-hover {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+```
+
+### Keyframe Animations
+```css
+/* Fade in with upward motion */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Staggered animation delays */
+.stagger-1 { animation-delay: 0.1s; }
+.stagger-2 { animation-delay: 0.2s; }
+/* up to .stagger-6 */
+```
+
+### Loading States
+```tsx
+// Spinner
+<div className="w-4 h-4 border-2 border-[var(--text-muted)] border-t-transparent rounded-full animate-spin" />
+```
+
+---
+
+## 10. Accessibility
+
+### Focus States
+```css
+a:focus-visible,
+button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+```
+
+### Color Contrast
+- Primary text on dark background: #fafafa on #0a0a0c (excellent contrast)
+- Accent on dark background: #f59e0b on #0a0a0c (good contrast)
+
+### Interactive Elements
+- All interactive elements have visible hover states
+- Focus rings for keyboard navigation
+- Sufficient touch targets (min 44x44px recommended)
+
+---
+
+## 11. Figma to Code Mapping
+
+When implementing Figma designs:
+
+| Figma Token | CSS Variable |
+|-------------|--------------|
+| `Background/Primary` | `var(--bg-primary)` |
+| `Background/Card` | `var(--bg-card)` |
+| `Text/Primary` | `var(--text-primary)` |
+| `Text/Secondary` | `var(--text-secondary)` |
+| `Accent/Default` | `var(--accent)` |
+| `Border/Subtle` | `border-white/5` or `border-white/10` |
+
+| Figma Component | React Component |
+|-----------------|-----------------|
+| Movie Card | `<MovieCard />` |
+| Navigation Header | `<Header />` |
+| Filter Pills | `<FilterBar />` |
+| Auth Modal | `<AuthModal />` |
+| Watchlist Modal | `<WatchlistModal />` |

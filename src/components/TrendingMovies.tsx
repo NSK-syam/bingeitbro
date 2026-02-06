@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { SendToFriendModal } from './SendToFriendModal';
+import { useAuth } from './AuthProvider';
 
 interface TrendingMovie {
   id: number;
@@ -37,10 +39,12 @@ interface TrendingMoviesProps {
 export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user } = useAuth();
   const [movies, setMovies] = useState<TrendingMovie[]>([]);
   const [comingSoonByLang, setComingSoonByLang] = useState<Record<string, TrendingMovie[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [sendModalMovie, setSendModalMovie] = useState<TrendingMovie | null>(null);
 
   // Get language from URL or default to empty
   const selectedLang = searchParams.get('lang') || '';
@@ -409,6 +413,23 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                   <p className="text-xs text-[var(--text-muted)] mt-1">
                     {movie.release_date?.split('-')[0] || 'TBA'} • {langInfo.name}
                   </p>
+                  {/* Send to Friend button - only for authenticated users */}
+                  {user && (
+                    <button
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        setSendModalMovie(movie);
+                      }}
+                      className="mt-2 w-full text-xs px-2 py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                      title="Send to friend"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      Send
+                    </button>
+                  )}
                 </div>
               </Link>
             );
@@ -424,6 +445,19 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
             Try selecting a different language
           </p>
         </div>
+      )}
+
+      {/* Send to Friend Modal */}
+      {sendModalMovie && (
+        <SendToFriendModal
+          isOpen={!!sendModalMovie}
+          onClose={() => setSendModalMovie(null)}
+          movieId={`tmdb-${sendModalMovie.id}`}
+          movieTitle={sendModalMovie.title}
+          moviePoster={sendModalMovie.poster_path ? `https://image.tmdb.org/t/p/w300${sendModalMovie.poster_path}` : ''}
+          movieYear={parseInt(sendModalMovie.release_date?.split('-')[0] || '0')}
+          tmdbId={String(sendModalMovie.id)}
+        />
       )}
     </div>
   );
