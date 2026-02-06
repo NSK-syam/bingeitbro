@@ -30,16 +30,27 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       return;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
+
     try {
       console.log('FriendsManager: Fetching friends for user', user.id);
       const supabase = createClient();
+
       const { data, error } = await supabase
         .from('friends')
         .select('id, friend_id, friend:users!friends_friend_id_fkey(*)')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .abortSignal(controller.signal);
+
+      clearTimeout(timeoutId);
 
       if (error) {
-        console.error('FriendsManager: Error fetching friends:', error);
+        if (error.code === '20') { // Abort error often has specific codes or name
+          console.error('FriendsManager: Fetch aborted/timed out');
+        } else {
+          console.error('FriendsManager: Error fetching friends:', error);
+        }
       }
 
       if (data) {
@@ -50,10 +61,15 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
         }));
         setFriends(friendsList);
       }
-    } catch (err) {
-      console.error('FriendsManager: Exception fetching friends:', err);
+    } catch (err: any) {
+      if (err.name === 'AbortError') {
+        console.error('FriendsManager: Request timed out');
+      } else {
+        console.error('FriendsManager: Exception fetching friends:', err);
+      }
     } finally {
       setIsLoading(false);
+      clearTimeout(timeoutId);
     }
   }, [user]);
 
@@ -70,8 +86,14 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       return;
     }
 
+    let controller: AbortController | null = null;
+    let timeoutId: NodeJS.Timeout | null = null;
+
     const timer = setTimeout(async () => {
       setIsSearching(true);
+      controller = new AbortController();
+      timeoutId = setTimeout(() => controller?.abort(), 10000); // 10s timeout
+
       const supabase = createClient();
 
       try {
@@ -85,33 +107,48 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
           .select('*')
           .or(`name.ilike.%${searchQuery}%,username.ilike.%${searchQuery}%`)
           .neq('id', user.id)
-          .limit(10);
+          .limit(10)
+          .abortSignal(controller.signal);
+
+        clearTimeout(timeoutId!);
 
         if (error) {
           console.error('FriendsManager: Search error:', error);
           // Fallback to name only search if username fails (e.g. column missing)
           if (error.code === '42703') { // Undefined column
             console.log('FriendsManager: Retrying search with name only');
+            // Create new controller for retry
+            controller = new AbortController();
             const { data: retryData } = await supabase
               .from('users')
               .select('*')
               .ilike('name', `%${searchQuery}%`)
               .neq('id', user.id)
-              .limit(10);
+              .limit(10)
+              .abortSignal(controller.signal);
             setSearchResults(retryData || []);
           }
         } else {
           console.log('FriendsManager: Search results:', data?.length);
           setSearchResults(data || []);
         }
-      } catch (err) {
-        console.error('FriendsManager: Search exception:', err);
+      } catch (err: any) {
+        if (err.name === 'AbortError') {
+          console.log('FriendsManager: Search aborted/timed out');
+        } else {
+          console.error('FriendsManager: Search exception:', err);
+        }
       } finally {
         setIsSearching(false);
+        if (timeoutId) clearTimeout(timeoutId);
       }
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (controller) controller.abort();
+      if (timeoutId) clearTimeout(timeoutId);
+    };
   }, [searchQuery, user]);
 
   const addFriend = async (friendUser: DBUser) => {
