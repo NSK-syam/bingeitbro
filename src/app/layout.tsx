@@ -1,12 +1,9 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/components";
 
-const inter = Inter({
-  subsets: ["latin"],
-  display: "swap",
-});
+// System font stack so build works without network (no Google Fonts fetch)
+const fontClass = "font-sans antialiased";
 
 export const metadata: Metadata = {
   title: "Cinema Chudu - Movie Recommendations from Friends",
@@ -35,7 +32,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <body className={`${inter.className} antialiased`}>
+      <body className={fontClass}>
         <AuthProvider>{children}</AuthProvider>
       </body>
     </html>

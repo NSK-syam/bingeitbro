@@ -45,8 +45,6 @@ export default function ProfilePage() {
       try {
         const supabase = createClient();
 
-        console.log('Fetching profile for userId:', userId);
-
         // Check if the userId looks like a UUID
         const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
 
@@ -72,11 +70,8 @@ export default function ProfilePage() {
               .single();
             userData = result.data;
             error = result.error;
-            if (userData) {
-              console.log('Found user by username:', userData.name);
-            }
-          } catch (usernameErr) {
-            console.log('Username lookup failed (column may not exist):', usernameErr);
+          } catch {
+            // Username column may not exist, ignore
           }
         }
 
@@ -84,7 +79,6 @@ export default function ProfilePage() {
 
         // If no profile exists and this is the logged-in user viewing their own profile, create it
         if ((error || !userData) && user && user.id === userId) {
-          console.log('Creating profile for OAuth user...');
           const metadata = user.user_metadata;
           const generatedUsername = user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') + '_' + Math.random().toString(36).slice(2, 6);
 
@@ -129,12 +123,10 @@ export default function ProfilePage() {
         }
 
         if (!userData) {
-          console.log('No user data found for:', userId);
           setIsLoading(false);
           return;
         }
 
-        console.log('Profile loaded successfully:', userData.name);
         setProfileUser(userData);
 
         // Fetch their recommendations
@@ -153,18 +145,18 @@ export default function ProfilePage() {
             type: rec.type,
             poster: rec.poster,
             backdrop: rec.backdrop,
-            genres: rec.genres,
-            language: rec.language,
+            genres: Array.isArray(rec.genres) ? rec.genres : [],
+            language: rec.language ?? '',
             duration: rec.duration,
             rating: rec.rating,
-            personalNote: rec.personal_note,
+            personalNote: rec.personal_note ?? '',
             mood: rec.mood,
             watchWith: rec.watch_with,
-            ottLinks: rec.ott_links as OTTLink[],
+            ottLinks: (rec.ott_links as OTTLink[]) ?? [],
             recommendedBy: {
               id: userData.id,
               name: userData.name,
-              avatar: userData.avatar,
+              avatar: userData.avatar ?? '🎬',
             },
             addedOn: rec.created_at,
           }));

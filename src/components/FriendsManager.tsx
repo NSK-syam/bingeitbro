@@ -16,7 +16,6 @@ interface FriendsManagerProps {
 
 export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsManagerProps) {
   const { user } = useAuth();
-  console.log('FriendsManager: Render', { isOpen, userId: user?.id });
 
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<DBUser[]>([]);
@@ -27,7 +26,6 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
   // Fetch current friends
   const fetchFriends = useCallback(async () => {
     if (!user) {
-      console.log('FriendsManager: No user found, skipping fetch');
       setIsLoading(false);
       return;
     }
@@ -36,7 +34,6 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
 
     try {
-      console.log('FriendsManager: Fetching friends for user', user.id);
       const supabase = createClient();
 
       const { data, error } = await supabase
@@ -56,7 +53,6 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       }
 
       if (data) {
-        console.log('FriendsManager: Found friends:', data.length);
         const friendsList: Friend[] = data.map((f: any) => ({
           ...f.friend,
           friendshipId: f.id,
@@ -82,7 +78,6 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
   }, [isOpen, user?.id, fetchFriends]); // Use user.id
 
   useEffect(() => {
-    console.log('FriendsManager: Search Effect Triggered', { searchQuery, userId: user?.id });
     if (!searchQuery.trim() || !user) {
       setSearchResults([]);
       return;
@@ -99,8 +94,6 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       const supabase = createClient();
 
       try {
-        console.log('FriendsManager: Searching for', searchQuery);
-
         // Check if username column exists by trying a simple query first? 
         // Or just rely on the error returned
 
@@ -118,7 +111,6 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
           console.error('FriendsManager: Search error:', error);
           // Fallback to name only search if username fails (e.g. column missing)
           if (error.code === '42703') { // Undefined column
-            console.log('FriendsManager: Retrying search with name only');
             // Create new controller for retry
             controller = new AbortController();
             const { data: retryData } = await supabase
@@ -131,13 +123,10 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
             setSearchResults(retryData || []);
           }
         } else {
-          console.log('FriendsManager: Search results:', data?.length);
           setSearchResults(data || []);
         }
       } catch (err: any) {
-        if (err.name === 'AbortError') {
-          console.log('FriendsManager: Search aborted/timed out');
-        } else {
+        if (err.name !== 'AbortError') {
           console.error('FriendsManager: Search exception:', err);
         }
       } finally {

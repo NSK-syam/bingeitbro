@@ -57,14 +57,14 @@ export default function Home() {
         type: rec.type,
         poster: rec.poster,
         backdrop: rec.backdrop,
-        genres: rec.genres,
-        language: rec.language,
+        genres: Array.isArray(rec.genres) ? rec.genres : [],
+        language: rec.language ?? '',
         duration: rec.duration,
         rating: rec.rating,
-        personalNote: rec.personal_note,
+        personalNote: rec.personal_note ?? '',
         mood: rec.mood,
         watchWith: rec.watch_with,
-        ottLinks: rec.ott_links as OTTLink[],
+        ottLinks: (rec.ott_links as OTTLink[]) ?? [],
         recommendedBy: {
           id: rec.user?.id || 'unknown',
           name: rec.user?.name || 'Anonymous',
@@ -117,14 +117,14 @@ export default function Home() {
           type: rec.type,
           poster: rec.poster,
           backdrop: rec.backdrop,
-          genres: rec.genres,
-          language: rec.language,
+          genres: Array.isArray(rec.genres) ? rec.genres : [],
+          language: rec.language ?? '',
           duration: rec.duration,
           rating: rec.rating,
-          personalNote: rec.personal_note,
+          personalNote: rec.personal_note ?? '',
           mood: rec.mood,
           watchWith: rec.watch_with,
-          ottLinks: rec.ott_links as OTTLink[],
+          ottLinks: (rec.ott_links as OTTLink[]) ?? [],
           recommendedBy: {
             id: rec.user?.id || 'unknown',
             name: rec.user?.name || 'Anonymous',
@@ -198,12 +198,13 @@ export default function Home() {
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
+        const genres = Array.isArray(rec.genres) ? rec.genres : [];
         const matchesSearch =
-          rec.title.toLowerCase().includes(query) ||
-          rec.originalTitle?.toLowerCase().includes(query) ||
-          rec.genres.some((g) => g.toLowerCase().includes(query)) ||
-          rec.recommendedBy.name.toLowerCase().includes(query) ||
-          rec.personalNote.toLowerCase().includes(query);
+          (rec.title ?? '').toLowerCase().includes(query) ||
+          (rec.originalTitle ?? '').toLowerCase().includes(query) ||
+          genres.some((g) => String(g).toLowerCase().includes(query)) ||
+          (rec.recommendedBy?.name ?? '').toLowerCase().includes(query) ||
+          (rec.personalNote ?? '').toLowerCase().includes(query);
         if (!matchesSearch) return false;
       }
 
@@ -211,13 +212,14 @@ export default function Home() {
       if (filters.type && rec.type !== filters.type) return false;
 
       // Genre filter
-      if (filters.genre && !rec.genres.includes(filters.genre)) return false;
+      const recGenres = Array.isArray(rec.genres) ? rec.genres : [];
+      if (filters.genre && !recGenres.includes(filters.genre)) return false;
 
       // Language filter
       if (filters.language && rec.language !== filters.language) return false;
 
       // Recommender filter (only applies to friends)
-      if (filters.recommendedBy && rec.recommendedBy.id !== filters.recommendedBy)
+      if (filters.recommendedBy && (rec.recommendedBy?.id ?? '') !== filters.recommendedBy)
         return false;
 
       // Watched status filter

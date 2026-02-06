@@ -26,10 +26,10 @@ export function FilterBar({
   onRemoveFriend,
   showManageFriends,
 }: FilterBarProps) {
-  // Extract unique values
+  // Extract unique values (guard against undefined from DB)
   const types = [...new Set(recommendations.map((r) => r.type))];
-  const genres = [...new Set(recommendations.flatMap((r) => r.genres))].sort();
-  const languages = [...new Set(recommendations.map((r) => r.language))].sort();
+  const genres = [...new Set(recommendations.flatMap((r) => Array.isArray(r.genres) ? r.genres : []))].sort();
+  const languages = [...new Set(recommendations.map((r) => r.language ?? ''))].filter(Boolean).sort();
 
   const typeLabels: Record<string, string> = {
     movie: 'Movies',
