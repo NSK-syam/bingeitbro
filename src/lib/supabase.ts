@@ -4,9 +4,16 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 export function createClient() {
-  // Use default cookie-based storage from @supabase/ssr
-  // This ensures browser client reads same session that server sets
-  return createBrowserClient(supabaseUrl, supabaseAnonKey);
+  return createBrowserClient(supabaseUrl, supabaseAnonKey, {
+    auth: {
+      flowType: 'pkce',
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      // Disable the navigator lock that can cause deadlocks in SPAs
+      lock: 'no-op' as any,
+    },
+  });
 }
 
 // Database types

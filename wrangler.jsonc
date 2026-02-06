@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "cinema-chudu",
+  "name": "bingeitbro",
   "compatibility_date": "2026-02-06",
   "assets": {
     "directory": "./out"

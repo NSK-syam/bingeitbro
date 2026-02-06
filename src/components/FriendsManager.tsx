@@ -32,30 +32,24 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       return;
     }
 
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.error('[FriendsManager] Query timed out after 8s');
+      controller.abort();
+    }, 8000);
+
     try {
       const supabase = createClient();
-
-      // Ensure we have a valid session before querying RLS-protected tables
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) {
-        console.warn('[FriendsManager] No active session - trying to refresh...');
-        const { data: { session: refreshed } } = await supabase.auth.refreshSession();
-        if (!refreshed) {
-          console.error('[FriendsManager] No valid session after refresh');
-          setFriends([]);
-          setIsLoading(false);
-          return;
-        }
-      }
-
       console.log('[FriendsManager] Starting friends query...');
 
       // Step 1: Get friend relationships
       const { data: friendships, error: friendsError } = await supabase
         .from('friends')
         .select('id, friend_id')
-        .eq('user_id', user.id);
+        .eq('user_id', user.id)
+        .abortSignal(controller.signal);
 
+      clearTimeout(timeoutId);
       console.log('[FriendsManager] Friendships query complete:', { friendships, friendsError });
 
       if (friendsError) {
@@ -75,7 +69,8 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       const { data: users, error: usersError } = await supabase
         .from('users')
         .select('*')
-        .in('id', friendIds);
+        .in('id', friendIds)
+        .abortSignal(controller.signal);
 
       console.log('[FriendsManager] Users query complete:', { users, usersError });
 
@@ -95,9 +90,15 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
         setFriends(friendsList);
       }
     } catch (err: any) {
-      console.error('[FriendsManager] Exception:', err?.name, err?.message);
+      clearTimeout(timeoutId);
+      if (err?.name === 'AbortError') {
+        console.error('[FriendsManager] Request aborted (timeout)');
+      } else {
+        console.error('[FriendsManager] Exception:', err?.name, err?.message);
+      }
       setFriends([]);
     } finally {
+      clearTimeout(timeoutId);
       console.log('[FriendsManager] Finally block - setting isLoading to false');
       setIsLoading(false);
     }
