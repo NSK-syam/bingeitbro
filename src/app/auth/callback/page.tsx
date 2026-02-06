@@ -35,10 +35,9 @@ function AuthCallbackContent() {
     }
 
     // Use sessionStorage to prevent duplicate exchange attempts
-    // (refs get reset on component remount in Strict Mode)
     const exchangeKey = `auth_exchange_${code.substring(0, 16)}`;
-    if (sessionStorage.getItem(exchangeKey)) {
-      // Already attempted - check if we have a session
+    if (sessionStorage.getItem(exchangeKey) === 'success') {
+      // Already succeeded - redirect
       const supabase = createClient();
       supabase.auth.getSession().then(({ data }) => {
         if (data.session) {
@@ -52,6 +51,11 @@ function AuthCallbackContent() {
       return;
     }
 
+    if (sessionStorage.getItem(exchangeKey) === 'attempting') {
+      // Already in progress from a remount — just wait
+      return;
+    }
+
     // Mark as attempting
     sessionStorage.setItem(exchangeKey, 'attempting');
 
@@ -59,9 +63,10 @@ function AuthCallbackContent() {
 
     console.log('[Auth Callback] Starting code exchange...');
 
-    // Add a timeout to detect hanging requests
+    // Timeout to detect hanging
     const timeoutId = setTimeout(() => {
       console.error('[Auth Callback] Code exchange timed out after 15s');
+      sessionStorage.removeItem(exchangeKey);
       setStatus('error');
       setErrorMessage('Sign-in timed out. Please try again.');
     }, 15000);
@@ -70,7 +75,12 @@ function AuthCallbackContent() {
     supabase.auth.exchangeCodeForSession(code)
       .then(({ data, error }) => {
         clearTimeout(timeoutId);
-        console.log('[Auth Callback] Exchange response:', { hasData: !!data, hasSession: !!data?.session, error });
+        console.log('[Auth Callback] Exchange response:', {
+          hasData: !!data,
+          hasSession: !!data?.session,
+          error: error?.message,
+        });
+
         if (error) {
           console.error('Code exchange error:', error);
           sessionStorage.removeItem(exchangeKey);
@@ -93,7 +103,6 @@ function AuthCallbackContent() {
       })
       .catch((err) => {
         clearTimeout(timeoutId);
-        // Ignore AbortError - happens on component remount
         if (err?.name === 'AbortError') {
           console.log('[Auth Callback] Request aborted (will retry on remount)');
           return;
@@ -104,9 +113,7 @@ function AuthCallbackContent() {
         setErrorMessage(err instanceof Error ? err.message : 'An unexpected error occurred');
       });
 
-    // Cleanup function - clear the key if component unmounts before completion
     return () => {
-      // Don't clear if successful
       if (sessionStorage.getItem(exchangeKey) !== 'success') {
         sessionStorage.removeItem(exchangeKey);
       }
