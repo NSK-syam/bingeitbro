@@ -1,5 +1,4 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
 const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
@@ -46,21 +45,24 @@ serve(async (req) => {
       body = null;
     }
 
-    const authHeader = req.headers.get('Authorization') || '';
-    const tokenFromBody = body?.access_token ? `Bearer ${body.access_token}` : '';
-    const resolvedAuth = authHeader.toLowerCase().startsWith('bearer ') ? authHeader : tokenFromBody;
-    if (!resolvedAuth.toLowerCase().startsWith('bearer ')) {
+    const accessToken = body?.access_token ?? '';
+    if (!accessToken) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders });
     }
 
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: resolvedAuth } },
-      auth: { persistSession: false },
+    const authResponse = await fetch(`${supabaseUrl}/auth/v1/user`, {
+      method: 'GET',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: supabaseAnonKey,
+      },
     });
 
-    const { data: authData, error: authError } = await supabase.auth.getUser();
-    const user = authData?.user ?? null;
-    if (authError || !user) {
+    if (!authResponse.ok) {
+      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
+    }
+    const user = await authResponse.json().catch(() => null) as { id?: string } | null;
+    if (!user?.id) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders });
     }
 
@@ -107,15 +109,39 @@ serve(async (req) => {
       movie_poster: rec.movie_poster.startsWith('https://image.tmdb.org/') ? rec.movie_poster : '',
     }));
 
-    const { error } = await supabase
-      .from('friend_recommendations')
-      .insert(sanitized);
+    const insertResponse = await fetch(`${supabaseUrl}/rest/v1/friend_recommendations`, {
+      method: 'POST',
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify(sanitized),
+    });
 
-    if (error) {
-      if (error.code === '23505') {
+    if (!insertResponse.ok) {
+      const text = await insertResponse.text();
+      let data: unknown = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
+      }
+      const code =
+        typeof data === 'object' && data !== null && 'code' in data
+          ? String((data as { code?: string }).code)
+          : '';
+      const message =
+        typeof data === 'object' && data !== null && 'message' in data
+          ? String((data as { message?: string }).message)
+          : insertResponse.statusText;
+      if (code === '23505') {
         return new Response(JSON.stringify({ code: '23505', message: 'DUPLICATE' }), { status: 409, headers: corsHeaders });
       }
-      return new Response(JSON.stringify({ message: error.message, code: error.code }), { status: 500, headers: corsHeaders });
+      return new Response(JSON.stringify({ message, code }), { status: 500, headers: corsHeaders });
     }
 
     return new Response(JSON.stringify({ sent: sanitized.length }), { status: 200, headers: corsHeaders });
