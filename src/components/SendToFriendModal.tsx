@@ -120,17 +120,19 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 const trimmed = (moviePoster || '').trim();
                 if (!trimmed) return '';
                 if (trimmed.startsWith('data:')) return '';
-                if (trimmed.length > 1000) return '';
+                if (trimmed.length > 500) return '';
+                if (!trimmed.startsWith('https://image.tmdb.org/')) return '';
                 return trimmed;
             })();
-            const safeMessage = personalMessage.trim().slice(0, 500);
+            const safeMessage = personalMessage.trim().slice(0, 200);
+            const safeTitle = movieTitle.trim().slice(0, 200);
 
             const recommendations = toSend.map(recipientId => ({
                 sender_id: user!.id,
                 recipient_id: recipientId,
                 recommendation_id: recommendationId ?? null,
                 tmdb_id: tmdbId != null ? Number(tmdbId) : null,
-                movie_title: movieTitle,
+                movie_title: safeTitle,
                 movie_poster: safePoster,
                 movie_year: movieYear ?? null,
                 personal_message: safeMessage,
