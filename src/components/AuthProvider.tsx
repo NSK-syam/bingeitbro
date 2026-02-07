@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     if (!isConfigured) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(false);
       return;
     }
@@ -59,7 +61,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               email: session.user.email,
               name: metadata?.full_name || metadata?.name || session.user.email?.split('@')[0],
               username: generatedUsername,
-              avatar: getRandomEmoji()
+              avatar: getRandomMovieAvatar()
             });
 
             if (insertError) {
@@ -69,7 +71,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 id: session.user.id,
                 email: session.user.email,
                 name: metadata?.full_name || metadata?.name || session.user.email?.split('@')[0],
-                avatar: getRandomEmoji()
+                avatar: getRandomMovieAvatar()
               });
             }
           }
@@ -108,19 +110,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isConfigured) return false;
 
     const supabase = createClient();
-    const { data } = await supabase
+    const normalized = username.trim().toLowerCase();
+    if (!normalized) return false;
+
+    const { data, error } = await supabase
       .from('users')
       .select('id')
-      .eq('username', username.toLowerCase())
-      .single();
+      .ilike('username', normalized)
+      .limit(1);
 
-    return !data;
+    if (error) return false;
+
+    return !data || data.length === 0;
   };
 
   const signUp = async (email: string, password: string, name: string, username: string) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
 
     const supabase = createClient();
+    const withTimeout = async <T,>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
+      const timeout = new Promise<T>((_, reject) => {
+        timeoutId = setTimeout(() => reject(new Error(message)), ms);
+      });
+      try {
+        return await Promise.race([promise, timeout]);
+      } finally {
+        if (timeoutId) clearTimeout(timeoutId);
+      }
+    };
 
     // Check if username is available
     const isAvailable = await checkUsernameAvailable(username);
@@ -133,7 +151,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       .from('users')
       .select('id')
       .eq('email', email.toLowerCase())
-      .single();
+      .maybeSingle();
 
     if (existingEmail) {
       return { error: new Error('An account with this email already exists') };
@@ -143,22 +161,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       ? window.location.origin
       : 'https://bingeitbro.com';
 
-    const { data, error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { name, username: username.toLowerCase() },
-        emailRedirectTo: `${siteUrl}/auth/callback`
-      }
-    });
+    let data: { user: User | null } | null = null;
+    let error: Error | null = null;
+    try {
+      const authResult = await withTimeout(
+        supabase.auth.signUp({
+          email,
+          password,
+          options: {
+            data: { name, username: username.toLowerCase() },
+            emailRedirectTo: `${siteUrl}/auth/callback`
+          }
+        }),
+        12000,
+        'Signup timed out. Please try again.'
+      );
+      data = authResult.data as { user: User | null };
+      error = authResult.error as Error | null;
+    } catch (err) {
+      error = err as Error;
+    }
 
-    if (!error && data.user) {
-      await supabase.from('users').insert({
-        id: data.user.id,
-        email: email.toLowerCase(),
-        name: name,
-        username: username.toLowerCase(),
-        avatar: getRandomEmoji()
+    if (!error && data?.user) {
+      // Fire-and-forget profile insert to avoid blocking the UI
+      void withTimeout(
+        Promise.resolve(
+          supabase.from('users').insert({
+            id: data.user.id,
+            email: email.toLowerCase(),
+            name: name,
+            username: username.toLowerCase(),
+            avatar: getRandomMovieAvatar()
+          })
+        ),
+        8000,
+        'Profile creation timed out'
+      ).catch(() => {
+        // Ignore errors here; auth succeeded and profile can be created later.
       });
     }
 
@@ -176,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Clear any existing session first to ensure fresh login
     try {
       await supabase.auth.signOut();
-    } catch (e) {
+    } catch {
       // Ignore signout errors
     }
 
@@ -259,9 +298,4 @@ export function useAuth() {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
-}
-
-function getRandomEmoji(): string {
-  const emojis = ['🎬', '🍿', '🎭', '🎪', '🎯', '🎲', '🎸', '🎺', '🎻', '🎹', '🎤', '🎧', '🎵', '🎶', '🌟', '⭐', '🔥', '💫', '✨', '🎉'];
-  return emojis[Math.floor(Math.random() * emojis.length)];
 }
