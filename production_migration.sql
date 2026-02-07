@@ -201,6 +201,9 @@ CREATE TABLE IF NOT EXISTS friend_recommendations (
   
   -- Read status
   is_read BOOLEAN DEFAULT FALSE,
+  -- Watched status (recipient watched the recommendation)
+  is_watched BOOLEAN DEFAULT FALSE,
+  watched_at TIMESTAMP WITH TIME ZONE,
   
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   
@@ -210,10 +213,14 @@ CREATE TABLE IF NOT EXISTS friend_recommendations (
     (tmdb_id IS NOT NULL AND movie_title IS NOT NULL)
   ),
   
-  -- Unique constraints to prevent spam
-  UNIQUE NULLS NOT DISTINCT (sender_id, recipient_id, recommendation_id),
-  UNIQUE NULLS NOT DISTINCT (sender_id, recipient_id, tmdb_id)
+  -- Unique constraints handled via partial indexes (see below)
 );
+
+-- Drop legacy unique constraints (they block multiple different recommendations)
+ALTER TABLE friend_recommendations
+  DROP CONSTRAINT IF EXISTS friend_recommendations_sender_id_recipient_id_recommendation_id_key;
+ALTER TABLE friend_recommendations
+  DROP CONSTRAINT IF EXISTS friend_recommendations_sender_id_recipient_id_tmdb_id_key;
 
 -- Enable RLS
 ALTER TABLE friend_recommendations ENABLE ROW LEVEL SECURITY;
@@ -275,6 +282,21 @@ END $$;
 CREATE INDEX IF NOT EXISTS idx_friend_recommendations_recipient ON friend_recommendations(recipient_id, is_read);
 CREATE INDEX IF NOT EXISTS idx_friend_recommendations_sender ON friend_recommendations(sender_id);
 CREATE INDEX IF NOT EXISTS idx_friend_recommendations_created ON friend_recommendations(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_friend_recommendations_watched ON friend_recommendations(recipient_id, is_watched);
+
+-- Prevent duplicate sends for the same movie, but allow multiple different movies
+CREATE UNIQUE INDEX IF NOT EXISTS friend_recs_unique_recommendation
+  ON friend_recommendations(sender_id, recipient_id, recommendation_id)
+  WHERE recommendation_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS friend_recs_unique_tmdb
+  ON friend_recommendations(sender_id, recipient_id, tmdb_id)
+  WHERE tmdb_id IS NOT NULL;
+
+-- If table already existed, add watched columns safely
+ALTER TABLE friend_recommendations
+  ADD COLUMN IF NOT EXISTS is_watched BOOLEAN DEFAULT FALSE;
+ALTER TABLE friend_recommendations
+  ADD COLUMN IF NOT EXISTS watched_at TIMESTAMP WITH TIME ZONE;
 
 -- Helper view for unread count
 CREATE OR REPLACE VIEW friend_recommendations_unread_count AS

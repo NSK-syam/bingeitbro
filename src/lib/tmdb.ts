@@ -51,7 +51,7 @@ export interface TMDBWatchProviders {
   };
 }
 
-// Genre mapping
+// Genre mapping (ID -> name)
 const GENRE_MAP: Record<number, string> = {
   28: 'Action',
   12: 'Adventure',
@@ -74,6 +74,60 @@ const GENRE_MAP: Record<number, string> = {
   37: 'Western',
 };
 
+/** Genre list for filter UIs (id, name) */
+export const GENRE_LIST: { id: number; name: string }[] = Object.entries(GENRE_MAP)
+  .map(([id, name]) => ({ id: Number(id), name }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+export type OTTProvider = {
+  key: string;
+  name: string;
+  ids: { US?: number; IN?: number };
+  languages?: string[];
+};
+
+/** OTT / watch providers for filter (TMDB provider_id). USA + India relevant. */
+export const OTT_PROVIDERS: OTTProvider[] = [
+  { key: 'netflix', name: 'Netflix', ids: { US: 8, IN: 8 } },
+  { key: 'prime', name: 'Prime Video', ids: { US: 9, IN: 119 } },
+  { key: 'apple_tv', name: 'Apple TV+', ids: { US: 350, IN: 350 } },
+  { key: 'jio_hotstar', name: 'JioHotstar', ids: { US: 337, IN: 2336 } },
+  { key: 'sonyliv', name: 'SonyLiv', ids: { IN: 237 } },
+  { key: 'zee5', name: 'Zee5', ids: { IN: 232 } },
+  { key: 'aha', name: 'Aha', ids: { IN: 532 }, languages: ['te', 'ta'] },
+  { key: 'youtube', name: 'YouTube', ids: { US: 192, IN: 192 } },
+  { key: 'hulu', name: 'Hulu', ids: { US: 15 } },
+  { key: 'peacock', name: 'Peacock', ids: { US: 386 } },
+  { key: 'paramount', name: 'Paramount+', ids: { US: 531 } },
+];
+
+/** OTT providers that only have specific languages (numeric provider_id mapping). */
+export const OTT_TO_LANGUAGES: Record<number, string[]> = {
+  532: ['te', 'ta'], // Aha: Telugu, Tamil only
+};
+
+const LEGACY_OTT_ID_TO_KEY: Record<number, string> = {
+  122: 'jio_hotstar', // Disney+ Hotstar (legacy)
+  283: 'aha', // Aha (legacy)
+  220: 'jio_hotstar', // Jio Cinema (not in TMDB list anymore)
+  2: 'apple_tv', // Apple TV Store (legacy)
+};
+
+export function resolveOttProvider(selectedOtt: string): OTTProvider | null {
+  if (!selectedOtt) return null;
+  const byKey = OTT_PROVIDERS.find((p) => p.key === selectedOtt);
+  if (byKey) return byKey;
+  const numeric = Number(selectedOtt);
+  if (!Number.isNaN(numeric)) {
+    const legacyKey = LEGACY_OTT_ID_TO_KEY[numeric];
+    if (legacyKey) {
+      return OTT_PROVIDERS.find((p) => p.key === legacyKey) || null;
+    }
+    return OTT_PROVIDERS.find((p) => Object.values(p.ids).includes(numeric)) || null;
+  }
+  return null;
+}
+
 // Language mapping
 const LANGUAGE_MAP: Record<string, string> = {
   en: 'English',
@@ -92,17 +146,6 @@ const LANGUAGE_MAP: Record<string, string> = {
   it: 'Italian',
   pt: 'Portuguese',
   zh: 'Chinese',
-};
-
-// OTT Provider mapping
-const PROVIDER_MAP: Record<number, { name: string; platform: string }> = {
-  8: { name: 'Netflix', platform: 'Netflix' },
-  9: { name: 'Amazon Prime Video', platform: 'Prime Video' },
-  122: { name: 'Disney+ Hotstar', platform: 'Hotstar' },
-  237: { name: 'Sony LIV', platform: 'SonyLiv' },
-  232: { name: 'ZEE5', platform: 'Zee5' },
-  121: { name: 'Jio Cinema', platform: 'Jio Cinema' },
-  // Aha doesn't have a standard TMDB ID, you'd need to add manually
 };
 
 export function getImageUrl(path: string | null, size: 'w500' | 'w780' | 'original' = 'w500'): string {
@@ -168,7 +211,7 @@ export async function getMovieDetails(movieId: number): Promise<TMDBMovieDetails
   }
 }
 
-export async function getWatchProviders(movieId: number, region: string = 'IN'): Promise<TMDBWatchProviders | null> {
+export async function getWatchProviders(movieId: number): Promise<TMDBWatchProviders | null> {
   if (!TMDB_API_KEY) {
     console.warn('TMDB API key not configured');
     return null;
@@ -266,10 +309,36 @@ export interface NewRelease {
   providers?: { provider_id: number; provider_name: string; logo_path: string }[];
 }
 
-// Indian languages to fetch (ISO 639-1 codes)
+// Languages for "New Today": English + Indian (Telugu, Hindi, Tamil, etc.)
+const NEW_TODAY_LANGUAGES = ['en', 'te', 'hi', 'ta', 'ml', 'kn', 'bn', 'mr', 'pa', 'gu'];
+
+// Indian languages (for trending / other features)
 const INDIAN_LANGUAGES = ['te', 'hi', 'ta', 'ml', 'kn', 'bn', 'mr', 'pa', 'gu'];
 
-// Fetch genuinely new releases on streaming in India (last 14 days)
+// Focus: OTT releases only (no theatrical). Regions: USA + India.
+const WATCH_REGIONS = ['US', 'IN'] as const;
+type WatchRegion = (typeof WATCH_REGIONS)[number];
+
+function mergeFlatrateProviders(
+  providers: TMDBWatchProviders | null,
+  regions: readonly WatchRegion[]
+): { provider_id: number; provider_name: string; logo_path: string }[] {
+  if (!providers?.results) return [];
+  const seen = new Set<number>();
+  const merged: { provider_id: number; provider_name: string; logo_path: string }[] = [];
+  for (const region of regions) {
+    const flat = providers.results[region]?.flatrate || [];
+    for (const p of flat) {
+      if (!seen.has(p.provider_id)) {
+        seen.add(p.provider_id);
+        merged.push(p);
+      }
+    }
+  }
+  return merged;
+}
+
+// New releases on OTT only (USA + India). 10-day window.
 export async function getNewReleasesOnStreaming(): Promise<NewRelease[]> {
   if (!TMDB_API_KEY) {
     console.warn('TMDB API key not configured');
@@ -278,71 +347,50 @@ export async function getNewReleasesOnStreaming(): Promise<NewRelease[]> {
 
   try {
     const today = getTodayDate();
-    const fourteenDaysAgo = getDateDaysAgo(14);
-    const sixtyDaysAgo = getDateDaysAgo(60); // Fallback range
+    const tenDaysAgo = getDateDaysAgo(10);
 
-    // First try: Movies released in last 14 days on streaming
-    const recentUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&watch_region=IN&with_watch_monetization_types=flatrate&primary_release_date.gte=${fourteenDaysAgo}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc&page=1`;
+    const baseParamsNoRegion = `api_key=${TMDB_API_KEY}&with_watch_monetization_types=flatrate&sort_by=primary_release_date.desc&primary_release_date.gte=${tenDaysAgo}&primary_release_date.lte=${today}`;
 
-    // Indian language content from last 14 days
-    const indianRecentUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&watch_region=IN&with_watch_monetization_types=flatrate&with_original_language=${INDIAN_LANGUAGES.join('|')}&primary_release_date.gte=${fourteenDaysAgo}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc&page=1`;
+    // Fetch page 1 and 2 for both USA and India (OTT only) to get more new movies
+    const urls = [
+      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=US&with_original_language=${NEW_TODAY_LANGUAGES.join(',')}&page=1`,
+      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=US&with_original_language=${NEW_TODAY_LANGUAGES.join(',')}&page=2`,
+      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=US&page=1`,
+      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=US&page=2`,
+      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&with_original_language=${NEW_TODAY_LANGUAGES.join(',')}&page=1`,
+      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&with_original_language=${NEW_TODAY_LANGUAGES.join(',')}&page=2`,
+      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&page=1`,
+      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&page=2`,
+    ];
+    const responses = await Promise.all(urls.map(u => fetch(u)));
+    const collect = async (res: Response) => (res.ok ? (await res.json()).results || [] : []);
+    const results = await Promise.all(responses.map(collect));
+    const flat = results.flat();
 
-    let [allResponse, indianResponse] = await Promise.all([
-      fetch(recentUrl),
-      fetch(indianRecentUrl)
-    ]);
+    const byId = new Map<number, NewRelease>();
+    flat.forEach((m: NewRelease) => byId.set(m.id, m));
+    const allMovies = Array.from(byId.values());
+    allMovies.sort((a, b) => new Date(b.release_date).getTime() - new Date(a.release_date).getTime());
 
-    let allData = allResponse.ok ? await allResponse.json() : { results: [] };
-    let indianData = indianResponse.ok ? await indianResponse.json() : { results: [] };
+    const movies: NewRelease[] = allMovies.slice(0, 35);
 
-    // If not enough results, expand to 60 days
-    if (allData.results.length + indianData.results.length < 5) {
-      const expandedUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&watch_region=IN&with_watch_monetization_types=flatrate&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc&page=1`;
-      const expandedIndianUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&watch_region=IN&with_watch_monetization_types=flatrate&with_original_language=${INDIAN_LANGUAGES.join('|')}&primary_release_date.gte=${sixtyDaysAgo}&primary_release_date.lte=${today}&sort_by=primary_release_date.desc&page=1`;
-
-      [allResponse, indianResponse] = await Promise.all([
-        fetch(expandedUrl),
-        fetch(expandedIndianUrl)
-      ]);
-
-      allData = allResponse.ok ? await allResponse.json() : { results: [] };
-      indianData = indianResponse.ok ? await indianResponse.json() : { results: [] };
-    }
-
-    // Combine: Indian content first, then others (sorted by release date)
-    const allMovies = [...indianData.results, ...allData.results];
-    const uniqueMovies = allMovies.reduce((acc: NewRelease[], movie: NewRelease) => {
-      if (!acc.find(m => m.id === movie.id)) {
-        acc.push(movie);
-      }
-      return acc;
-    }, []);
-
-    // Sort by release date (newest first)
-    uniqueMovies.sort((a: NewRelease, b: NewRelease) =>
-      new Date(b.release_date).getTime() - new Date(a.release_date).getTime()
-    );
-
-    const movies: NewRelease[] = uniqueMovies.slice(0, 15);
-
-    // Fetch watch providers for each movie
+    // Fetch watch providers: include if streaming in USA or India
     const moviesWithProviders = await Promise.all(
       movies.map(async (movie: NewRelease) => {
-        const providers = await getWatchProviders(movie.id, 'IN');
-        const inProviders = providers?.results?.IN?.flatrate || [];
-        return { ...movie, providers: inProviders };
+        const providers = await getWatchProviders(movie.id);
+        const merged = mergeFlatrateProviders(providers, WATCH_REGIONS);
+        return { ...movie, providers: merged };
       })
     );
 
-    // Filter to only movies that have streaming providers, limit to 10
-    return moviesWithProviders.filter(m => m.providers && m.providers.length > 0).slice(0, 10);
+    return moviesWithProviders.filter((m) => m.providers && m.providers.length > 0).slice(0, 15);
   } catch (error) {
     console.error('Error fetching new releases:', error);
     return [];
   }
 }
 
-// Get what's currently popular on streaming in India (recent movies only)
+// OTT only. Popular on streaming in USA + India (recent movies).
 export async function getTrendingToday(): Promise<NewRelease[]> {
   if (!TMDB_API_KEY) {
     console.warn('TMDB API key not configured');
@@ -350,49 +398,32 @@ export async function getTrendingToday(): Promise<NewRelease[]> {
   }
 
   try {
-    const currentYear = new Date().getFullYear();
-    const lastYear = currentYear - 1;
+    const lastYear = new Date().getFullYear() - 1;
+    const base = `api_key=${TMDB_API_KEY}&with_watch_monetization_types=flatrate&primary_release_date.gte=${lastYear}-01-01&sort_by=popularity.desc`;
 
-    // Get movies from current & last year that are on streaming in India, sorted by popularity
-    // This gives us "what's hot on OTT right now" - recent movies people are actually watching
-    const recentPopularUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&watch_region=IN&with_watch_monetization_types=flatrate&primary_release_date.gte=${lastYear}-01-01&sort_by=popularity.desc&vote_count.gte=50&page=1`;
-
-    // Indian language movies currently popular on streaming
-    const indianPopularUrl = `${TMDB_BASE_URL}/discover/movie?api_key=${TMDB_API_KEY}&watch_region=IN&with_watch_monetization_types=flatrate&with_original_language=${INDIAN_LANGUAGES.join('|')}&primary_release_date.gte=${lastYear}-01-01&sort_by=popularity.desc&page=1`;
-
-    const [recentResponse, indianResponse] = await Promise.all([
-      fetch(recentPopularUrl),
-      fetch(indianPopularUrl)
+    const [usRecent, usIndian, inRecent, inIndian] = await Promise.all([
+      fetch(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=US&vote_count.gte=50&page=1`),
+      fetch(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=US&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
+      fetch(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=IN&vote_count.gte=50&page=1`),
+      fetch(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=IN&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
     ]);
 
-    if (!recentResponse.ok) {
-      throw new Error(`TMDB API error: ${recentResponse.status}`);
-    }
+    const collect = async (res: Response) => (res.ok ? (await res.json()).results || [] : []);
+    const [usR, usI, inR, inI] = await Promise.all([
+      collect(usRecent), collect(usIndian), collect(inRecent), collect(inIndian),
+    ]);
 
-    const recentData = await recentResponse.json();
-    const indianData = indianResponse.ok ? await indianResponse.json() : { results: [] };
+    const byId = new Map<number, NewRelease>();
+    [...inI.slice(0, 6), ...inR, ...usI.slice(0, 6), ...usR].forEach((m: NewRelease) => byId.set(m.id, m));
+    const movies: NewRelease[] = Array.from(byId.values()).slice(0, 15);
 
-    // Prioritize Indian content, then mix with global popular
-    const allMovies = [...indianData.results.slice(0, 6), ...recentData.results];
-    const uniqueMovies = allMovies.reduce((acc: NewRelease[], movie: NewRelease) => {
-      if (!acc.find(m => m.id === movie.id)) {
-        acc.push(movie);
-      }
-      return acc;
-    }, []);
-
-    const movies: NewRelease[] = uniqueMovies.slice(0, 15);
-
-    // Fetch watch providers for each movie (for India)
     const moviesWithProviders = await Promise.all(
       movies.map(async (movie: NewRelease) => {
-        const providers = await getWatchProviders(movie.id, 'IN');
-        const inProviders = providers?.results?.IN?.flatrate || [];
-        return { ...movie, providers: inProviders };
+        const providers = await getWatchProviders(movie.id);
+        return { ...movie, providers: mergeFlatrateProviders(providers, WATCH_REGIONS) };
       })
     );
 
-    // Return movies that have streaming providers in India, limit to 10
     return moviesWithProviders.filter(m => m.providers && m.providers.length > 0).slice(0, 10);
   } catch (error) {
     console.error('Error fetching trending movies:', error);

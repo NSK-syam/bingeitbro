@@ -3,6 +3,9 @@
 import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
+import { AvatarPickerModal } from './AvatarPickerModal';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { enablePushNotifications } from '@/lib/push';
 
 interface HeaderProps {
   onSearch?: (query: string) => void;
@@ -28,8 +31,41 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
+  const [userAvatar, setUserAvatar] = useState<string | null>(null);
+  const [showAvatarPicker, setShowAvatarPicker] = useState(false);
+  const [pushStatus, setPushStatus] = useState<'unsupported' | 'default' | 'granted' | 'denied'>('default');
+  const [pushLoading, setPushLoading] = useState(false);
+  const [pushError, setPushError] = useState('');
   const searchRef = useRef<HTMLDivElement>(null);
-  const { user, loading, signOut, isConfigured } = useAuth();
+  const { user, signOut, isConfigured } = useAuth();
+
+  // Fetch current user's avatar from DB (for header + picker)
+  useEffect(() => {
+    if (!user?.id || !isSupabaseConfigured()) {
+      setUserAvatar(null);
+      return;
+    }
+    let cancelled = false;
+    const supabase = createClient();
+    void (async () => {
+      try {
+        const { data } = await supabase.from('users').select('avatar').eq('id', user.id).single();
+        if (!cancelled) setUserAvatar(data?.avatar ?? null);
+      } catch {
+        if (!cancelled) setUserAvatar(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!('Notification' in window)) {
+      setPushStatus('unsupported');
+      return;
+    }
+    setPushStatus(Notification.permission);
+  }, []);
 
   // Fetch autocomplete suggestions from TMDB
   useEffect(() => {
@@ -56,6 +92,7 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
 
         const movieSuggestions: MovieSuggestion[] = data.results
           .slice(0, 8)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           .map((movie: any) => ({
             id: movie.id,
             title: movie.title,
@@ -135,13 +172,28 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
 
+  const handleEnablePush = async () => {
+    if (!user) return;
+    setPushError('');
+    setPushLoading(true);
+    try {
+      await enablePushNotifications(user.id);
+      setPushStatus('granted');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unable to enable notifications';
+      setPushError(message);
+    } finally {
+      setPushLoading(false);
+    }
+  };
+
   return (
     <header className="sticky top-0 z-50 bg-[var(--bg-primary)]/80 backdrop-blur-xl border-b border-white/5">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[var(--accent)] to-orange-600 flex items-center justify-center shadow-lg shadow-[var(--accent)]/20">
+            <div className="bib-logo w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[var(--accent)] to-orange-600 flex items-center justify-center shadow-lg shadow-[var(--accent)]/20">
               <svg
                 className="w-5 h-5 sm:w-6 sm:h-6 text-[var(--bg-primary)]"
                 fill="none"
@@ -155,13 +207,16 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                   d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
                 />
               </svg>
+              <span className="bib-logo-orbit" aria-hidden="true" />
             </div>
             <div>
-              <h1 className="text-lg sm:text-xl font-bold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
-                Cinema Chudu
+              <h1 className="bib-wordmark text-lg sm:text-xl font-bold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
+                <span className="bib-letter">B</span>
+                <span className="bib-letter">i</span>
+                <span className="bib-letter">B</span>
               </h1>
               <p className="text-[10px] sm:text-xs text-[var(--text-muted)] hidden sm:block">
-                Friends recommend, you watch
+                Binge it bro
               </p>
             </div>
           </Link>
@@ -304,8 +359,8 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-secondary)] rounded-full hover:bg-[var(--bg-card)] transition-colors"
                 >
-                  <div className="w-6 h-6 rounded-full bg-[var(--accent)] flex items-center justify-center text-xs font-bold text-[var(--bg-primary)]">
-                    {userName.charAt(0).toUpperCase()}
+                  <div className="w-8 h-8 rounded-full bg-[var(--bg-card)] flex items-center justify-center text-lg border border-white/10">
+                    {userAvatar ? userAvatar : <span className="text-xs font-bold text-[var(--accent)]">{userName.charAt(0).toUpperCase()}</span>}
                   </div>
                   <span className="hidden sm:inline text-sm text-[var(--text-primary)]">{userName}</span>
                 </button>
@@ -317,15 +372,57 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                       className="absolute right-0 mt-2 w-56 bg-[var(--bg-card)] rounded-xl shadow-xl border border-white/10 py-2 z-50"
                       onClick={(e) => e.stopPropagation()}
                     >
-                      <div className="px-4 py-2 border-b border-white/10">
+                      <div className="px-4 py-2 border-b border-white/10 flex items-center gap-2">
+                        <span className="text-2xl">{userAvatar ?? '🎬'}</span>
                         <p className="text-sm font-medium text-[var(--text-primary)]">{userName}</p>
-                        <p className="text-xs text-[var(--text-muted)] truncate">{user.email}</p>
                       </div>
                       <button
                         type="button"
                         onClick={() => {
+                          setShowUserMenu(false);
+                          setShowAvatarPicker(true);
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 cursor-pointer"
+                      >
+                        <span className="text-lg">🖼️</span>
+                        Change profile picture
+                      </button>
+                      {pushStatus === 'unsupported' ? (
+                        <div className="px-4 py-2 text-sm text-[var(--text-muted)] flex items-center gap-2">
+                          <span className="text-lg">🔕</span>
+                          Notifications not supported
+                        </div>
+                      ) : pushStatus === 'granted' ? (
+                        <div className="px-4 py-2 text-sm text-green-300 flex items-center gap-2">
+                          <span className="text-lg">🔔</span>
+                          Notifications enabled
+                        </div>
+                      ) : pushStatus === 'denied' ? (
+                        <div className="px-4 py-2 text-sm text-[var(--text-muted)] flex items-center gap-2">
+                          <span className="text-lg">🚫</span>
+                          Notifications blocked
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleEnablePush}
+                          disabled={pushLoading}
+                          className="w-full px-4 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          <span className="text-lg">🔔</span>
+                          {pushLoading ? 'Enabling notifications...' : 'Enable notifications'}
+                        </button>
+                      )}
+                      {pushError && (
+                        <div className="px-4 pb-2 text-xs text-red-400">
+                          {pushError}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => {
                           const profileUrl = `${window.location.origin}/profile/${user.id}`;
-                          const message = `Check out my movie recommendations on Cinema Chudu! ${profileUrl}`;
+                          const message = `Check out my movie recommendations on BiB (Binge it bro)! ${profileUrl}`;
                           const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
                           window.open(whatsappUrl, '_blank');
                           setShowUserMenu(false);
@@ -381,6 +478,14 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
           </div>
         </div>
       </div>
+
+      <AvatarPickerModal
+        isOpen={showAvatarPicker}
+        onClose={() => setShowAvatarPicker(false)}
+        currentAvatar={userAvatar ?? '🎬'}
+        userId={user?.id ?? ''}
+        onSaved={(avatar) => setUserAvatar(avatar)}
+      />
     </header>
   );
 }

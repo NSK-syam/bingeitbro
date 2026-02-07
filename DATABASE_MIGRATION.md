@@ -39,6 +39,19 @@ You should see a success message showing:
 
 ---
 
+## Fix: "Duplicate" when sending a *different* movie to the same friend
+
+If you could only send **one movie per friend** (sending movie B after movie A said "duplicate"), the table was created with unique constraints that treat all TMDB movies as one. Run this **once** in Supabase SQL Editor:
+
+1. Open **Supabase Dashboard → SQL Editor → New query**
+2. Copy and run the contents of **`supabase-friend-recommendations-fix-unique.sql`**
+
+That migration drops the old constraints and adds partial unique indexes so:
+- You can send **multiple different movies** to the same friend (movie A, movie B, etc.)
+- You still **cannot** send the **same** movie twice to the same friend (no spam)
+
+---
+
 ## After Migration
 
 Once the SQL runs successfully:
@@ -58,6 +71,21 @@ Once the SQL runs successfully:
 
 **If you see RLS policy errors:**
 - The policies might already exist. You can safely ignore these.
+
+---
+
+## In-app notifications (optional)
+
+So friends see the recommendation badge update **as soon** as someone sends them a movie (without refreshing):
+
+1. In **Supabase Dashboard** go to **Database → Replication** (or **Realtime**).
+2. Ensure the **`friend_recommendations`** table is included in the Realtime publication. If not, run in SQL Editor:
+
+```sql
+ALTER PUBLICATION supabase_realtime ADD TABLE friend_recommendations;
+```
+
+After this, when the recipient has the app open, they get a live badge update and a short “New movie recommendation from a friend!” toast.
 
 ---
 

@@ -44,6 +44,25 @@ export function useWatched() {
     return Object.values(watchedState).filter((v) => v.watched).length;
   }, [watchedState]);
 
+  const getWatchedCountThisMonth = useCallback(() => {
+    const now = new Date();
+    const thisYear = now.getFullYear();
+    const thisMonth = now.getMonth();
+    return Object.values(watchedState).filter((v) => {
+      if (!v.watched || !v.watchedAt) return false;
+      const d = new Date(v.watchedAt);
+      return d.getFullYear() === thisYear && d.getMonth() === thisMonth;
+    }).length;
+  }, [watchedState]);
+
+  const getWatchedCountThisYear = useCallback(() => {
+    const thisYear = new Date().getFullYear();
+    return Object.values(watchedState).filter((v) => {
+      if (!v.watched || !v.watchedAt) return false;
+      return new Date(v.watchedAt).getFullYear() === thisYear;
+    }).length;
+  }, [watchedState]);
+
   const getWatchedIds = useCallback(() => {
     return Object.entries(watchedState)
       .filter(([, v]) => v.watched)
@@ -55,6 +74,8 @@ export function useWatched() {
     toggleWatched,
     setWatched,
     getWatchedCount,
+    getWatchedCountThisMonth,
+    getWatchedCountThisYear,
     getWatchedIds,
     watchedState,
   };

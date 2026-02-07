@@ -20,6 +20,9 @@ CREATE TABLE friend_recommendations (
   
   -- Read status
   is_read BOOLEAN DEFAULT FALSE,
+  -- Watched status (recipient watched the recommendation)
+  is_watched BOOLEAN DEFAULT FALSE,
+  watched_at TIMESTAMP WITH TIME ZONE,
   
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   
@@ -29,10 +32,16 @@ CREATE TABLE friend_recommendations (
     (tmdb_id IS NOT NULL AND movie_title IS NOT NULL)
   ),
   
-  -- Unique constraints to prevent spam
-  UNIQUE NULLS NOT DISTINCT (sender_id, recipient_id, recommendation_id),
-  UNIQUE NULLS NOT DISTINCT (sender_id, recipient_id, tmdb_id)
+  -- Prevent sending the *same* movie twice to the same friend (different movies = allowed)
 );
+
+CREATE UNIQUE INDEX idx_friend_rec_unique_recommendation
+  ON friend_recommendations (sender_id, recipient_id, recommendation_id)
+  WHERE recommendation_id IS NOT NULL;
+
+CREATE UNIQUE INDEX idx_friend_rec_unique_tmdb
+  ON friend_recommendations (sender_id, recipient_id, tmdb_id)
+  WHERE tmdb_id IS NOT NULL;
 
 -- Enable RLS
 ALTER TABLE friend_recommendations ENABLE ROW LEVEL SECURITY;
@@ -68,6 +77,7 @@ CREATE POLICY "Users can delete sent recommendations" ON friend_recommendations
 CREATE INDEX idx_friend_recommendations_recipient ON friend_recommendations(recipient_id, is_read);
 CREATE INDEX idx_friend_recommendations_sender ON friend_recommendations(sender_id);
 CREATE INDEX idx_friend_recommendations_created ON friend_recommendations(created_at DESC);
+CREATE INDEX idx_friend_recommendations_watched ON friend_recommendations(recipient_id, is_watched);
 
 -- Helper view for unread count
 CREATE OR REPLACE VIEW friend_recommendations_unread_count AS

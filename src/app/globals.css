@@ -1,6 +1,6 @@
 @import "tailwindcss";
 
-/* Cinema Chudu - A Dark Cinematic Experience */
+/* BiB - Binge it bro */
 
 :root {
   /* The darkness of a theater before the film starts */
@@ -192,6 +192,504 @@ body {
   border: 1px solid rgba(245, 158, 11, 0.3);
 }
 
+/* BiB wordmark animation */
+.bib-logo {
+  position: relative;
+  isolation: isolate;
+  transform: translateZ(0);
+}
+
+.bib-logo::before {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(245, 158, 11, 0.45), transparent 60%),
+    radial-gradient(circle at 80% 80%, rgba(251, 191, 36, 0.3), transparent 55%);
+  filter: blur(6px);
+  opacity: 0.8;
+  z-index: -1;
+  animation: bibPulse 5s ease-in-out infinite;
+}
+
+.bib-logo-orbit {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 7px;
+  border-radius: 999px;
+  background: #fff3d0;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.8);
+  animation: bibOrbit 4s linear infinite;
+}
+
+.bib-wordmark {
+  letter-spacing: 0.12em;
+}
+
+.bib-letter {
+  display: inline-block;
+  animation: bibFloat 4.5s ease-in-out infinite;
+}
+
+.bib-letter:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.bib-letter:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+@keyframes bibPulse {
+  0%, 100% {
+    opacity: 0.6;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.05);
+  }
+}
+
+@keyframes bibOrbit {
+  0% {
+    transform: translate(-50%, -50%) rotate(0deg) translateX(16px);
+  }
+  100% {
+    transform: translate(-50%, -50%) rotate(360deg) translateX(16px);
+  }
+}
+
+@keyframes bibFloat {
+  0%, 100% {
+    transform: translateY(0) rotate(0.2deg);
+  }
+  50% {
+    transform: translateY(-3px) rotate(-0.2deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bib-logo::before,
+  .bib-logo-orbit,
+  .bib-letter {
+    animation: none;
+  }
+}
+
+/* BiB splash intro */
+.bib-splash {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(245, 158, 11, 0.2), transparent 40%),
+    radial-gradient(circle at 80% 80%, rgba(249, 115, 22, 0.2), transparent 45%),
+    rgba(10, 10, 12, 0.92);
+  backdrop-filter: blur(6px);
+  animation: bibSplashFade 0.6s ease both;
+}
+
+.bib-splash-card {
+  padding: 32px 40px;
+  border-radius: 32px;
+  background: linear-gradient(135deg, rgba(24, 24, 27, 0.95), rgba(15, 15, 18, 0.95));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  animation: bibSplashLift 0.8s ease both;
+}
+
+.bib-clapper {
+  width: min(420px, 80vw);
+  margin: 0 auto;
+  display: grid;
+  gap: 0;
+  transform: translateZ(0);
+}
+
+.bib-clapper-top {
+  height: 72px;
+  background: #0b0b0e;
+  border-radius: 16px 16px 10px 10px;
+  position: relative;
+  transform-origin: left bottom;
+  animation: bibClap 0.8s ease-in-out infinite;
+  box-shadow: inset 0 -4px 0 rgba(255, 255, 255, 0.08);
+}
+
+.bib-clapper-stripes {
+  position: absolute;
+  inset: 12px;
+  border-radius: 10px;
+  background: repeating-linear-gradient(
+    -25deg,
+    #f8fafc 0 18px,
+    #0b0b0e 18px 36px
+  );
+}
+
+.bib-clapper-body {
+  background: #0b0b0e;
+  border-radius: 12px 12px 22px 22px;
+  padding: 22px 20px 18px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 20px 45px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.bib-clapper-title {
+  font-size: clamp(36px, 7vw, 52px);
+  font-weight: 800;
+  letter-spacing: 0.18em;
+  color: #fbbf24;
+  text-transform: uppercase;
+}
+
+.bib-clapper-sub {
+  margin-top: 6px;
+  font-size: 14px;
+  color: #f8fafc;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.bib-clapper-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 14px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #a1a1aa;
+}
+
+.bib-splash-tagline {
+  margin-top: 16px;
+  font-size: 14px;
+  color: #e2e8f0;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+@keyframes bibSplashFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes bibSplashLift {
+  from { transform: translateY(14px) scale(0.98); opacity: 0.7; }
+  to { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+@keyframes bibClap {
+  0%, 20% { transform: rotate(0deg); }
+  30% { transform: rotate(-14deg); }
+  40% { transform: rotate(0deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bib-splash,
+  .bib-splash-card,
+  .bib-clapper-top {
+    animation: none;
+  }
+}
+
+/* Guest landing */
+.bib-guest-hero {
+  position: relative;
+  margin-bottom: 48px;
+  padding: 32px 24px;
+  border-radius: 32px;
+  background:
+    radial-gradient(circle at 10% 15%, rgba(245, 158, 11, 0.2), transparent 40%),
+    radial-gradient(circle at 90% 10%, rgba(249, 115, 22, 0.2), transparent 45%),
+    rgba(15, 15, 18, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+
+
+.bib-guest-grid {
+  display: grid;
+  gap: 32px;
+}
+
+.bib-guest-copy {
+  display: grid;
+  gap: 16px;
+}
+
+.bib-guest-kicker {
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  font-size: 11px;
+  color: #fbbf24;
+  font-weight: 600;
+}
+
+.bib-guest-title {
+  font-size: clamp(32px, 5vw, 44px);
+  font-weight: 800;
+  line-height: 1.1;
+  color: #f8fafc;
+}
+
+.bib-guest-subtitle {
+  font-size: 16px;
+  color: #a1a1aa;
+  max-width: 520px;
+}
+
+.bib-guest-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.bib-guest-primary {
+  padding: 12px 20px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  color: #0a0a0c;
+  font-weight: 700;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  box-shadow: 0 12px 30px rgba(245, 158, 11, 0.35);
+}
+
+.bib-guest-primary:hover {
+  transform: translateY(-2px);
+}
+
+.bib-guest-primary--small {
+  padding: 10px 16px;
+  font-size: 13px;
+}
+
+.bib-guest-secondary {
+  padding: 12px 20px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  color: #f8fafc;
+  background: rgba(24, 24, 27, 0.8);
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.bib-guest-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.4);
+  color: #fff;
+}
+
+.bib-guest-badges {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #d4d4d8;
+}
+
+.bib-guest-badges span {
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bib-guest-clapper {
+  display: grid;
+  gap: 0;
+  align-self: center;
+  max-width: 420px;
+}
+
+.bib-guest-clapper-top {
+  height: 72px;
+  background: #0b0b0e;
+  border-radius: 16px 16px 10px 10px;
+  position: relative;
+  transform-origin: left bottom;
+  animation: bibClap 3.6s ease-in-out infinite;
+}
+
+.bib-guest-clapper-stripes {
+  position: absolute;
+  inset: 12px;
+  border-radius: 10px;
+  background: repeating-linear-gradient(
+    -25deg,
+    #f8fafc 0 18px,
+    #0b0b0e 18px 36px
+  );
+}
+
+.bib-guest-clapper-body {
+  background: #0b0b0e;
+  border-radius: 12px 12px 22px 22px;
+  padding: 22px 20px 18px;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  box-shadow:
+    0 20px 45px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  display: grid;
+  gap: 10px;
+}
+
+.bib-guest-clapper-row {
+  display: flex;
+  justify-content: space-between;
+  text-transform: uppercase;
+  font-size: 12px;
+  letter-spacing: 0.18em;
+  color: #a1a1aa;
+}
+
+.bib-guest-clapper-title {
+  font-size: 40px;
+  font-weight: 800;
+  letter-spacing: 0.2em;
+  color: #fbbf24;
+  text-transform: uppercase;
+}
+
+.bib-guest-clapper-tagline {
+  font-size: 12px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #f8fafc;
+}
+
+.bib-guest-steps {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-bottom: 48px;
+}
+
+.bib-guest-step {
+  padding: 20px;
+  border-radius: 20px;
+  background: rgba(24, 24, 27, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bib-guest-step h3 {
+  font-size: 18px;
+  font-weight: 700;
+  color: #f8fafc;
+  margin-bottom: 8px;
+}
+
+.bib-guest-step p {
+  font-size: 14px;
+  color: #a1a1aa;
+}
+
+.bib-guest-preview {
+  margin-bottom: 56px;
+}
+
+.bib-guest-preview-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.bib-guest-preview-head h3 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #f8fafc;
+}
+
+/* Friends filmstrip */
+.bib-filmstrip {
+  position: relative;
+  margin: 0 auto 12px;
+  max-width: 680px;
+  height: 56px;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #0b0b0e;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 0 18px rgba(0, 0, 0, 0.6);
+}
+
+.bib-filmstrip::before,
+.bib-filmstrip::after {
+  content: '';
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  height: 8px;
+  opacity: 0.55;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.15) 0 8px,
+    transparent 8px 16px
+  );
+}
+
+.bib-filmstrip::before {
+  top: 6px;
+}
+
+.bib-filmstrip::after {
+  bottom: 6px;
+}
+
+.bib-filmstrip-track {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 100%;
+  padding: 0 16px;
+  width: max-content;
+  animation: bibFilmScroll 18s linear infinite;
+}
+
+.bib-filmstrip-frame {
+  padding: 8px 16px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+@keyframes bibFilmScroll {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+@media (min-width: 1024px) {
+  .bib-guest-hero {
+    padding: 48px 56px;
+  }
+
+  .bib-guest-grid {
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+    align-items: center;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bib-filmstrip-track {
+    animation: none;
+  }
+}
+
+
 /* Animation for cards appearing */
 @keyframes fadeInUp {
   from {
@@ -206,6 +704,81 @@ body {
 
 .animate-fade-in-up {
   animation: fadeInUp 0.5s ease forwards;
+}
+
+/* Daily quote popup */
+@keyframes quoteBackdropIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes quoteBackdropOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+@keyframes quotePopIn {
+  from {
+    opacity: 0;
+    transform: scale(0.85) translateY(12px);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.03) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+@keyframes quotePopOut {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(8px);
+  }
+}
+@keyframes quoteTextIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.quote-popup-backdrop-in {
+  animation: quoteBackdropIn 0.25s ease-out forwards;
+}
+.quote-popup-backdrop-out {
+  animation: quoteBackdropOut 0.2s ease-in forwards;
+}
+.quote-popup-in {
+  animation: quotePopIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+.quote-popup-out {
+  animation: quotePopOut 0.2s ease-in forwards;
+}
+.quote-popup-text-in {
+  animation: quoteTextIn 0.4s ease-out 0.15s both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .quote-popup-backdrop-in,
+  .quote-popup-backdrop-out {
+    animation-duration: 0.15s;
+  }
+  .quote-popup-in {
+    animation: quoteTextIn 0.2s ease-out forwards;
+  }
+  .quote-popup-out {
+    animation: quoteBackdropOut 0.15s ease-in forwards;
+  }
+  .quote-popup-text-in {
+    animation: quoteTextIn 0.2s ease-out 0.05s both;
+  }
 }
 
 /* Stagger animation delay for grid items */

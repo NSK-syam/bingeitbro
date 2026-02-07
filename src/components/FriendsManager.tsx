@@ -2,10 +2,23 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthProvider';
-import { createClient, DBUser } from '@/lib/supabase';
+import { isSupabaseConfigured } from '@/lib/supabase';
 
-interface Friend extends DBUser {
+interface UserPreview {
+  id: string;
+  name: string;
+  username?: string | null;
+  avatar?: string | null;
+  email?: string | null;
+}
+
+interface Friend extends UserPreview {
   friendshipId?: string;
+}
+
+interface FriendshipRow {
+  id: string;
+  friend_id: string;
 }
 
 interface FriendsManagerProps {
@@ -14,67 +27,129 @@ interface FriendsManagerProps {
   onFriendsChange: () => void;
 }
 
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseProjectRef = (() => {
+  if (!supabaseUrl) return '';
+  try {
+    return new URL(supabaseUrl).hostname.split('.')[0] || '';
+  } catch {
+    return '';
+  }
+})();
+
+const getAccessToken = () => {
+  if (typeof window === 'undefined' || !supabaseProjectRef) return null;
+  const raw = window.localStorage.getItem(`sb-${supabaseProjectRef}-auth-token`);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed?.access_token ?? null;
+  } catch {
+    return null;
+  }
+};
+
+const supabaseRequest = async <T,>(
+  path: string,
+  options: RequestInit & { timeoutMs?: number } = {},
+  accessToken?: string | null,
+): Promise<T> => {
+  if (!supabaseUrl || !supabaseAnonKey) {
+    throw new Error('Supabase is not configured.');
+  }
+  const token = accessToken || getAccessToken() || supabaseAnonKey;
+  const { timeoutMs = 8000, headers, ...rest } = options;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${path}`, {
+      ...rest,
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${token}`,
+        ...headers,
+      },
+      signal: controller.signal,
+    });
+
+    const text = await response.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+
+    if (!response.ok) {
+      const message =
+        typeof data === 'object' && data !== null && 'message' in data
+          ? String((data as { message?: string }).message || response.statusText)
+          : response.statusText || 'Request failed.';
+      throw new Error(message);
+    }
+
+    return data as T;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs / 1000}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsManagerProps) {
   const { user } = useAuth();
 
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<DBUser[]>([]);
+  const [searchResults, setSearchResults] = useState<UserPreview[]>([]);
   const [friends, setFriends] = useState<Friend[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState('');
 
   // Fetch current friends
   const fetchFriends = useCallback(async () => {
     console.log('[FriendsManager] fetchFriends called, user:', user?.id);
+    setErrorMessage('');
+    setIsLoading(true);
     if (!user) {
       console.log('[FriendsManager] No user, stopping load');
       setIsLoading(false);
       return;
     }
-
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => {
-      console.error('[FriendsManager] Query timed out after 8s');
-      controller.abort();
-    }, 8000);
+    if (!isSupabaseConfigured()) {
+      setErrorMessage('Supabase is not configured. Please set environment variables.');
+      setIsLoading(false);
+      return;
+    }
 
     try {
-      const supabase = createClient();
-
-      // Verify we have a valid auth session before querying RLS tables
-      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-      console.log('[FriendsManager] Session check:', {
-        hasSession: !!session,
-        userId: session?.user?.id,
-        expiresAt: session?.expires_at,
-        error: sessionError?.message,
-      });
-
-      if (!session) {
-        console.warn('[FriendsManager] No session, skipping friends query');
-        setFriends([]);
-        clearTimeout(timeoutId);
-        setIsLoading(false);
-        return;
-      }
-
-      console.log('[FriendsManager] Starting friends query...');
+      console.log('[FriendsManager] Starting friends query for user:', user.id);
+      const accessToken = getAccessToken();
 
       // Step 1: Get friend relationships
-      const { data: friendships, error: friendsError } = await supabase
-        .from('friends')
-        .select('id, friend_id')
-        .eq('user_id', user.id)
-        .abortSignal(controller.signal);
+      let slowTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        setErrorMessage('Waking up the database… please wait.');
+      }, 7000);
 
-      clearTimeout(timeoutId);
-      console.log('[FriendsManager] Friendships query complete:', { friendships, friendsError });
+      const friendsParams = new URLSearchParams({
+        select: 'id,friend_id',
+        user_id: `eq.${user.id}`,
+      });
 
-      if (friendsError) {
-        console.error('[FriendsManager] Error fetching friendships:', friendsError);
-        setFriends([]);
-        return;
-      }
+      const friendships = await supabaseRequest<FriendshipRow[]>(
+        `friends?${friendsParams.toString()}`,
+        { method: 'GET', timeoutMs: 25000 },
+        accessToken,
+      );
+      if (slowTimer) clearTimeout(slowTimer);
+      console.log('[FriendsManager] Friendships query complete:', { friendships });
 
       if (!friendships || friendships.length === 0) {
         console.log('[FriendsManager] No friends found');
@@ -84,21 +159,26 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
 
       // Step 2: Get user details for friends
       const friendIds = friendships.map(f => f.friend_id);
-      const { data: users, error: usersError } = await supabase
-        .from('users')
-        .select('*')
-        .in('id', friendIds)
-        .abortSignal(controller.signal);
+      slowTimer = setTimeout(() => {
+        setErrorMessage('Loading friend profiles… please wait.');
+      }, 7000);
 
-      console.log('[FriendsManager] Users query complete:', { users, usersError });
+      const usersParams = new URLSearchParams({
+        select: 'id,name,username,avatar,email',
+        id: `in.(${friendIds.join(',')})`,
+      });
 
-      if (usersError) {
-        console.error('[FriendsManager] Error fetching friend users:', usersError);
-        return;
-      }
+      const users = await supabaseRequest<UserPreview[]>(
+        `users?${usersParams.toString()}`,
+        { method: 'GET', timeoutMs: 25000 },
+        accessToken,
+      );
+      if (slowTimer) clearTimeout(slowTimer);
+
+      console.log('[FriendsManager] Users query complete:', { users });
 
       if (users) {
-        const friendsList: Friend[] = users.map((u: DBUser) => {
+        const friendsList: Friend[] = users.map((u: UserPreview) => {
           const friendship = friendships.find(f => f.friend_id === u.id);
           return {
             ...u,
@@ -107,20 +187,16 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
         });
         setFriends(friendsList);
       }
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
-      clearTimeout(timeoutId);
-      if (err?.name === 'AbortError') {
-        console.error('[FriendsManager] Request aborted (timeout)');
-      } else {
-        console.error('[FriendsManager] Exception:', err?.name, err?.message);
-      }
+      console.error('[FriendsManager] Exception:', err?.name, err?.message);
+      setErrorMessage(err?.message || 'Something went wrong while loading friends.');
       setFriends([]);
     } finally {
-      clearTimeout(timeoutId);
       console.log('[FriendsManager] Finally block - setting isLoading to false');
       setIsLoading(false);
     }
-  }, [user?.id]);
+  }, [user]);
 
   useEffect(() => {
     if (isOpen) {
@@ -134,11 +210,16 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       // Reset loading state when modal closes so it shows loading on next open
       setIsLoading(true);
     }
-  }, [isOpen, user?.id, fetchFriends]); // Use user.id
+  }, [isOpen, user, fetchFriends]);
 
   useEffect(() => {
     if (!searchQuery.trim() || !user) {
       setSearchResults([]);
+      setErrorMessage('');
+      return;
+    }
+    if (!isSupabaseConfigured()) {
+      setErrorMessage('Supabase is not configured. Please set environment variables.');
       return;
     }
 
@@ -147,43 +228,45 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
     const timer = setTimeout(async () => {
       setIsSearching(true);
 
-      const supabase = createClient();
+      const accessToken = getAccessToken();
+      const sanitizedQuery = searchQuery.replace(/[%_(),]/g, ' ').trim();
 
       try {
-        const { data, error } = await supabase
-          .from('users')
-          .select('*')
-          .or(`name.ilike.%${searchQuery}%,username.ilike.%${searchQuery}%`)
-          .neq('id', user.id)
-          .limit(10);
+        let slowTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+          if (!cancelled) setErrorMessage('Searching… please wait.');
+        }, 7000);
+
+        if (!sanitizedQuery) {
+          if (slowTimer) clearTimeout(slowTimer);
+          setSearchResults([]);
+          setErrorMessage('');
+          return;
+        }
+
+        const orFilter = `name.ilike.*${sanitizedQuery}*,username.ilike.*${sanitizedQuery}*`;
+        const searchParams = new URLSearchParams({
+          select: 'id,name,username,avatar,email',
+          or: `(${orFilter})`,
+          id: `neq.${user.id}`,
+          limit: '10',
+        });
+
+        const data = await supabaseRequest<UserPreview[]>(
+          `users?${searchParams.toString()}`,
+          { method: 'GET' },
+          accessToken,
+        );
+        if (slowTimer) clearTimeout(slowTimer);
 
         if (cancelled) return;
 
-        if (error) {
-          console.error('FriendsManager: Search error:', error);
-          // Fallback to name only search if username column doesn't exist
-          if (error.code === '42703') {
-            try {
-              const { data: retryData } = await supabase
-                .from('users')
-                .select('*')
-                .ilike('name', `%${searchQuery}%`)
-                .neq('id', user.id)
-                .limit(10);
-              if (!cancelled) setSearchResults(retryData || []);
-            } catch (retryErr) {
-              console.error('FriendsManager: Retry search failed:', retryErr);
-              if (!cancelled) setSearchResults([]);
-            }
-          } else {
-            setSearchResults([]);
-          }
-        } else {
-          setSearchResults(data || []);
-        }
+        setErrorMessage('');
+        setSearchResults(data || []);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         if (!cancelled) {
           console.error('FriendsManager: Search exception:', err);
+          setErrorMessage(err?.message || 'Search failed. Please try again.');
           setSearchResults([]);
         }
       } finally {
@@ -195,34 +278,64 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [searchQuery, user?.id]);
+  }, [searchQuery, user]);
 
-  const addFriend = async (friendUser: DBUser) => {
+  const addFriend = async (friendUser: UserPreview) => {
     if (!user) return;
 
-    const supabase = createClient();
-    const { error } = await supabase.from('friends').insert({
-      user_id: user.id,
-      friend_id: friendUser.id,
-    });
-
-    if (!error) {
-      setFriends((prev) => [...prev, { ...friendUser, friendshipId: undefined }]);
-      setSearchQuery('');
-      setSearchResults([]);
-      onFriendsChange();
-      fetchFriends();
+    try {
+      await supabaseRequest(
+        'friends',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({
+            user_id: user.id,
+            friend_id: friendUser.id,
+          }),
+        },
+        getAccessToken(),
+      );
+    } catch (err: any) {
+      console.error('FriendsManager: Add friend error:', err);
+      setErrorMessage('Unable to add friend. Please try again.');
+      return;
     }
+
+    setFriends((prev) => [...prev, { ...friendUser, friendshipId: undefined }]);
+    setSearchQuery('');
+    setSearchResults([]);
+    onFriendsChange();
+    fetchFriends();
   };
 
   const removeFriend = async (friendshipId: string) => {
-    const supabase = createClient();
-    const { error } = await supabase.from('friends').delete().eq('id', friendshipId);
+    try {
+      const deleteParams = new URLSearchParams({
+        id: `eq.${friendshipId}`,
+      });
 
-    if (!error) {
-      setFriends((prev) => prev.filter((f) => f.friendshipId !== friendshipId));
-      onFriendsChange();
+      await supabaseRequest(
+        `friends?${deleteParams.toString()}`,
+        {
+          method: 'DELETE',
+          headers: {
+            Prefer: 'return=minimal',
+          },
+        },
+        getAccessToken(),
+      );
+    } catch (err: any) {
+      console.error('FriendsManager: Remove friend error:', err);
+      setErrorMessage('Unable to remove friend. Please try again.');
+      return;
     }
+
+    setFriends((prev) => prev.filter((f) => f.friendshipId !== friendshipId));
+    onFriendsChange();
   };
 
   const isFriend = (userId: string) => friends.some((f) => f.id === userId);
@@ -274,6 +387,11 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
               </div>
             )}
           </div>
+          {errorMessage && (
+            <div className="mt-2 text-xs text-red-400">
+              {errorMessage}
+            </div>
+          )}
 
           {/* Search Results */}
           {searchResults.length > 0 && (
@@ -313,6 +431,18 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
             <div className="flex justify-center py-8">
               <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             </div>
+          ) : errorMessage ? (
+            <div className="text-center py-8">
+              <p className="text-[var(--text-muted)] mb-2">{errorMessage}</p>
+              <p className="text-sm text-[var(--text-muted)] mb-4">The server may be waking up. Try again in a moment.</p>
+              <button
+                type="button"
+                onClick={() => { setErrorMessage(''); fetchFriends(); }}
+                className="px-4 py-2 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors"
+              >
+                Retry
+              </button>
+            </div>
           ) : friends.length === 0 ? (
             <div className="text-center py-8 text-[var(--text-muted)]">
               <p>No friends yet</p>
@@ -329,7 +459,9 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
                     <span className="text-2xl">{friend.avatar}</span>
                     <div>
                       <p className="font-medium text-[var(--text-primary)]">{friend.name}</p>
-                      <p className="text-xs text-[var(--text-muted)]">{friend.email}</p>
+                      {friend.username && (
+                        <p className="text-xs text-[var(--text-muted)]">@{friend.username}</p>
+                      )}
                     </div>
                   </div>
                   <button

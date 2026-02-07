@@ -1,4 +1,4 @@
-// The soul of Cinema Chudu - every recommendation tells a story
+// The soul of BiB - every recommendation tells a story
 
 export interface OTTLink {
   platform: string;

@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/movie/:id",
+      "destination": "/movie/fallback"
+    },
+    {
+      "source": "/profile/:id",
+      "destination": "/profile/fallback"
+    }
+  ]
+}

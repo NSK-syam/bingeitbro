@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo, useRef } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { SendToFriendModal } from './SendToFriendModal';
 import { useAuth } from './AuthProvider';
+import { getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, resolveOttProvider } from '@/lib/tmdb';
 
 interface TrendingMovie {
   id: number;
@@ -18,6 +19,7 @@ interface TrendingMovie {
   original_language: string;
   popularity: number;
   adult?: boolean;
+  genre_ids?: number[];
 }
 
 const LANGUAGES = [
@@ -46,9 +48,32 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [sendModalMovie, setSendModalMovie] = useState<TrendingMovie | null>(null);
+  const [streamingStatus, setStreamingStatus] = useState<Record<number, 'ott' | 'soon'>>({});
+  const [filterOpen, setFilterOpen] = useState(false);
+  const filterRef = useRef<HTMLDivElement>(null);
 
-  // Get language from URL or default to empty
+  // Filter params from URL
   const selectedLang = searchParams.get('lang') || '';
+  const selectedGenre = searchParams.get('genre') || '';
+  const selectedYear = searchParams.get('year') || '';
+  const selectedOtt = searchParams.get('ott') || '';
+  const sortParam = searchParams.get('sort') || 'date'; // date | rating | popularity
+
+  const resolvedOttProvider = useMemo(() => resolveOttProvider(selectedOtt), [selectedOtt]);
+  const activeOttKey = resolvedOttProvider?.key ?? selectedOtt;
+
+  const updateFilters = (updates: { lang?: string; genre?: string; year?: string; sort?: string; ott?: string }) => {
+    const params = new URLSearchParams(searchParams.toString());
+    if (updates.lang !== undefined) (updates.lang ? params.set('lang', updates.lang) : params.delete('lang'));
+    if (updates.genre !== undefined) (updates.genre ? params.set('genre', updates.genre) : params.delete('genre'));
+    if (updates.year !== undefined) (updates.year ? params.set('year', updates.year) : params.delete('year'));
+    if (updates.sort !== undefined) (updates.sort ? params.set('sort', updates.sort) : params.delete('sort'));
+    if (updates.ott !== undefined) (updates.ott ? params.set('ott', updates.ott) : params.delete('ott'));
+    router.push(`/?${params.toString()}`, { scroll: false });
+  };
+
+  const currentYear = new Date().getFullYear();
+  const YEAR_OPTIONS = useMemo(() => Array.from({ length: 16 }, (_, i) => currentYear - i), [currentYear]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -74,82 +99,135 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
           const response = await fetch(searchUrl, { signal: controller.signal });
           const data = await response.json();
 
-          allMovies = (data.results || []).filter((movie: TrendingMovie) => movie.poster_path && movie.vote_average > 0);
+          let searchResults = (data.results || []).filter((movie: TrendingMovie) => movie.poster_path && movie.vote_average > 0);
 
-          // Don't fetch upcoming movies when searching
+          // Client-side filter by genre and year when set
+          if (selectedGenre) {
+            const gId = parseInt(selectedGenre, 10);
+            searchResults = searchResults.filter((m: TrendingMovie) => Array.isArray(m.genre_ids) && m.genre_ids.includes(gId));
+          }
+          if (selectedYear) {
+            const y = parseInt(selectedYear, 10);
+            searchResults = searchResults.filter((m: TrendingMovie) => m.release_date && m.release_date.startsWith(String(y)));
+          }
+          const sortByMap: Record<string, (a: TrendingMovie, b: TrendingMovie) => number> = {
+            date: (a, b) => new Date(b.release_date || '').getTime() - new Date(a.release_date || '').getTime(),
+            rating: (a, b) => (b.vote_average || 0) - (a.vote_average || 0),
+            popularity: (a, b) => (b.popularity || 0) - (a.popularity || 0),
+          };
+          const sortFn = sortByMap[sortParam] || sortByMap.date;
+          searchResults.sort(sortFn);
+          allMovies = searchResults;
+
           setComingSoonByLang({});
         } else {
           // Original discover logic when no search query
-          // Get date ranges
           const today = new Date().toISOString().split('T')[0];
           const sixMonthsFromNow = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-          // Base URLs for released and upcoming movies
-          // Sort by release date (newest first), require minimum votes for quality
-          const releasedBaseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.desc&primary_release_date.lte=${today}&vote_count.gte=10`;
-          const upcomingBaseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.asc&primary_release_date.gte=${today}&primary_release_date.lte=${sixMonthsFromNow}`;
+          const sortByMap: Record<string, string> = {
+            date: 'primary_release_date.desc',
+            rating: 'vote_average.desc',
+            popularity: 'popularity.desc',
+          };
+          const sortBy = sortByMap[sortParam] || 'primary_release_date.desc';
+          const genrePart = selectedGenre ? `&with_genres=${selectedGenre}` : '';
+          const yearPart = selectedYear ? `&primary_release_year=${selectedYear}` : '';
+          const numericOtt = selectedOtt && /^\d+$/.test(selectedOtt) ? Number(selectedOtt) : null;
+          const ottIdUS = resolvedOttProvider?.ids.US ?? (resolvedOttProvider ? undefined : numericOtt ?? undefined);
+          const ottIdIN = resolvedOttProvider?.ids.IN ?? (resolvedOttProvider ? undefined : numericOtt ?? undefined);
+          const includeUS = !selectedOtt || !!ottIdUS;
+          const includeIN = !selectedOtt || !!ottIdIN;
+          const ottPartUS = ottIdUS ? `&with_watch_providers=${ottIdUS}` : '';
+          const ottPartIN = ottIdIN ? `&with_watch_providers=${ottIdIN}` : '';
 
-          const pagesToFetch = [1, 2, 3, 4, 5];
+          // Released: only movies on OTT (USA or India), optionally by provider
+          const releasedBase = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=${sortBy}&primary_release_date.lte=${today}&with_watch_monetization_types=flatrate${genrePart}${yearPart}`;
+          const releasedBaseUrlUS = includeUS ? `${releasedBase}&watch_region=US${ottPartUS}` : '';
+          const releasedBaseUrlIN = includeIN ? `${releasedBase}&watch_region=IN${ottPartIN}` : '';
+          const upcomingBaseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.asc&primary_release_date.gte=${today}&primary_release_date.lte=${sixMonthsFromNow}${genrePart}${selectedYear ? `&primary_release_year=${selectedYear}` : ''}`;
 
-          if (selectedLang) {
-            // Fetch for selected language
-            const [releasedResponses, upcomingResponses] = await Promise.all([
-              Promise.all(pagesToFetch.map(page =>
-                fetch(`${releasedBaseUrl}&with_original_language=${selectedLang}&page=${page}`, { signal: controller.signal })
-              )),
-              Promise.all([1, 2].map(page =>
-                fetch(`${upcomingBaseUrl}&with_original_language=${selectedLang}&page=${page}`, { signal: controller.signal })
-              ))
-            ]);
+          const pagesToFetch = [1, 2, 3, 4, 5, 6, 7];
+          const currentYear = new Date().getFullYear();
+          const yearStart = `${currentYear}-01-01`;
+          const releasedThisYearUS = includeUS
+            ? `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=${sortBy}&primary_release_date.gte=${yearStart}&primary_release_date.lte=${today}&with_watch_monetization_types=flatrate&watch_region=US${genrePart}${ottPartUS}`
+            : '';
+          const releasedThisYearIN = includeIN
+            ? `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=${sortBy}&primary_release_date.gte=${yearStart}&primary_release_date.lte=${today}&with_watch_monetization_types=flatrate&watch_region=IN${genrePart}${ottPartIN}`
+            : '';
 
-            const releasedData = await Promise.all(releasedResponses.map(r => r.json()));
-            const upcomingData = await Promise.all(upcomingResponses.map(r => r.json()));
+          // When an OTT has a language restriction (e.g. Aha = Telugu + Tamil only), use only those languages
+          const ottRestrictedLangs = resolvedOttProvider?.languages ?? (numericOtt ? OTT_TO_LANGUAGES[numericOtt] : null);
+          const langCodesToFetch: string[] = ottRestrictedLangs
+            ? (selectedLang && ottRestrictedLangs.includes(selectedLang) ? [selectedLang] : ottRestrictedLangs)
+            : (selectedLang ? [selectedLang] : LANGUAGES.map(l => l.code));
 
-            allMovies = releasedData.flatMap(d => d.results || []);
-            allUpcoming = upcomingData.flatMap(d => d.results || []);
-          } else {
-            // Fetch for ALL languages
-            const langCodes = LANGUAGES.map(l => l.code);
-            const releasedPromises: Promise<Response>[] = [];
-            const upcomingPromises: Promise<Response>[] = [];
+          const releasedPromises: Promise<Response>[] = [];
+          const upcomingPromises: Promise<Response>[] = [];
+          const yearPromises: Promise<Response>[] = [];
 
-            for (const lang of langCodes) {
-              for (const page of pagesToFetch) {
+          for (const lang of langCodesToFetch) {
+            for (const page of pagesToFetch) {
+              if (releasedBaseUrlUS) {
                 releasedPromises.push(
-                  fetch(`${releasedBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                  fetch(`${releasedBaseUrlUS}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
                 );
               }
-              // Fetch 2 pages of upcoming per language
-              for (const page of [1, 2]) {
-                upcomingPromises.push(
-                  fetch(`${upcomingBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+              if (releasedBaseUrlIN) {
+                releasedPromises.push(
+                  fetch(`${releasedBaseUrlIN}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
                 );
               }
             }
-
-            const [releasedResponses, upcomingResponses] = await Promise.all([
-              Promise.all(releasedPromises),
-              Promise.all(upcomingPromises)
-            ]);
-
-            const releasedData = await Promise.all(releasedResponses.map(r => r.json()));
-            const upcomingData = await Promise.all(upcomingResponses.map(r => r.json()));
-
-            allMovies = releasedData.flatMap(d => d.results || []);
-            allUpcoming = upcomingData.flatMap(d => d.results || []);
-
-            // Sort released movies by date (newest first)
-            allMovies.sort((a, b) =>
-              new Date(b.release_date || '1900-01-01').getTime() -
-              new Date(a.release_date || '1900-01-01').getTime()
-            );
+            for (const page of [1, 2]) {
+              upcomingPromises.push(
+                fetch(`${upcomingBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+              );
+              if (releasedThisYearUS) {
+                yearPromises.push(
+                  fetch(`${releasedThisYearUS}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                );
+              }
+              if (releasedThisYearIN) {
+                yearPromises.push(
+                  fetch(`${releasedThisYearIN}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                );
+              }
+            }
           }
 
-          // Filter out movies without posters
-          // For released movies, also filter out those with 0 rating (not yet rated)
-          allMovies = allMovies.filter(movie => movie.poster_path && movie.vote_average > 0);
-          // For upcoming movies, keep them even with 0 rating (they're not released yet)
-          allUpcoming = allUpcoming.filter(movie => movie.poster_path);
+          const [releasedResponses, upcomingResponses, yearResponses] = await Promise.all([
+            Promise.all(releasedPromises),
+            Promise.all(upcomingPromises),
+            Promise.all(yearPromises)
+          ]);
+
+          const releasedData = await Promise.all(releasedResponses.map(r => r.json()));
+          const upcomingData = await Promise.all(upcomingResponses.map(r => r.json()));
+          const yearData = await Promise.all(yearResponses.map(r => r.json()));
+
+          const releasedFlat = releasedData.flatMap(d => d.results || []);
+          const yearFlat = selectedYear ? [] : yearData.flatMap(d => d.results || []);
+          const seenIds = new Set<number>();
+          allMovies = [];
+          releasedFlat.forEach(m => { if (!seenIds.has(m.id)) { seenIds.add(m.id); allMovies.push(m); } });
+          yearFlat.forEach(m => { if (!seenIds.has(m.id)) { seenIds.add(m.id); allMovies.push(m); } });
+          allMovies.sort((a, b) =>
+            new Date(b.release_date || '1900-01-01').getTime() -
+            new Date(a.release_date || '1900-01-01').getTime()
+          );
+          allUpcoming = upcomingData.flatMap(d => d.results || []);
+
+          // Filter: need poster and at least some rating (no unrated movies)
+          allMovies = allMovies.filter(movie => movie.poster_path && typeof movie.vote_average === 'number' && movie.vote_average > 0);
+          allUpcoming = allUpcoming.filter(movie => movie.poster_path && typeof movie.vote_average === 'number' && movie.vote_average > 0);
+
+          // Ensure no movie appears in both Released and Coming Soon (dedupe by id)
+          const releasedIds = new Set(allMovies.map(m => m.id));
+          const upcomingIds = new Set(allUpcoming.map(m => m.id));
+          allMovies = allMovies.filter(m => !upcomingIds.has(m.id));
+          allUpcoming = allUpcoming.filter(m => !releasedIds.has(m.id));
 
           // Group upcoming movies by language
           const upcomingByLang: Record<string, TrendingMovie[]> = {};
@@ -177,6 +255,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
         if (allMovies.length === 0) {
           setError('No results');
         }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         if (err.name !== 'AbortError') {
           setError('Failed to fetch');
@@ -189,16 +268,48 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
     loadMovies();
 
     return () => controller.abort();
-  }, [selectedLang, searchQuery]);
+  }, [selectedLang, selectedGenre, selectedYear, selectedOtt, sortParam, searchQuery]);
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setFilterOpen(false);
+      }
+    };
+    if (filterOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [filterOpen]);
+
+  // For search results: determine OTT vs streaming soon (USA/India) (USA/India)
+  useEffect(() => {
+    if (!searchQuery.trim() || movies.length === 0) {
+      setStreamingStatus({});
+      return;
+    }
+    const controller = new AbortController();
+    const limit = 15;
+    (async () => {
+      const next: Record<number, 'ott' | 'soon'> = {};
+      for (const movie of movies.slice(0, limit)) {
+        try {
+          const providers = await getWatchProviders(movie.id);
+          const hasOtt =
+            (providers?.results?.IN?.flatrate?.length ?? 0) > 0 ||
+            (providers?.results?.US?.flatrate?.length ?? 0) > 0;
+          next[movie.id] = hasOtt ? 'ott' : 'soon';
+        } catch {
+          next[movie.id] = 'soon';
+        }
+      }
+      if (!controller.signal.aborted) setStreamingStatus((prev) => ({ ...prev, ...next }));
+    })();
+    return () => controller.abort();
+  }, [searchQuery, movies]);
 
   const handleLanguageClick = (code: string) => {
-    if (selectedLang === code) {
-      // Clear the filter
-      router.push('/', { scroll: false });
-    } else {
-      // Set the filter
-      router.push(`/?lang=${code}`, { scroll: false });
-    }
+    updateFilters({ lang: selectedLang === code ? '' : code });
   };
 
   const getLangInfo = (code: string) => {
@@ -210,32 +321,133 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
 
   return (
     <div>
-      {/* Language filters */}
-      <div className="bg-[var(--bg-secondary)] rounded-2xl p-4 mb-6 border border-white/5">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-xs text-[var(--text-muted)] w-20">Filter by:</span>
-          {selectedLang && (
-            <button
-              onClick={() => router.push('/', { scroll: false })}
-              className="px-3 py-1.5 text-xs rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
-            >
-              Clear
-            </button>
+      {/* Filter button + dropdown */}
+      <div ref={filterRef} className="relative mb-6">
+        <button
+          type="button"
+          onClick={() => setFilterOpen((o) => !o)}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all border ${
+            filterOpen
+              ? 'bg-[var(--accent)] text-[var(--bg-primary)] border-[var(--accent)]'
+              : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-white/10 hover:bg-[var(--bg-card)] hover:border-white/20'
+          }`}
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+          </svg>
+          Filters
+          {(selectedLang || selectedGenre || selectedYear || selectedOtt) && (
+            <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-[var(--bg-primary)]/20 text-xs">
+              {[selectedLang, selectedGenre, selectedYear, selectedOtt].filter(Boolean).length}
+            </span>
           )}
-          {LANGUAGES.map((lang) => (
-            <button
-              key={lang.code}
-              onClick={() => handleLanguageClick(lang.code)}
-              className={`px-3 py-1.5 text-sm rounded-full transition-all flex items-center gap-1.5 ${selectedLang === lang.code
-                ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                }`}
-            >
-              <span>{lang.flag}</span>
-              <span>{lang.name}</span>
-            </button>
-          ))}
-        </div>
+          <svg className={`w-4 h-4 transition-transform ${filterOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {filterOpen && (
+          <div className="absolute left-0 top-full mt-2 z-50 w-[min(100%,420px)] max-h-[80vh] overflow-y-auto bg-[var(--bg-secondary)] rounded-2xl border border-white/10 shadow-xl p-4 space-y-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)] w-20">Language:</span>
+              {selectedLang && (
+                <button
+                  onClick={() => updateFilters({ lang: '' })}
+                  className="px-3 py-1.5 text-xs rounded-full bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+                >
+                  Clear
+                </button>
+              )}
+              {LANGUAGES.map((lang) => (
+                <button
+                  key={lang.code}
+                  onClick={() => handleLanguageClick(lang.code)}
+                  className={`px-3 py-1.5 text-sm rounded-full transition-all flex items-center gap-1.5 ${selectedLang === lang.code
+                    ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
+                    : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
+                    }`}
+                >
+                  <span>{lang.flag}</span>
+                  <span>{lang.name}</span>
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)] w-20">Genre:</span>
+              <button
+                onClick={() => updateFilters({ genre: '' })}
+                className={`px-3 py-1.5 text-sm rounded-full transition-all ${!selectedGenre ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+              >
+                All
+              </button>
+              {GENRE_LIST.slice(0, 12).map((g) => (
+                <button
+                  key={g.id}
+                  onClick={() => updateFilters({ genre: selectedGenre === String(g.id) ? '' : String(g.id) })}
+                  className={`px-3 py-1.5 text-sm rounded-full transition-all ${selectedGenre === String(g.id) ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+                >
+                  {g.name}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)] w-20">Year:</span>
+              <button
+                onClick={() => updateFilters({ year: '' })}
+                className={`px-3 py-1.5 text-sm rounded-full transition-all ${!selectedYear ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+              >
+                Any
+              </button>
+              {YEAR_OPTIONS.map((y) => (
+                <button
+                  key={y}
+                  onClick={() => updateFilters({ year: selectedYear === String(y) ? '' : String(y) })}
+                  className={`px-3 py-1.5 text-sm rounded-full transition-all ${selectedYear === String(y) ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+                >
+                  {y}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)] w-20">OTT:</span>
+              <button
+                onClick={() => updateFilters({ ott: '' })}
+                className={`px-3 py-1.5 text-sm rounded-full transition-all ${!selectedOtt ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+              >
+                All
+              </button>
+              {OTT_PROVIDERS.map((p) => (
+                <button
+                  key={p.key}
+                  onClick={() => updateFilters({ ott: activeOttKey === p.key ? '' : p.key })}
+                  className={`px-3 py-1.5 text-sm rounded-full transition-all ${activeOttKey === p.key ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+                >
+                  {p.name}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs text-[var(--text-muted)] w-20">Sort:</span>
+              {[
+                { value: 'date', label: 'Newest' },
+                { value: 'rating', label: 'Rating' },
+                { value: 'popularity', label: 'Popularity' },
+              ].map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => updateFilters({ sort: opt.value })}
+                  className={`px-3 py-1.5 text-sm rounded-full transition-all ${sortParam === opt.value ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Coming Soon Sections - Only show when a language is selected */}
@@ -251,6 +463,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                   <span className="text-purple-400">🎬 Coming Soon</span>
                   <span className="text-[var(--text-muted)]">•</span>
                   <span>{lang.flag} {lang.name}</span>
+                  <span className="text-xs font-normal text-[var(--text-muted)]">(Streaming soon)</span>
                 </h3>
                 <span className="text-xs text-[var(--text-muted)]">
                   {comingSoonByLang[lang.code]?.length || 0} upcoming
@@ -293,7 +506,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                           {/* Coming Soon Badge */}
                           <div className="absolute top-2 left-2 right-2">
                             <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-500 rounded text-white">
-                              COMING SOON
+                              STREAMING SOON
                             </span>
                           </div>
 
@@ -330,7 +543,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
         <h3 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
           {searchQuery ? (
             <>
-              🔍 <span>Search: "{searchQuery}"</span>
+              🔍 <span>Search: &quot;{searchQuery}&quot;</span>
             </>
           ) : currentLang ? (
             <>
@@ -401,6 +614,11 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                     <span className="px-2 py-1 text-xs font-medium bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md text-[var(--text-secondary)]">
                       {langInfo.flag}
                     </span>
+                    {searchQuery && (streamingStatus[movie.id] === 'soon' || streamingStatus[movie.id] === undefined) && (
+                      <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/90 rounded text-[var(--bg-primary)]">
+                        Streaming soon
+                      </span>
+                    )}
                     {movie.adult && (
                       <span className="px-2 py-0.5 text-[10px] font-bold bg-red-600/90 backdrop-blur-sm rounded-md text-white">
                         18+
@@ -444,8 +662,8 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
           <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
             No movies found
           </h3>
-          <p className="text-[var(--text-secondary)]">
-            Try selecting a different language
+          <p className="text-[var(--text-secondary)] max-w-sm mx-auto">
+            Try a different language, OTT platform, or year — or clear filters to see more.
           </p>
         </div>
       )}

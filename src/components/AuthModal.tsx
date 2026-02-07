@@ -7,10 +7,11 @@ interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   initialError?: string;
+  initialMode?: 'login' | 'signup' | 'reset';
 }
 
-export function AuthModal({ isOpen, onClose, initialError }: AuthModalProps) {
-  const [mode, setMode] = useState<'login' | 'signup' | 'reset'>('login');
+export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login' }: AuthModalProps) {
+  const [mode, setMode] = useState<'login' | 'signup' | 'reset'>(initialMode);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -26,6 +27,12 @@ export function AuthModal({ isOpen, onClose, initialError }: AuthModalProps) {
   useEffect(() => {
     if (isOpen && initialError) setError(initialError);
   }, [isOpen, initialError]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+    }
+  }, [isOpen, initialMode]);
 
   // Debounced username check
   useEffect(() => {
@@ -83,7 +90,7 @@ export function AuthModal({ isOpen, onClose, initialError }: AuthModalProps) {
           setSuccess('Check your email (and spam folder) for a confirmation link!');
         }
       }
-    } catch (err) {
+    } catch {
       setError('Something went wrong');
     } finally {
       setLoading(false);
@@ -122,7 +129,7 @@ export function AuthModal({ isOpen, onClose, initialError }: AuthModalProps) {
           setSuccess('');
         }, 3000);
       }
-    } catch (err) {
+    } catch {
       setError('Something went wrong');
     } finally {
       setLoading(false);

@@ -37,6 +37,7 @@ export default function AddMoviePage() {
   // Debounced search
   useEffect(() => {
     if (!searchQuery.trim() || !tmdbConfigured) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSearchResults([]);
       return;
     }
@@ -123,7 +124,7 @@ export default function AddMoviePage() {
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
-              Back to Cinema Chudu
+              Back to BiB
             </Link>
             <h1 className="text-lg font-semibold text-[var(--text-primary)]">Add Recommendation</h1>
           </div>

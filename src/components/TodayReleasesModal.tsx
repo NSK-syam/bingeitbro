@@ -98,25 +98,26 @@ export function TodayReleasesModal({ manualOpen, onClose }: TodayReleasesModalPr
           </div>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto px-6 py-4">
+        {/* Content - horizontal scroll */}
+        <div className="flex-1 min-h-0 px-6 py-4 flex flex-col">
           {loading ? (
-            <div className="flex items-center justify-center h-48">
+            <div className="flex items-center justify-center h-48 flex-shrink-0">
               <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
             </div>
           ) : releases.length === 0 ? (
-            <div className="text-center py-12 text-[var(--text-muted)]">
+            <div className="text-center py-12 text-[var(--text-muted)] flex-shrink-0">
               <div className="text-4xl mb-2">🎬</div>
-              <p>No releases found for today</p>
+              <p>No new releases for today or the last 3 days</p>
             </div>
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+            <div className="flex gap-4 overflow-x-auto overflow-y-hidden pb-2 -mx-1 px-1 scrollbar-thin">
               {releases.map((movie) => (
                 <Link
                   key={movie.id}
                   href={`/movie/${movie.id}`}
+                  prefetch={false}
                   onClick={handleClose}
-                  className="group"
+                  className="group flex-shrink-0 w-[140px] sm:w-[160px]"
                 >
                   <div className="relative aspect-[2/3] rounded-xl overflow-hidden bg-[var(--bg-secondary)]">
                     {movie.poster_path ? (
@@ -138,25 +139,33 @@ export function TodayReleasesModal({ manualOpen, onClose }: TodayReleasesModalPr
                       </div>
                     )}
 
-                    {/* OTT Providers */}
-                    {movie.providers && movie.providers.length > 0 && (
-                      <div className="absolute bottom-2 left-2 right-2 flex gap-1 flex-wrap">
-                        {movie.providers.slice(0, 3).map((provider) => (
-                          <img
-                            key={provider.provider_id}
-                            src={getImageUrl(provider.logo_path)}
-                            alt={provider.provider_name}
-                            title={provider.provider_name}
-                            className="w-6 h-6 rounded-md"
-                          />
-                        ))}
-                        {movie.providers.length > 3 && (
-                          <span className="w-6 h-6 rounded-md bg-black/70 flex items-center justify-center text-xs text-white">
-                            +{movie.providers.length - 3}
-                          </span>
-                        )}
-                      </div>
-                    )}
+                    {/* OTT Providers - one icon per platform (dedupe by provider_id) */}
+                    {movie.providers && movie.providers.length > 0 && (() => {
+                      const seen = new Set<number>();
+                      const unique = movie.providers.filter((p) => {
+                        if (seen.has(p.provider_id)) return false;
+                        seen.add(p.provider_id);
+                        return true;
+                      });
+                      return (
+                        <div className="absolute bottom-2 left-2 right-2 flex gap-1 flex-wrap">
+                          {unique.slice(0, 4).map((provider) => (
+                            <img
+                              key={provider.provider_id}
+                              src={getImageUrl(provider.logo_path)}
+                              alt={provider.provider_name}
+                              title={provider.provider_name}
+                              className="w-6 h-6 rounded-md"
+                            />
+                          ))}
+                          {unique.length > 4 && (
+                            <span className="w-6 h-6 rounded-md bg-black/70 flex items-center justify-center text-xs text-white">
+                              +{unique.length - 4}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {/* Hover overlay */}
                     <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-3">
@@ -181,7 +190,7 @@ export function TodayReleasesModal({ manualOpen, onClose }: TodayReleasesModalPr
         {/* Footer */}
         <div className="sticky bottom-0 bg-[var(--bg-primary)] px-6 py-4 border-t border-white/10">
           <p className="text-xs text-[var(--text-muted)] text-center">
-            Data provided by TMDB. Available on streaming platforms in India.
+            Data provided by TMDB. OTT availability: USA & India.
           </p>
         </div>
       </div>
