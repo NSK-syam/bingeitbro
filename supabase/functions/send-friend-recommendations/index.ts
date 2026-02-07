@@ -38,13 +38,23 @@ serve(async (req) => {
   }
 
   try {
+    const bodyText = await req.text();
+    let body: { access_token?: string; recommendations?: unknown } | null = null;
+    try {
+      body = bodyText ? JSON.parse(bodyText) : null;
+    } catch {
+      body = null;
+    }
+
     const authHeader = req.headers.get('Authorization') || '';
-    if (!authHeader.toLowerCase().startsWith('bearer ')) {
+    const tokenFromBody = body?.access_token ? `Bearer ${body.access_token}` : '';
+    const resolvedAuth = authHeader.toLowerCase().startsWith('bearer ') ? authHeader : tokenFromBody;
+    if (!resolvedAuth.toLowerCase().startsWith('bearer ')) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders });
     }
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } },
+      global: { headers: { Authorization: resolvedAuth } },
       auth: { persistSession: false },
     });
 
@@ -54,7 +64,6 @@ serve(async (req) => {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders });
     }
 
-    const body = await req.json().catch(() => null) as { recommendations?: unknown } | null;
     const raw = Array.isArray(body?.recommendations) ? body!.recommendations : [];
 
     const recommendations = raw

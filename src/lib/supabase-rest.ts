@@ -626,19 +626,20 @@ export async function sendFriendRecommendations(
   rows: FriendRecommendationRow[],
 ): Promise<void> {
   const token = getSupabaseAccessToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
   const controller = new AbortController();
   const timeoutMs = DEFAULT_TIMEOUT_MS;
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(`${supabaseUrl}/functions/v1/send-friend-recommendations`, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-friend-recommendations?apikey=${supabaseAnonKey}`, {
       method: 'POST',
       headers: {
-        apikey: supabaseAnonKey,
-        Authorization: `Bearer ${token ?? supabaseAnonKey}`,
-        'Content-Type': 'application/json',
+        'Content-Type': 'text/plain',
       },
-      body: JSON.stringify({ recommendations: rows }),
+      body: JSON.stringify({ access_token: token, recommendations: rows }),
       signal: controller.signal,
     });
 
