@@ -3,20 +3,44 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
 const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+const allowedOrigins = new Set([
+  'https://bingeitbro.com',
+  'https://www.bingeitbro.com',
+  'http://localhost:3000',
+  'http://127.0.0.1:3000',
+]);
+
+const buildCorsHeaders = (origin: string | null) => {
+  const resolved = origin && allowedOrigins.has(origin) ? origin : 'https://bingeitbro.com';
+  return {
+    'Access-Control-Allow-Origin': resolved,
+    'Access-Control-Allow-Methods': 'POST, OPTIONS',
+    'Access-Control-Allow-Headers': 'authorization, content-type',
+    'Access-Control-Max-Age': '86400',
+    Vary: 'Origin',
+  };
+};
 
 serve(async (req) => {
+  const origin = req.headers.get('Origin');
+  const corsHeaders = buildCorsHeaders(origin);
+
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { status: 204, headers: corsHeaders });
+  }
+
   if (req.method !== 'POST') {
-    return new Response('Method not allowed', { status: 405 });
+    return new Response('Method not allowed', { status: 405, headers: corsHeaders });
   }
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    return new Response('Supabase not configured', { status: 500 });
+    return new Response('Supabase not configured', { status: 500, headers: corsHeaders });
   }
 
   try {
     const authHeader = req.headers.get('Authorization') || '';
     if (!authHeader.toLowerCase().startsWith('bearer ')) {
-      return new Response('Unauthorized', { status: 401 });
+      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
     }
 
     const supabase = createClient(supabaseUrl, supabaseAnonKey, {
@@ -27,7 +51,7 @@ serve(async (req) => {
     const { data: authData, error: authError } = await supabase.auth.getUser();
     const user = authData?.user ?? null;
     if (authError || !user) {
-      return new Response('Unauthorized', { status: 401 });
+      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
     }
 
     const body = await req.json().catch(() => null) as { recommendations?: unknown } | null;
@@ -59,13 +83,13 @@ serve(async (req) => {
       .slice(0, 50);
 
     if (recommendations.length === 0) {
-      return new Response(JSON.stringify({ sent: 0 }), { status: 200 });
+      return new Response(JSON.stringify({ sent: 0 }), { status: 200, headers: corsHeaders });
     }
 
     // Only allow sending as the logged-in user
     const filtered = recommendations.filter((rec) => rec.sender_id === user.id);
     if (filtered.length === 0) {
-      return new Response('Unauthorized', { status: 401 });
+      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
     }
 
     // Remove large poster values just in case
@@ -80,13 +104,13 @@ serve(async (req) => {
 
     if (error) {
       if (error.code === '23505') {
-        return new Response(JSON.stringify({ code: '23505', message: 'DUPLICATE' }), { status: 409 });
+        return new Response(JSON.stringify({ code: '23505', message: 'DUPLICATE' }), { status: 409, headers: corsHeaders });
       }
-      return new Response(JSON.stringify({ message: error.message, code: error.code }), { status: 500 });
+      return new Response(JSON.stringify({ message: error.message, code: error.code }), { status: 500, headers: corsHeaders });
     }
 
-    return new Response(JSON.stringify({ sent: sanitized.length }), { status: 200 });
+    return new Response(JSON.stringify({ sent: sanitized.length }), { status: 200, headers: corsHeaders });
   } catch (err) {
-    return new Response(JSON.stringify({ message: String(err) }), { status: 500 });
+    return new Response(JSON.stringify({ message: String(err) }), { status: 500, headers: corsHeaders });
   }
 });
