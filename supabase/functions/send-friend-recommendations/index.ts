@@ -1,7 +1,7 @@
 import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 
-const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
-const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+const supabaseUrl = (Deno.env.get('SUPABASE_URL') ?? '').trim();
+const supabaseAnonKey = (Deno.env.get('SUPABASE_ANON_KEY') ?? '').trim();
 const rawServiceKey =
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
   Deno.env.get('SERVICE_ROLE_KEY') ??
@@ -15,6 +15,8 @@ const allowedOrigins = new Set([
   'http://127.0.0.1:3000',
 ]);
 
+const MAX_BODY_BYTES = 100_000; // 100KB - avoid OOM from huge payloads (e.g. base64 posters)
+
 const buildCorsHeaders = (origin: string | null) => {
   const resolved = origin && allowedOrigins.has(origin) ? origin : 'https://bingeitbro.com';
   return {
@@ -25,6 +27,42 @@ const buildCorsHeaders = (origin: string | null) => {
     Vary: 'Origin',
   };
 };
+
+/** Read body up to maxBytes to avoid OOM on large payloads. */
+async function readBodyCapped(req: Request, maxBytes: number): Promise<string> {
+  const contentLength = req.headers.get('Content-Length');
+  if (contentLength !== null) {
+    const len = parseInt(contentLength, 10);
+    if (!Number.isNaN(len) && len > maxBytes) {
+      throw new Error('Payload too large');
+    }
+  }
+  const reader = req.body?.getReader();
+  if (!reader) return '';
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (value.length + total > maxBytes) {
+        reader.cancel();
+        throw new Error('Payload too large');
+      }
+      chunks.push(value);
+      total += value.length;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const c of chunks) {
+    out.set(c, offset);
+    offset += c.length;
+  }
+  return new TextDecoder().decode(out);
+}
 
 serve(async (req) => {
   const origin = req.headers.get('Origin');
@@ -43,7 +81,15 @@ serve(async (req) => {
   }
 
   try {
-    const bodyText = await req.text();
+    let bodyText: string;
+    try {
+      bodyText = await readBodyCapped(req, MAX_BODY_BYTES);
+    } catch (e) {
+      if (e instanceof Error && e.message === 'Payload too large') {
+        return new Response(JSON.stringify({ message: 'Payload too large' }), { status: 413, headers: corsHeaders });
+      }
+      throw e;
+    }
     let body: { access_token?: string; recommendations?: unknown } | null = null;
     try {
       body = bodyText ? JSON.parse(bodyText) : null;
@@ -51,7 +97,7 @@ serve(async (req) => {
       body = null;
     }
 
-    const accessToken = body?.access_token ?? '';
+    const accessToken = (body?.access_token ?? '').trim();
     if (!accessToken) {
       return new Response('Unauthorized', { status: 401, headers: corsHeaders });
     }
@@ -73,52 +119,46 @@ serve(async (req) => {
     }
 
     const raw = Array.isArray(body?.recommendations) ? body!.recommendations : [];
+    type Rec = {
+      sender_id: string;
+      recipient_id: string;
+      recommendation_id: string | null;
+      tmdb_id: number | null;
+      movie_title: string;
+      movie_poster: string;
+      movie_year: number | null;
+      personal_message: string;
+    };
 
-    const recommendations = raw
-      .filter((rec) => rec && typeof rec === 'object')
-      .map((rec) => rec as {
-        sender_id?: string;
-        recipient_id?: string;
-        recommendation_id?: string | null;
-        tmdb_id?: number | null;
-        movie_title?: string;
-        movie_poster?: string;
-        movie_year?: number | null;
-        personal_message?: string;
-      })
-      .map((rec) => ({
-        sender_id: rec.sender_id ?? '',
-        recipient_id: rec.recipient_id ?? '',
-        recommendation_id: rec.recommendation_id ?? null,
-        tmdb_id: typeof rec.tmdb_id === 'number' ? rec.tmdb_id : null,
-        movie_title: (rec.movie_title ?? '').trim().slice(0, 200),
-        movie_poster: (rec.movie_poster ?? '').trim().slice(0, 500),
-        movie_year: typeof rec.movie_year === 'number' ? rec.movie_year : null,
-        personal_message: (rec.personal_message ?? '').trim().slice(0, 200),
-      }))
-      .filter((rec) => rec.sender_id && rec.recipient_id && rec.movie_title)
-      .slice(0, 50);
+    const toInsert: Rec[] = [];
+    for (let i = 0; i < Math.min(raw.length, 50); i++) {
+      const rec = raw[i];
+      if (!rec || typeof rec !== 'object') continue;
+      const r = rec as Record<string, unknown>;
+      const sender_id = String(r.sender_id ?? '').trim();
+      const recipient_id = String(r.recipient_id ?? '').trim();
+      const movie_title = String(r.movie_title ?? '').trim().slice(0, 200);
+      if (sender_id !== user.id || !recipient_id || !movie_title) continue;
+      const poster = String(r.movie_poster ?? '').trim().slice(0, 500);
+      toInsert.push({
+        sender_id,
+        recipient_id,
+        recommendation_id: r.recommendation_id != null ? String(r.recommendation_id) : null,
+        tmdb_id: typeof r.tmdb_id === 'number' ? r.tmdb_id : null,
+        movie_title,
+        movie_poster: poster.startsWith('https://image.tmdb.org/') ? poster : '',
+        movie_year: typeof r.movie_year === 'number' ? r.movie_year : null,
+        personal_message: String(r.personal_message ?? '').trim().slice(0, 200),
+      });
+    }
 
-    if (recommendations.length === 0) {
+    if (toInsert.length === 0) {
       return new Response(JSON.stringify({ sent: 0 }), { status: 200, headers: corsHeaders });
     }
 
-    // Only allow sending as the logged-in user
-    const filtered = recommendations.filter((rec) => rec.sender_id === user.id);
-    if (filtered.length === 0) {
-      return new Response('Unauthorized', { status: 401, headers: corsHeaders });
-    }
-
-    // Remove large poster values just in case
-    const sanitized = filtered.map((rec) => ({
-      ...rec,
-      movie_poster: rec.movie_poster.startsWith('https://image.tmdb.org/') ? rec.movie_poster : '',
-    }));
-
-    let toInsert = sanitized;
-
+    let allowed: Rec[] = toInsert;
     if (serviceKeyIsJwt) {
-      const recipientIds = [...new Set(sanitized.map((rec) => rec.recipient_id))];
+      const recipientIds = [...new Set(toInsert.map((rec) => rec.recipient_id))];
       if (recipientIds.length > 0) {
         const friendsResponse = await fetch(
           `${supabaseUrl}/rest/v1/friends?select=friend_id&user_id=eq.${user.id}&friend_id=in.(${recipientIds.join(',')})`,
@@ -126,20 +166,20 @@ serve(async (req) => {
             method: 'GET',
             headers: {
               apikey: supabaseAnonKey,
-            Authorization: `Bearer ${supabaseServiceKey}`,
+              Authorization: `Bearer ${supabaseServiceKey}`,
             },
           },
         );
 
         if (friendsResponse.ok) {
           const friends = await friendsResponse.json().catch(() => []) as { friend_id?: string }[];
-          const allowed = new Set(friends.map((row) => row.friend_id).filter(Boolean) as string[]);
-          toInsert = sanitized.filter((rec) => allowed.has(rec.recipient_id));
+          const allowedIds = new Set(friends.map((row) => row.friend_id).filter(Boolean) as string[]);
+          allowed = toInsert.filter((rec) => allowedIds.has(rec.recipient_id));
         }
       }
     }
 
-    if (toInsert.length === 0) {
+    if (allowed.length === 0) {
       return new Response(JSON.stringify({ sent: 0 }), { status: 200, headers: corsHeaders });
     }
 
@@ -153,11 +193,12 @@ serve(async (req) => {
         'Content-Type': 'application/json',
         Prefer: 'return=minimal',
       },
-      body: JSON.stringify(toInsert),
+      body: JSON.stringify(allowed),
     });
 
     if (!insertResponse.ok) {
       const text = await insertResponse.text();
+      console.error('Friend recommendation insert failed', insertResponse.status, text);
       let data: unknown = null;
       if (text) {
         try {
@@ -180,7 +221,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ message, code }), { status: 500, headers: corsHeaders });
     }
 
-    return new Response(JSON.stringify({ sent: toInsert.length }), { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify({ sent: allowed.length }), { status: 200, headers: corsHeaders });
   } catch (err) {
     return new Response(JSON.stringify({ message: String(err) }), { status: 500, headers: corsHeaders });
   }

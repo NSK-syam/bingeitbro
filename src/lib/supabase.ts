@@ -1,7 +1,7 @@
 import { createClient as _createClient, SupabaseClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
+const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
 
 // Singleton — reuse across the app like @supabase/ssr does
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

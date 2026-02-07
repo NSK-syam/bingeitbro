@@ -5,8 +5,8 @@
 
 import type { DBUser } from './supabase';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
 const supabaseProjectRef = (() => {
   if (!supabaseUrl) return '';
   try {
@@ -22,7 +22,7 @@ export function getSupabaseAccessToken(): string | null {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);
-    return parsed?.access_token ?? null;
+    return typeof parsed?.access_token === 'string' ? parsed.access_token.trim() : null;
   } catch {
     return null;
   }
@@ -38,7 +38,7 @@ export async function supabaseRestRequest<T>(
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase is not configured.');
   }
-  const token = accessToken ?? getSupabaseAccessToken() ?? supabaseAnonKey;
+  const token = (accessToken ?? getSupabaseAccessToken() ?? supabaseAnonKey).trim();
   const { timeoutMs = DEFAULT_TIMEOUT_MS, headers, ...rest } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -637,7 +637,8 @@ export async function sendFriendRecommendations(
     const response = await fetch(`${supabaseUrl}/functions/v1/send-friend-recommendations?apikey=${supabaseAnonKey}`, {
       method: 'POST',
       headers: {
-        'Content-Type': 'text/plain',
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
       },
       body: JSON.stringify({ access_token: token, recommendations: rows }),
       signal: controller.signal,
