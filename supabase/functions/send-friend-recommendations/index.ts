@@ -2,10 +2,12 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
 const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
-const supabaseServiceKey =
+const rawServiceKey =
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
   Deno.env.get('SERVICE_ROLE_KEY') ??
   '';
+const supabaseServiceKey = rawServiceKey.trim();
+const serviceKeyIsJwt = supabaseServiceKey.split('.').length === 3;
 const allowedOrigins = new Set([
   'https://bingeitbro.com',
   'https://www.bingeitbro.com',
@@ -115,7 +117,7 @@ serve(async (req) => {
 
     let toInsert = sanitized;
 
-    if (supabaseServiceKey) {
+    if (serviceKeyIsJwt) {
       const recipientIds = [...new Set(sanitized.map((rec) => rec.recipient_id))];
       if (recipientIds.length > 0) {
         const friendsResponse = await fetch(
@@ -124,7 +126,7 @@ serve(async (req) => {
             method: 'GET',
             headers: {
               apikey: supabaseAnonKey,
-              Authorization: `Bearer ${supabaseServiceKey}`,
+            Authorization: `Bearer ${supabaseServiceKey}`,
             },
           },
         );
@@ -141,7 +143,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ sent: 0 }), { status: 200, headers: corsHeaders });
     }
 
-    const insertAuth = supabaseServiceKey ? `Bearer ${supabaseServiceKey}` : `Bearer ${accessToken}`;
+    const insertAuth = serviceKeyIsJwt ? `Bearer ${supabaseServiceKey}` : `Bearer ${accessToken}`;
 
     const insertResponse = await fetch(`${supabaseUrl}/rest/v1/friend_recommendations`, {
       method: 'POST',
