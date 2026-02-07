@@ -27,8 +27,8 @@ interface FriendsManagerProps {
   onFriendsChange: () => void;
 }
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
 const supabaseProjectRef = (() => {
   if (!supabaseUrl) return '';
   try {
@@ -58,7 +58,7 @@ const supabaseRequest = async <T,>(
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase is not configured.');
   }
-  const token = accessToken || getAccessToken() || supabaseAnonKey;
+  const token = (accessToken || getAccessToken() || supabaseAnonKey).trim();
   const { timeoutMs = 8000, headers, ...rest } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);

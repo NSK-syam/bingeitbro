@@ -10,11 +10,11 @@ type RecommendationInput = {
   personal_message?: string | null;
 };
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
-const unosendApiKey = process.env.UNOSEND_API_KEY ?? '';
-const unosendFrom = process.env.UNOSEND_FROM ?? '';
-const unosendReplyTo = process.env.UNOSEND_REPLY_TO ?? '';
+const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
+const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
+const unosendApiKey = (process.env.UNOSEND_API_KEY ?? '').trim();
+const unosendFrom = (process.env.UNOSEND_FROM ?? '').trim();
+const unosendReplyTo = (process.env.UNOSEND_REPLY_TO ?? '').trim();
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ??
   process.env.SITE_URL ??
@@ -25,7 +25,7 @@ function getBearerToken(request: Request): string | null {
   if (!header) return null;
   const [scheme, token] = header.split(' ');
   if (!scheme || scheme.toLowerCase() !== 'bearer' || !token) return null;
-  return token;
+  return token.trim();
 }
 
 function escapeHtml(value: string): string {
