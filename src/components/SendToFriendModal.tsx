@@ -1,12 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthProvider';
-import { createClient, DBUser } from '@/lib/supabase';
-
-interface Friend extends DBUser {
-    friendshipId?: string;
-}
+import { fetchFriendsList, sendFriendRecommendations, getAlreadyRecommendedRecipientIds, type FriendForSelect } from '@/lib/supabase-rest';
+import { notifyFriendRecommendationEmails } from '@/lib/notifications';
 
 interface SendToFriendModalProps {
     isOpen: boolean;
@@ -32,61 +29,54 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
         recommendationId,
     } = props;
     const { user } = useAuth();
-    const [friends, setFriends] = useState<Friend[]>([]);
+    const [friends, setFriends] = useState<FriendForSelect[]>([]);
     const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
     const [personalMessage, setPersonalMessage] = useState('');
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [error, setError] = useState('');
+    const [friendsLoadError, setFriendsLoadError] = useState('');
     const [success, setSuccess] = useState(false);
+    const [alreadySentTo, setAlreadySentTo] = useState<Set<string>>(new Set());
 
-    // New search state
     const [searchQuery, setSearchQuery] = useState('');
 
-    // Fetch friends
+    const fetchFriends = useCallback(async () => {
+        if (!user) return;
+        setIsLoading(true);
+        setFriendsLoadError('');
+        try {
+            // Use token-based REST (same as Manage Friends) so list loads reliably
+            const friendsList = await fetchFriendsList(user.id);
+            setFriends(friendsList);
+        } catch (err) {
+            console.error('Error fetching friends:', err);
+            setFriendsLoadError(err instanceof Error ? err.message : 'Could not load friends. Please try again.');
+            setFriends([]);
+        } finally {
+            setIsLoading(false);
+        }
+    }, [user]);
+
+    // Fetch friends when modal opens; clear previous error
     useEffect(() => {
         if (!isOpen || !user) return;
-
-        const fetchFriends = async () => {
-            setIsLoading(true);
-            setError('');
-            try {
-                const supabase = createClient();
-                const { data, error: fetchError } = await supabase
-                    .from('friends')
-                    .select('id, friend_id, friend:users!friends_friend_id_fkey(*)')
-                    .eq('user_id', user.id);
-
-                if (fetchError) {
-                    console.error('Error fetching friends:', fetchError);
-                    setError('Could not load friends. Please try again.');
-                    setFriends([]);
-                    return;
-                }
-
-                if (data && Array.isArray(data)) {
-                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                    const friendsList: Friend[] = data
-                        .filter((f: any) => f.friend != null)
-                        .map((f: any) => ({
-                            ...f.friend,
-                            friendshipId: f.id,
-                        }));
-                    setFriends(friendsList);
-                } else {
-                    setFriends([]);
-                }
-            } catch (err) {
-                console.error('Error fetching friends:', err);
-                setError('Could not load friends. Please try again.');
-                setFriends([]);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
+        setError('');
         fetchFriends();
-    }, [isOpen, user]); // Use user for stability
+    }, [isOpen, user, fetchFriends]);
+
+    // Pre-check which friends already have this movie (so we can show "Already sent" and avoid 409)
+    useEffect(() => {
+        if (!isOpen || !user || friends.length === 0) {
+            setAlreadySentTo(new Set());
+            return;
+        }
+        const recipientIds = friends.map(f => f.id);
+        getAlreadyRecommendedRecipientIds(user.id, recipientIds, {
+            tmdbId: tmdbId != null ? Number(tmdbId) : null,
+            recommendationId: recommendationId ?? null,
+        }).then(setAlreadySentTo);
+    }, [isOpen, user?.id, friends, tmdbId, recommendationId]);
 
     // Filter friends based on search
     const filteredFriends = friends.filter(friend =>
@@ -110,55 +100,64 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
             return;
         }
 
-        // Message is optional now so we do not check for it here
-
         setIsSending(true);
         setError('');
 
         try {
-            const supabase = createClient();
+            const recipientList = Array.from(selectedFriends);
+            const alreadySent = await getAlreadyRecommendedRecipientIds(user!.id, recipientList, {
+                tmdbId: tmdbId != null ? Number(tmdbId) : null,
+                recommendationId: recommendationId ?? null,
+            });
+            const toSend = recipientList.filter(id => !alreadySent.has(id));
 
-            // Prepare recommendations to send
-            const recommendations = Array.from(selectedFriends).map(recipientId => ({
-                sender_id: user!.id,
-                recipient_id: recipientId,
-                recommendation_id: recommendationId || null,
-                tmdb_id: tmdbId || null,
-                movie_title: movieTitle,
-                movie_poster: moviePoster,
-                movie_year: movieYear || null,
-                personal_message: personalMessage.trim(), // Can be empty string
-            }));
-
-            const { error: insertError } = await supabase
-                .from('friend_recommendations')
-                .insert(recommendations);
-
-            if (insertError) {
-                // Check if it's a duplicate error
-                if (insertError.code === '23505') {
-                    setError('You\'ve already recommended this movie to one or more selected friends');
-                } else {
-                    setError('Failed to send recommendations. Please try again.');
-                    console.error('Error sending recommendations:', insertError);
-                }
-                setIsSending(false);
+            if (toSend.length === 0) {
+                setError('You\'ve already recommended this movie to all selected friends.');
                 return;
             }
 
-            // Success!
+            const recommendations = toSend.map(recipientId => ({
+                sender_id: user!.id,
+                recipient_id: recipientId,
+                recommendation_id: recommendationId ?? null,
+                tmdb_id: tmdbId != null ? Number(tmdbId) : null,
+                movie_title: movieTitle,
+                movie_poster: moviePoster,
+                movie_year: movieYear ?? null,
+                personal_message: personalMessage.trim(),
+            }));
+
+            await sendFriendRecommendations(recommendations);
+
+            const emailPayload = recommendations.map((rec) => ({
+                recipient_id: rec.recipient_id,
+                movie_title: rec.movie_title,
+                movie_year: rec.movie_year ?? null,
+                personal_message: rec.personal_message ?? null,
+            }));
+            void notifyFriendRecommendationEmails(emailPayload).catch((err) => {
+                console.warn('Failed to send recommendation email:', err);
+            });
+
+            if (alreadySent.size > 0) {
+                setError(`Sent to ${toSend.length} friend(s). Skipped ${alreadySent.size} who already have this recommendation.`);
+            }
             setSuccess(true);
             setTimeout(() => {
                 onClose();
-                // Reset state
                 setSelectedFriends(new Set());
                 setPersonalMessage('');
                 setSearchQuery('');
                 setSuccess(false);
-            }, 1500);
+                setError('');
+            }, alreadySent.size > 0 ? 2500 : 1500);
         } catch (err) {
             console.error('Error sending recommendations:', err);
-            setError('An unexpected error occurred');
+            if (err instanceof Error && err.message === 'DUPLICATE') {
+                setError('One or more friends already have this recommendation. Try selecting only friends you haven\'t sent it to.');
+            } else {
+                setError(err instanceof Error ? err.message : 'Failed to send. Please try again.');
+            }
         } finally {
             setIsSending(false);
         }
@@ -265,6 +264,18 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                     <div className="flex justify-center py-8">
                                         <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
                                     </div>
+                                ) : friendsLoadError ? (
+                                    <div className="text-center py-8">
+                                        <p className="text-red-400 mb-2">{friendsLoadError}</p>
+                                        <p className="text-sm text-[var(--text-muted)] mb-4">The server may be slow. Try again in a moment.</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => fetchFriends()}
+                                            className="px-4 py-2 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:opacity-90 transition-opacity"
+                                        >
+                                            Retry
+                                        </button>
+                                    </div>
                                 ) : friends.length === 0 ? (
                                     <div className="text-center py-8 text-[var(--text-muted)]">
                                         <p>No friends yet</p>
@@ -276,30 +287,40 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                     </div>
                                 ) : (
                                     <div className="space-y-2 max-h-48 overflow-y-auto">
-                                        {filteredFriends.map((friend) => (
-                                            <button
-                                                key={friend.id}
-                                                onClick={() => toggleFriendSelection(friend.id)}
-                                                disabled={isSending}
-                                                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all disabled:opacity-50 ${selectedFriends.has(friend.id)
-                                                    ? 'bg-[var(--accent)]/20 border-2 border-[var(--accent)]'
-                                                    : 'bg-[var(--bg-secondary)] border-2 border-transparent hover:border-white/10'
-                                                    }`}
-                                            >
-                                                <div className="flex items-center gap-3">
-                                                    <span className="text-2xl">{friend.avatar}</span>
-                                                    <div className="text-left">
-                                                        <p className="font-medium text-[var(--text-primary)]">{friend.name}</p>
-                                                        <p className="text-xs text-[var(--text-muted)]">{friend.email}</p>
+                                        {filteredFriends.map((friend) => {
+                                            const alreadySent = alreadySentTo.has(friend.id);
+                                            return (
+                                                <button
+                                                    key={friend.id}
+                                                    onClick={() => !alreadySent && toggleFriendSelection(friend.id)}
+                                                    disabled={isSending || alreadySent}
+                                                    className={`w-full flex items-center justify-between p-3 rounded-xl transition-all disabled:opacity-50 ${alreadySent ? 'opacity-75' : ''} ${selectedFriends.has(friend.id)
+                                                        ? 'bg-[var(--accent)]/20 border-2 border-[var(--accent)]'
+                                                        : 'bg-[var(--bg-secondary)] border-2 border-transparent hover:border-white/10'
+                                                        }`}
+                                                >
+                                                    <div className="flex items-center gap-3">
+                                                        <span className="text-2xl">{friend.avatar}</span>
+                                                        <div className="text-left">
+                                                            <p className="font-medium text-[var(--text-primary)]">{friend.name}</p>
+                                                            {friend.username && (
+                                                                <p className="text-xs text-[var(--text-muted)]">@{friend.username}</p>
+                                                            )}
+                                                            {alreadySent && (
+                                                                <p className="text-xs text-amber-400 mt-0.5">Already recommended this movie</p>
+                                                            )}
+                                                        </div>
                                                     </div>
-                                                </div>
-                                                {selectedFriends.has(friend.id) && (
-                                                    <svg className="w-5 h-5 text-[var(--accent)]" fill="currentColor" viewBox="0 0 20 20">
-                                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                                                    </svg>
-                                                )}
-                                            </button>
-                                        ))}
+                                                    {alreadySent ? (
+                                                        <span className="text-xs text-[var(--text-muted)]">Sent</span>
+                                                    ) : selectedFriends.has(friend.id) ? (
+                                                        <svg className="w-5 h-5 text-[var(--accent)]" fill="currentColor" viewBox="0 0 20 20">
+                                                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                        </svg>
+                                                    ) : null}
+                                                </button>
+                                            );
+                                        })}
                                     </div>
                                 )}
                             </div>
