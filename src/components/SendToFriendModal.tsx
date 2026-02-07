@@ -116,15 +116,24 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 return;
             }
 
+            const safePoster = (() => {
+                const trimmed = (moviePoster || '').trim();
+                if (!trimmed) return '';
+                if (trimmed.startsWith('data:')) return '';
+                if (trimmed.length > 1000) return '';
+                return trimmed;
+            })();
+            const safeMessage = personalMessage.trim().slice(0, 500);
+
             const recommendations = toSend.map(recipientId => ({
                 sender_id: user!.id,
                 recipient_id: recipientId,
                 recommendation_id: recommendationId ?? null,
                 tmdb_id: tmdbId != null ? Number(tmdbId) : null,
                 movie_title: movieTitle,
-                movie_poster: moviePoster,
+                movie_poster: safePoster,
                 movie_year: movieYear ?? null,
-                personal_message: personalMessage.trim(),
+                personal_message: safeMessage,
             }));
 
             await sendFriendRecommendations(recommendations);
