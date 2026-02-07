@@ -6,9 +6,14 @@ import { AuthProvider } from "@/components";
 const fontClass = "font-sans antialiased";
 
 export const metadata: Metadata = {
-  title: "Cinema Chudu - Movie Recommendations from Friends",
+  title: "BiB - Binge it bro",
   description:
-    "Discover what to watch next with personalized movie and series recommendations from your friends. No algorithms, just genuine picks.",
+    "Discover what to watch next with personalized movie and series recommendations from your friends. Binge it bro.",
+  icons: {
+    icon: "/bib-icon.svg",
+    shortcut: "/bib-icon.svg",
+    apple: "/bib-icon.svg",
+  },
   keywords: [
     "movies",
     "recommendations",
@@ -19,9 +24,17 @@ export const metadata: Metadata = {
     "what to watch",
   ],
   openGraph: {
-    title: "Cinema Chudu",
+    title: "BiB - Binge it bro",
     description: "Friends recommend, you watch",
     type: "website",
+    images: [
+      {
+        url: "/og-bib.svg",
+        width: 1200,
+        height: 630,
+        alt: "BiB - Binge it bro",
+      },
+    ],
   },
 };
 

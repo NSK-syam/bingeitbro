@@ -14,9 +14,7 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Recommendation | null>(null);
   const [showUnwatchedOnly, setShowUnwatchedOnly] = useState(true);
-  const { isWatched, getWatchedIds } = useWatched();
-
-  const watchedIds = getWatchedIds();
+  const { isWatched } = useWatched();
   const unwatchedMovies = recommendations.filter((r) => !isWatched(r.id));
   const availableMovies = showUnwatchedOnly ? unwatchedMovies : recommendations;
 
@@ -180,6 +178,7 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                     {selectedMovie && !isSpinning && (
                       <Link
                         href={`/movie/${selectedMovie.id}`}
+                        prefetch={false}
                         onClick={handleClose}
                         className="flex-1 py-3 px-4 rounded-xl font-medium bg-[var(--accent)] text-[var(--bg-primary)] hover:bg-[var(--accent-hover)] transition-colors text-center"
                       >

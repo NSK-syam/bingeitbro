@@ -8,7 +8,9 @@ interface PageProps {
 
 export function generateStaticParams() {
   const recommendations = data.recommendations as { id: string }[];
-  return recommendations.map((r) => ({ id: r.id }));
+  const fromData = recommendations.map((r) => ({ id: r.id }));
+  // Fallback page for dynamic TMDB/DB ids; Vercel rewrites unknown /movie/:id to this
+  return [...fromData, { id: 'fallback' }];
 }
 
 export default async function MoviePage({ params }: PageProps) {

@@ -23,6 +23,7 @@ export function WatchlistModal({ isOpen, onClose }: WatchlistModalProps) {
 
   useEffect(() => {
     if (isOpen) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setLoading(true);
       const items = getWatchlistItems();
 
@@ -58,7 +59,7 @@ export function WatchlistModal({ isOpen, onClose }: WatchlistModalProps) {
                   addedAt: item.addedAt,
                 });
               }
-            } catch (e) {
+            } catch {
               // Skip if fetch fails
             }
           }
@@ -133,6 +134,7 @@ export function WatchlistModal({ isOpen, onClose }: WatchlistModalProps) {
                 <Link
                   key={movie.id}
                   href={`/movie/${movie.id}`}
+                  prefetch={false}
                   onClick={onClose}
                   className="group relative"
                 >

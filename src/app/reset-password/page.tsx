@@ -1,7 +1,7 @@
 'use client';
 
-import { Suspense, useState } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 
 // Force dynamic rendering to prevent prerender errors
@@ -9,7 +9,6 @@ export const dynamic = 'force-dynamic';
 
 function ResetPasswordForm() {
     const router = useRouter();
-    const searchParams = useSearchParams();
     const [password, setPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
@@ -17,6 +16,29 @@ function ResetPasswordForm() {
     const [success, setSuccess] = useState(false);
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [sessionReady, setSessionReady] = useState(false);
+
+    // Wait for Supabase to auto-exchange the ?code= parameter for a session
+    useEffect(() => {
+        const supabase = createClient();
+
+        // Listen for PASSWORD_RECOVERY or SIGNED_IN event
+        const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+            console.log('[ResetPassword] Auth event:', event, !!session);
+            if (session && (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
+                setSessionReady(true);
+            }
+        });
+
+        // Check if session already exists
+        supabase.auth.getSession().then(({ data: { session } }) => {
+            if (session) {
+                setSessionReady(true);
+            }
+        });
+
+        return () => subscription.unsubscribe();
+    }, []);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -29,6 +51,11 @@ function ResetPasswordForm() {
 
         if (password !== confirmPassword) {
             setError('Passwords do not match');
+            return;
+        }
+
+        if (!sessionReady) {
+            setError('Session is still loading. Please wait a moment and try again.');
             return;
         }
 
@@ -48,7 +75,7 @@ function ResetPasswordForm() {
                     router.push('/');
                 }, 2000);
             }
-        } catch (err) {
+        } catch {
             setError('Something went wrong');
         } finally {
             setLoading(false);

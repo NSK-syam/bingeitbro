@@ -11,6 +11,7 @@ let client: SupabaseClient<any, any, any> | null = null;
 // navigator.locks deadlock in this static SPA (output: "export").
 // The @supabase/ssr createBrowserClient uses navigator.locks internally
 // which deadlocks when AuthProvider and components share the singleton.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export function createClient(): SupabaseClient<any, any, any> {
   if (!client) {
     client = _createClient(supabaseUrl, supabaseAnonKey, {
@@ -21,6 +22,7 @@ export function createClient(): SupabaseClient<any, any, any> {
         detectSessionInUrl: true,
         // Disable navigator.locks to prevent AbortError deadlocks
         // when AuthProvider and other components share this singleton
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         lock: async (_name: string, _acquireTimeout: number, fn: () => Promise<any>) => {
           return await fn();
         },

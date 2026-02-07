@@ -87,61 +87,93 @@ export function NudgesModal({ isOpen, onClose }: NudgesModalProps) {
             </div>
           ) : receivedNudges.length > 0 ? (
             <div className="divide-y divide-white/5">
-              {receivedNudges.map((nudge) => (
-                <Link
-                  key={nudge.id}
-                  href={`/movie/${nudge.recommendation_id}`}
-                  onClick={() => {
-                    if (!nudge.is_read) markAsRead(nudge.id);
-                    onClose();
-                  }}
-                  className={`flex items-center gap-4 p-4 hover:bg-white/5 transition-colors ${
-                    !nudge.is_read ? 'bg-[var(--accent)]/5' : ''
-                  }`}
-                >
-                  {/* Movie poster */}
-                  <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-[var(--bg-secondary)]">
-                    {nudge.recommendation?.poster ? (
-                      <img
-                        src={nudge.recommendation.poster}
-                        alt=""
-                        className="w-full h-full object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-full flex items-center justify-center text-2xl">🎬</div>
-                    )}
-                  </div>
+              {receivedNudges.map((nudge) => {
+                const movieUrl = nudge.recommendation_id
+                  ? `/movie/${nudge.recommendation_id}`
+                  : nudge.tmdb_id
+                    ? `/movie/tmdb-${nudge.tmdb_id}`
+                    : nudge.movie_id
+                      ? `/movie/${nudge.movie_id}`
+                    : null;
 
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">{nudge.from_user?.avatar || '👤'}</span>
-                      <span className="font-medium text-[var(--text-primary)] truncate">
-                        {nudge.from_user?.name || 'Someone'}
-                      </span>
-                      {!nudge.is_read && (
-                        <span className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+                const poster = nudge.recommendation?.poster || nudge.movie_poster;
+                const title = nudge.recommendation?.title || nudge.movie_title || 'this movie';
+
+                const content = (
+                  <>
+                    {/* Movie poster */}
+                    <div className="w-12 h-16 rounded-lg overflow-hidden flex-shrink-0 bg-[var(--bg-secondary)]">
+                      {poster ? (
+                        <img
+                          src={poster}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex items-center justify-center text-2xl">🎬</div>
                       )}
                     </div>
-                    <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-                      wants you to watch <span className="text-[var(--text-primary)] font-medium">{nudge.recommendation?.title || 'this movie'}</span>
-                    </p>
-                    {nudge.message && (
-                      <p className="text-xs text-[var(--text-muted)] mt-1 italic">
-                        &ldquo;{nudge.message}&rdquo;
-                      </p>
-                    )}
-                    <p className="text-xs text-[var(--text-muted)] mt-1">
-                      {getRelativeTime(nudge.created_at)}
-                    </p>
-                  </div>
 
-                  {/* Arrow */}
-                  <svg className="w-5 h-5 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                  </svg>
-                </Link>
-              ))}
+                    {/* Content */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="text-lg">{nudge.from_user?.avatar || '👤'}</span>
+                        <span className="font-medium text-[var(--text-primary)] truncate">
+                          {nudge.from_user?.name || 'Someone'}
+                        </span>
+                        {!nudge.is_read && (
+                          <span className="w-2 h-2 rounded-full bg-[var(--accent)]" />
+                        )}
+                      </div>
+                      <p className="text-sm text-[var(--text-secondary)] mt-0.5">
+                        wants you to watch <span className="text-[var(--text-primary)] font-medium">{title}</span>
+                      </p>
+                      {nudge.message && (
+                        <p className="text-xs text-[var(--text-muted)] mt-1 italic">
+                          &ldquo;{nudge.message}&rdquo;
+                        </p>
+                      )}
+                      <p className="text-xs text-[var(--text-muted)] mt-1">
+                        {getRelativeTime(nudge.created_at)}
+                      </p>
+                    </div>
+
+                    {/* Arrow */}
+                    <svg className="w-5 h-5 text-[var(--text-muted)]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                    </svg>
+                  </>
+                );
+
+                return movieUrl ? (
+                  <Link
+                    key={nudge.id}
+                    href={movieUrl}
+                    prefetch={false}
+                    onClick={() => {
+                      if (!nudge.is_read) markAsRead(nudge.id);
+                      onClose();
+                    }}
+                    className={`flex items-center gap-4 p-4 hover:bg-white/5 transition-colors ${
+                      !nudge.is_read ? 'bg-[var(--accent)]/5' : ''
+                    }`}
+                  >
+                    {content}
+                  </Link>
+                ) : (
+                  <div
+                    key={nudge.id}
+                    className={`flex items-center gap-4 p-4 ${
+                      !nudge.is_read ? 'bg-[var(--accent)]/5' : ''
+                    }`}
+                    onClick={() => {
+                      if (!nudge.is_read) markAsRead(nudge.id);
+                    }}
+                  >
+                    {content}
+                  </div>
+                );
+              })}
             </div>
           ) : (
             <div className="text-center py-12 px-6">

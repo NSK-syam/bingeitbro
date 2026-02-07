@@ -105,7 +105,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
     setSelectedMovie(details);
 
     // Auto-fetch streaming links
-    const providers = await getWatchProviders(movie.id, 'IN');
+    const providers = await getWatchProviders(movie.id);
     if (providers?.results?.IN) {
       const indiaProviders = providers.results.IN;
       const links: { platform: OTTPlatform; url: string }[] = [];
@@ -179,6 +179,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
 
       onSuccess();
       onClose();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setError(err.message || 'Failed to submit recommendation');
     } finally {

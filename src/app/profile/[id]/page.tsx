@@ -4,9 +4,9 @@ interface PageProps {
   params: Promise<{ id: string }>;
 }
 
-// One placeholder path so static export includes this route; other profile IDs load client-side
+// Placeholder + fallback so static export includes the route; Vercel rewrites unknown /profile/:id to fallback
 export function generateStaticParams() {
-  return [{ id: 'view' }];
+  return [{ id: 'view' }, { id: 'fallback' }];
 }
 
 export default async function ProfilePage({ params }: PageProps) {

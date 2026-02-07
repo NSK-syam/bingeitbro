@@ -2,6 +2,29 @@
 
 import { Recommendation, Recommender } from '@/types';
 
+function FilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={`px-3 py-1.5 text-sm rounded-full transition-all ${
+        active
+          ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
+          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 interface FilterBarProps {
   recommendations: Recommendation[];
   recommenders: Recommender[];
@@ -10,8 +33,9 @@ interface FilterBarProps {
     genre: string | null;
     language: string | null;
     recommendedBy: string | null;
+    year: number | null;
   };
-  onFilterChange: (key: string, value: string | null) => void;
+  onFilterChange: (key: string, value: string | number | null) => void;
   onManageFriends?: () => void;
   onRemoveFriend?: (friendId: string) => void;
   showManageFriends?: boolean;
@@ -30,6 +54,7 @@ export function FilterBar({
   const types = [...new Set(recommendations.map((r) => r.type))];
   const genres = [...new Set(recommendations.flatMap((r) => Array.isArray(r.genres) ? r.genres : []))].sort();
   const languages = [...new Set(recommendations.map((r) => r.language ?? ''))].filter(Boolean).sort();
+  const years = [...new Set(recommendations.map((r) => r.year).filter((y): y is number => typeof y === 'number' && y > 0))].sort((a, b) => b - a);
 
   const typeLabels: Record<string, string> = {
     movie: 'Movies',
@@ -37,27 +62,6 @@ export function FilterBar({
     documentary: 'Docs',
     anime: 'Anime',
   };
-
-  const FilterButton = ({
-    active,
-    onClick,
-    children,
-  }: {
-    active: boolean;
-    onClick: () => void;
-    children: React.ReactNode;
-  }) => (
-    <button
-      onClick={onClick}
-      className={`px-3 py-1.5 text-sm rounded-full transition-all ${
-        active
-          ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-          : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
-      }`}
-    >
-      {children}
-    </button>
-  );
 
   return (
     <div className="space-y-4">
@@ -181,6 +185,30 @@ export function FilterBar({
           </FilterButton>
         ))}
       </div>
+
+      {/* Year filters */}
+      {years.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-[var(--text-muted)] w-16">Year:</span>
+          <FilterButton
+            active={activeFilters.year === null}
+            onClick={() => onFilterChange('year', null)}
+          >
+            All
+          </FilterButton>
+          {years.slice(0, 12).map((y) => (
+            <FilterButton
+              key={y}
+              active={activeFilters.year === y}
+              onClick={() =>
+                onFilterChange('year', activeFilters.year === y ? null : y)
+              }
+            >
+              {y}
+            </FilterButton>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

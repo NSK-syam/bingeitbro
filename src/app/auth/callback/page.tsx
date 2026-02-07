@@ -1,86 +1,79 @@
 'use client';
 
-import { Suspense, useEffect, useState, useRef } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 
 function AuthCallbackContent() {
   const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const exchangeStarted = useRef(false);
 
   useEffect(() => {
-    const code = searchParams.get('code');
     const errorParam = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
     const next = searchParams.get('next') ?? '/';
 
     if (errorParam) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatus('error');
       setErrorMessage(errorDescription || errorParam || 'Authentication failed');
       return;
     }
 
-    if (!code) {
-      setStatus('error');
-      setErrorMessage('No authorization code received. Please try signing in again.');
-      return;
-    }
-
     if (!isSupabaseConfigured()) {
       setStatus('error');
-      setErrorMessage('Supabase is not configured. Please set environment variables.');
+      setErrorMessage('Supabase is not configured.');
       return;
     }
 
-    // Prevent duplicate exchange on React Strict Mode double-mount
-    if (exchangeStarted.current) return;
-    exchangeStarted.current = true;
-
+    // The Supabase client with detectSessionInUrl: true automatically
+    // detects the ?code= parameter and exchanges it for a session.
+    // We just need to listen for the auth state change.
     const supabase = createClient();
 
-    console.log('[Auth Callback] Starting code exchange...');
+    console.log('[Auth Callback] Waiting for session from URL detection...');
 
     const timeoutId = setTimeout(() => {
-      console.error('[Auth Callback] Code exchange timed out after 15s');
+      console.error('[Auth Callback] Timed out after 15s');
       setStatus('error');
       setErrorMessage('Sign-in timed out. Please try again.');
     }, 15000);
 
-    supabase.auth.exchangeCodeForSession(code)
-      .then(({ data, error }) => {
+    // Listen for the SIGNED_IN event that fires after auto code exchange
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Auth Callback] Auth state changed:', event, !!session);
+
+      if (event === 'SIGNED_IN' && session) {
         clearTimeout(timeoutId);
-        console.log('[Auth Callback] Exchange response:', {
-          hasData: !!data,
-          hasSession: !!data?.session,
-          error: error?.message,
-        });
-
-        if (error) {
-          console.error('Code exchange error:', error);
-          setStatus('error');
-          setErrorMessage(error.message || 'Failed to complete sign-in');
-          return;
-        }
-
-        if (!data.session) {
-          setStatus('error');
-          setErrorMessage('No session received. Please try again.');
-          return;
-        }
-
         setStatus('success');
+        subscription.unsubscribe();
         window.location.replace(next);
-      })
-      .catch((err) => {
+      } else if (event === 'TOKEN_REFRESHED' && session) {
+        // Also handle token refresh which can happen on redirect
         clearTimeout(timeoutId);
-        console.error('[Auth Callback] Exception:', err);
-        setStatus('error');
-        setErrorMessage(err instanceof Error ? err.message : 'An unexpected error occurred');
-      });
+        setStatus('success');
+        subscription.unsubscribe();
+        window.location.replace(next);
+      }
+    });
 
-    // Don't abort on cleanup — let the exchange complete even if component remounts
+    // Also check if session already exists (in case event already fired)
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        console.log('[Auth Callback] Session already exists');
+        clearTimeout(timeoutId);
+        setStatus('success');
+        subscription.unsubscribe();
+        window.location.replace(next);
+      }
+    });
+
+    return () => {
+      clearTimeout(timeoutId);
+      subscription.unsubscribe();
+    };
   }, [searchParams]);
 
   return (
@@ -112,12 +105,12 @@ function AuthCallbackContent() {
           </div>
           <p className="text-red-400 font-medium mb-2">Sign-in failed</p>
           <p className="text-sm text-[var(--text-secondary)] mb-6">{errorMessage}</p>
-          <a
+          <Link
             href="/"
             className="inline-block px-6 py-2.5 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:opacity-90 transition-opacity"
           >
             Back to home
-          </a>
+          </Link>
         </div>
       )}
     </div>

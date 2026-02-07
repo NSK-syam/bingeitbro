@@ -3,7 +3,7 @@
 import { Recommendation, OTTLink } from '@/types';
 import data from '@/data/recommendations.json';
 import Link from 'next/link';
-import { notFound, useSearchParams } from 'next/navigation';
+import { notFound, useSearchParams, usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { WatchedButton } from '@/components/WatchedButton';
 import { WatchlistButton } from '@/components/WatchlistButton';
@@ -80,21 +80,37 @@ interface MoviePageClientProps {
 }
 
 export default function MoviePageClient({ id }: MoviePageClientProps) {
+  const pathname = usePathname();
   const searchParams = useSearchParams();
   const fromLang = searchParams.get('from');
   const backUrl = fromLang ? `/?lang=${fromLang}` : '/';
+
+  // When Vercel rewrites /movie/tmdb-123 to /movie/fallback, we get id=fallback; resolve real id from URL
+  const [resolvedId, setResolvedId] = useState(id);
+  useEffect(() => {
+    if (id === 'fallback' && typeof window !== 'undefined') {
+      const fromPath = window.location.pathname.replace(/^\/movie\/?/, '').trim();
+      if (fromPath && fromPath !== 'fallback') setResolvedId(fromPath);
+      else if (fromPath === 'fallback') {
+        setError(true);
+        setLoading(false);
+      }
+    }
+  }, [id]);
 
   const staticRecommendations = data.recommendations as Recommendation[];
   const { isWatched } = useWatched();
 
   const [movie, setMovie] = useState<Recommendation | null>(() =>
-    staticRecommendations.find((r) => r.id === id) || null
+    resolvedId !== 'fallback' ? (staticRecommendations.find((r) => r.id === resolvedId) || null) : null
   );
-  const [loading, setLoading] = useState(!movie);
+  const [loading, setLoading] = useState(resolvedId === 'fallback' || !movie);
   const [error, setError] = useState(false);
   const [regionNote, setRegionNote] = useState('');
+  const [availability, setAvailability] = useState({ hasIndia: false, hasUSA: false });
 
   useEffect(() => {
+    if (resolvedId === 'fallback') return;
     if (movie) {
       setLoading(false);
       return;
@@ -105,8 +121,10 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
       setError(false);
 
       try {
-        if (id.startsWith('tmdb-')) {
-          const tmdbId = id.replace('tmdb-', '');
+        // Support both "tmdb-123" and plain "123" (numeric) for TMDB movies
+        const isTmdb = resolvedId.startsWith('tmdb-') || /^\d+$/.test(resolvedId);
+        const tmdbId = resolvedId.startsWith('tmdb-') ? resolvedId.replace('tmdb-', '') : resolvedId;
+        if (isTmdb && tmdbId) {
           const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
 
           if (!apiKey) {
@@ -177,13 +195,27 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           const indiaData = providersData.results?.IN;
           const usaData = providersData.results?.US;
 
+          const collectProviders = (regionData: any) => [
+            ...(regionData.flatrate || []),
+            ...(regionData.free || []),
+            ...(regionData.ads || []),
+            ...(regionData.rent || []),
+            ...(regionData.buy || []),
+          ];
+
           const shouldSkipProvider = (name: string) => {
             const lowerName = name.toLowerCase();
-            return lowerName.includes('ads') || lowerName.includes('ad-supported');
+            const isAmazon = lowerName.includes('amazon');
+            const isPrime = lowerName.includes('prime video');
+            const isAmazonVideo = lowerName === 'amazon video' || (lowerName.includes('amazon video') && !isPrime);
+            const isAmazonWithAds = isAmazon && lowerName.includes('with ads');
+            return isAmazonVideo || isAmazonWithAds;
           };
 
-          if (indiaData) {
-            const indiaProviders = [...(indiaData.flatrate || []), ...(indiaData.rent || []), ...(indiaData.buy || [])];
+          const indiaProviders = indiaData ? collectProviders(indiaData) : [];
+          const usaProviders = usaData ? collectProviders(usaData) : [];
+
+          if (indiaProviders.length > 0) {
             for (const provider of indiaProviders) {
               if (shouldSkipProvider(provider.provider_name)) continue;
               if (!platformsByRegion[provider.provider_name]) {
@@ -195,8 +227,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
             }
           }
 
-          if (usaData) {
-            const usaProviders = [...(usaData.flatrate || []), ...(usaData.rent || []), ...(usaData.buy || [])];
+          if (usaProviders.length > 0) {
             for (const provider of usaProviders) {
               if (shouldSkipProvider(provider.provider_name)) continue;
               if (!platformsByRegion[provider.provider_name]) {
@@ -216,16 +247,23 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
             });
           }
 
-          const hasIndia = !!indiaData && (indiaData.flatrate?.length > 0 || indiaData.rent?.length > 0 || indiaData.buy?.length > 0);
-          const hasUSA = !!usaData && (usaData.flatrate?.length > 0 || usaData.rent?.length > 0 || usaData.buy?.length > 0);
+          const hasIndia = indiaProviders.length > 0;
+          const hasUSA = usaProviders.length > 0;
 
-          if (hasIndia && !hasUSA) setRegionNote('Available in India only - not streaming in USA');
-          else if (!hasIndia && hasUSA) setRegionNote('Available in USA only - not streaming in India');
-          else if (hasIndia && hasUSA) setRegionNote('');
-          else setRegionNote('Not available for streaming in India or USA');
+          setAvailability({ hasIndia, hasUSA });
+
+          if (hasIndia && hasUSA) {
+            setRegionNote('Available in India & USA');
+          } else if (hasIndia && !hasUSA) {
+            setRegionNote('TMDB shows availability in India only (US not listed)');
+          } else if (!hasIndia && hasUSA) {
+            setRegionNote('TMDB shows availability in USA only (India not listed)');
+          } else {
+            setRegionNote('TMDB does not list streaming in India or USA');
+          }
 
           const mappedRecommendation: Recommendation = {
-            id: id,
+            id: resolvedId,
             title: tmdbData.title,
             originalTitle: tmdbData.original_title !== tmdbData.title ? tmdbData.original_title : undefined,
             year: tmdbData.release_date ? parseInt(tmdbData.release_date.split('-')[0]) : 0,
@@ -249,7 +287,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           return;
         }
 
-        if (!isSupabaseConfigured()) {
+        if (!isSupabaseConfigured() || !/^[0-9a-f-]{36}$/i.test(resolvedId)) {
           setError(true);
           return;
         }
@@ -258,7 +296,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
         const { data: rec, error: supabaseError } = await supabase
           .from('recommendations')
           .select('*, user:users(*)')
-          .eq('id', id)
+          .eq('id', resolvedId)
           .single();
 
         if (supabaseError || !rec) {
@@ -300,7 +338,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
     };
 
     fetchMovie();
-  }, [id, movie]);
+  }, [resolvedId, movie]);
 
   if (loading) {
     return (
@@ -311,12 +349,11 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
   }
 
   if (error || !movie) {
-    if (error && !movie) {
+    if (error || !movie) {
       notFound();
     }
+    return null;
   }
-
-  if (!movie) return null;
 
   const {
     title,
@@ -338,7 +375,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
     addedOn,
   } = movie;
 
-  const watched = isWatched(id);
+  const watched = isWatched(resolvedId);
 
   const typeLabels = {
     movie: 'Movie',
@@ -360,11 +397,16 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
     'Other': 'platform-other',
   };
 
-  const formattedDate = new Date(addedOn).toLocaleDateString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-  });
+  const formattedDate = (addedOn
+    ? new Date(addedOn).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : '') || '';
+
+  const showUsCheck = recommendedBy?.id === 'tmdb' && !availability.hasUSA;
+  const usSearchUrl = `https://www.justwatch.com/us/search?q=${encodeURIComponent(title)}`;
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
@@ -400,8 +442,8 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
               <PosterImage src={poster} alt={`${title} poster`} title={title} />
             </div>
             <div className="mt-4 flex justify-center gap-2">
-              <WatchedButton movieId={id} size="lg" showLabel />
-              <WatchlistButton movieId={id} title={title} poster={poster} size="lg" showLabel />
+              <WatchedButton movieId={resolvedId} size="lg" showLabel />
+              <WatchlistButton movieId={resolvedId} title={title} poster={poster} size="lg" showLabel />
             </div>
           </div>
 
@@ -451,7 +493,11 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           <div className="flex items-center gap-3 mb-4">
             <span className="text-3xl">{recommendedBy.avatar}</span>
             <div>
-              <p className="text-[var(--text-primary)] font-medium">{recommendedBy.name}&apos;s recommendation</p>
+              <p className="text-[var(--text-primary)] font-medium">
+                {recommendedBy.id === 'tmdb' || recommendedBy.name === 'TMDB'
+                  ? 'Context'
+                  : `${recommendedBy.name}'s recommendation`}
+              </p>
               <p className="text-xs text-[var(--text-muted)]">Added {formattedDate}</p>
             </div>
           </div>
@@ -474,6 +520,25 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
               'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
             }`}>
               {regionNote}
+            </div>
+          )}
+          {showUsCheck && (
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-4 py-3">
+              <div>
+                <p className="text-sm font-medium text-[var(--text-primary)]">US availability not listed by TMDB</p>
+                <p className="text-xs text-[var(--text-muted)]">Double‑check on JustWatch to confirm streaming in the US.</p>
+              </div>
+              <a
+                href={usSearchUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[var(--bg-primary)] shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-lg"
+              >
+                Check US availability
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h6m0 0v6m0-6L7 17" />
+                </svg>
+              </a>
             </div>
           )}
           {ottLinks && ottLinks.length > 0 ? (

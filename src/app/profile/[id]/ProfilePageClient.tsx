@@ -3,7 +3,9 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components';
-import { createClient, isSupabaseConfigured, DBUser, DBRecommendation } from '@/lib/supabase';
+import { isSupabaseConfigured, DBUser, DBRecommendation } from '@/lib/supabase';
+import { fetchProfileUser, getSupabaseAccessToken, supabaseRestRequest } from '@/lib/supabase-rest';
+import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { Recommendation, OTTLink } from '@/types';
 import { MovieCard } from '@/components';
 import { useWatched, useWatchlist } from '@/hooks';
@@ -17,15 +19,26 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const { getWatchedCount } = useWatched();
   const { getWatchlistCount } = useWatchlist();
 
+  const [resolvedUserId, setResolvedUserId] = useState(userId);
   const [profileUser, setProfileUser] = useState<DBUser | null>(null);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [isFriend, setIsFriend] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
 
+  const accessToken = getSupabaseAccessToken();
+
+  useEffect(() => {
+    if (userId === 'fallback' && typeof window !== 'undefined') {
+      const fromPath = window.location.pathname.replace(/^\/profile\/?/, '').trim();
+      if (fromPath && fromPath !== 'fallback') setResolvedUserId(fromPath);
+      else if (fromPath === 'fallback') setIsLoading(false);
+    }
+  }, [userId]);
+
   useEffect(() => {
     const fetchProfile = async () => {
-      if (authLoading) return;
+      if (authLoading || resolvedUserId === 'fallback') return;
 
       setIsLoading(true);
 
@@ -39,30 +52,39 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
       }, 10000);
 
       try {
-        const supabase = createClient();
+        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(resolvedUserId);
 
-        const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-
-        let userData = null;
-        let error = null;
+        let userData: DBUser | null = null;
 
         if (isUUID) {
-          const result = await supabase
-            .from('users')
-            .select('*')
-            .eq('id', userId)
-            .single();
-          userData = result.data;
-          error = result.error;
+          // Token-based fetch first (reliable with RLS / session)
+          userData = await fetchProfileUser(resolvedUserId);
+          if (!userData) {
+            try {
+              const params = new URLSearchParams({ select: '*', id: `eq.${resolvedUserId}`, limit: '1' });
+              const rows = await supabaseRestRequest<DBUser[]>(
+                `users?${params.toString()}`,
+                { method: 'GET', timeoutMs: 15000 },
+                accessToken,
+              );
+              userData = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+            } catch {
+              userData = null;
+            }
+          }
         } else {
           try {
-            const result = await supabase
-              .from('users')
-              .select('*')
-              .eq('username', userId.toLowerCase())
-              .single();
-            userData = result.data;
-            error = result.error;
+            const params = new URLSearchParams({
+              select: '*',
+              username: `eq.${resolvedUserId.toLowerCase()}`,
+              limit: '1',
+            });
+            const rows = await supabaseRestRequest<DBUser[]>(
+              `users?${params.toString()}`,
+              { method: 'GET', timeoutMs: 15000 },
+              accessToken,
+            );
+            userData = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
           } catch {
             // Username column may not exist
           }
@@ -70,41 +92,80 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
         clearTimeout(timeout);
 
-        if ((error || !userData) && user && user.id === userId) {
+        if (!userData && user && user.id === resolvedUserId) {
           const metadata = user.user_metadata;
           const generatedUsername = user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') + '_' + Math.random().toString(36).slice(2, 6);
 
-          let insertError;
-          ({ error: insertError } = await supabase.from('users').insert({
-            id: user.id,
-            email: user.email || '',
-            name: metadata?.full_name || metadata?.name || user.email?.split('@')[0] || 'User',
-            username: generatedUsername,
-            avatar: ['🎬', '🍿', '🎭', '🎪', '🎯', '🎲'][Math.floor(Math.random() * 6)]
-          }));
-
-          if (insertError) {
-            ({ error: insertError } = await supabase.from('users').insert({
-              id: user.id,
-              email: user.email || '',
-              name: metadata?.full_name || metadata?.name || user.email?.split('@')[0] || 'User',
-              avatar: ['🎬', '🍿', '🎭', '🎪', '🎯', '🎲'][Math.floor(Math.random() * 6)]
-            }));
+          try {
+            await supabaseRestRequest(
+              'users',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Prefer: 'return=minimal',
+                },
+                body: JSON.stringify({
+                  id: user.id,
+                  email: user.email || '',
+                  name: metadata?.full_name || metadata?.name || user.email?.split('@')[0] || 'User',
+                  username: generatedUsername,
+                  avatar: getRandomMovieAvatar(),
+                }),
+              },
+              accessToken,
+            );
+          } catch {
+            try {
+              await supabaseRestRequest(
+                'users',
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                    Prefer: 'return=minimal',
+                  },
+                  body: JSON.stringify({
+                    id: user.id,
+                    email: user.email || '',
+                    name: metadata?.full_name || metadata?.name || user.email?.split('@')[0] || 'User',
+                    avatar: getRandomMovieAvatar(),
+                  }),
+                },
+                accessToken,
+              );
+            } catch {
+              // ignore insert failure; fallback below
+            }
           }
 
-          if (!insertError) {
-            const { data: newUserData } = await supabase
-              .from('users')
-              .select('*')
-              .eq('id', userId)
-              .single();
-            userData = newUserData;
+          if (!userData) {
+            try {
+              const params = new URLSearchParams({ select: '*', id: `eq.${resolvedUserId}`, limit: '1' });
+              const rows = await supabaseRestRequest<DBUser[]>(
+                `users?${params.toString()}`,
+                { method: 'GET', timeoutMs: 15000 },
+                accessToken,
+              );
+              userData = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+            } catch {
+              userData = null;
+            }
           }
         }
 
-        if (error && !userData) {
-          setIsLoading(false);
-          return;
+        // Own profile but no DB row (e.g. RLS blocked read, or insert failed): show profile from auth
+        if (!userData && user && user.id === resolvedUserId) {
+          const metadata = user.user_metadata || {};
+          const name = metadata.full_name || metadata.name || user.email?.split('@')[0] || 'User';
+          userData = {
+            id: user.id,
+            email: user.email ?? '',
+            name,
+            username: user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user',
+            avatar: '🎬',
+            created_at: new Date().toISOString(),
+          } as DBUser;
         }
 
         if (!userData) {
@@ -114,11 +175,16 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
         setProfileUser(userData);
 
-        const { data: recs } = await supabase
-          .from('recommendations')
-          .select('*')
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false });
+        const recParams = new URLSearchParams({
+          select: '*',
+          user_id: `eq.${resolvedUserId}`,
+          order: 'created_at.desc',
+        });
+        const recs = await supabaseRestRequest<DBRecommendation[]>(
+          `recommendations?${recParams.toString()}`,
+          { method: 'GET', timeoutMs: 15000 },
+          accessToken,
+        );
 
         if (recs) {
           const mapped: Recommendation[] = recs.map((rec: DBRecommendation) => ({
@@ -156,59 +222,78 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
     };
 
     fetchProfile();
-  }, [userId, user, authLoading]);
+  }, [resolvedUserId, user, authLoading, accessToken]);
 
   useEffect(() => {
     const checkFriendStatus = async () => {
-      if (!user || !userId || user.id === userId || !isSupabaseConfigured()) return;
+      if (!user || !resolvedUserId || user.id === resolvedUserId || !isSupabaseConfigured()) return;
 
       try {
-        const supabase = createClient();
-        const { data: friendData } = await supabase
-          .from('friends')
-          .select('id')
-          .eq('user_id', user.id)
-          .eq('friend_id', userId)
-          .single();
-
-        setIsFriend(!!friendData);
+        const params = new URLSearchParams({
+          select: 'id',
+          user_id: `eq.${user.id}`,
+          friend_id: `eq.${resolvedUserId}`,
+          limit: '1',
+        });
+        const rows = await supabaseRestRequest<{ id: string }[]>(
+          `friends?${params.toString()}`,
+          { method: 'GET', timeoutMs: 10000 },
+          accessToken,
+        );
+        setIsFriend(Array.isArray(rows) && rows.length > 0);
       } catch {
         setIsFriend(false);
       }
     };
 
     checkFriendStatus();
-  }, [user, userId]);
+  }, [user, resolvedUserId, accessToken]);
 
   const addFriend = async () => {
     if (!user || !profileUser) return;
 
     setIsAdding(true);
-    const supabase = createClient();
+    try {
+      await supabaseRestRequest(
+        'friends',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Prefer: 'return=minimal',
+          },
+          body: JSON.stringify({
+            user_id: user.id,
+            friend_id: profileUser.id,
+          }),
+        },
+        accessToken,
+      );
+      setIsFriend(true);
+    } finally {
+      setIsAdding(false);
+    }
 
-    await supabase.from('friends').insert({
-      user_id: user.id,
-      friend_id: profileUser.id,
-    });
-
-    setIsFriend(true);
-    setIsAdding(false);
   };
 
   const removeFriend = async () => {
     if (!user || !profileUser) return;
 
     setIsAdding(true);
-    const supabase = createClient();
-
-    await supabase
-      .from('friends')
-      .delete()
-      .eq('user_id', user.id)
-      .eq('friend_id', profileUser.id);
-
-    setIsFriend(false);
-    setIsAdding(false);
+    try {
+      const params = new URLSearchParams({
+        user_id: `eq.${user.id}`,
+        friend_id: `eq.${profileUser.id}`,
+      });
+      await supabaseRestRequest(
+        `friends?${params.toString()}`,
+        { method: 'DELETE', headers: { Prefer: 'return=minimal' } },
+        accessToken,
+      );
+      setIsFriend(false);
+    } finally {
+      setIsAdding(false);
+    }
   };
 
   if (isLoading || authLoading) {
@@ -219,7 +304,27 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
     );
   }
 
-  if (!profileUser) {
+  // Never show "User not found" for the current user's own profile — use auth as fallback
+  const isOwnId = user && resolvedUserId && user.id === resolvedUserId;
+  const fallbackProfileUser: DBUser | null =
+    !profileUser && isOwnId && user
+      ? {
+          id: user.id,
+          email: user.email ?? '',
+          name:
+            (user.user_metadata?.full_name as string) ||
+            (user.user_metadata?.name as string) ||
+            user.email?.split('@')[0] ||
+            'User',
+          username: user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user',
+          avatar: '🎬',
+          created_at: new Date().toISOString(),
+        }
+      : null;
+
+  const displayUser = profileUser ?? fallbackProfileUser;
+
+  if (!displayUser) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center gap-4">
         <div className="text-6xl">😕</div>
@@ -231,7 +336,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
     );
   }
 
-  const isOwnProfile = user?.id === profileUser.id;
+  const isOwnProfile = user?.id === displayUser.id;
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
@@ -241,7 +346,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
             </svg>
-            Back to Cinema Chudu
+            Back to BiB
           </Link>
         </div>
       </header>
@@ -250,10 +355,10 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
         <div className="bg-[var(--bg-card)] rounded-2xl p-8 border border-white/10 mb-8">
           <div className="flex flex-col sm:flex-row items-center gap-6">
             <div className="w-24 h-24 rounded-full bg-[var(--accent)] flex items-center justify-center text-5xl">
-              {profileUser.avatar}
+              {displayUser.avatar}
             </div>
             <div className="text-center sm:text-left flex-1">
-              <h1 className="text-3xl font-bold text-[var(--text-primary)]">{profileUser.name}</h1>
+              <h1 className="text-3xl font-bold text-[var(--text-primary)]">{displayUser.name}</h1>
               <div className="flex flex-wrap gap-4 mt-2 justify-center sm:justify-start">
                 <p className="text-[var(--text-muted)]">{recommendations.length} recommendations</p>
                 {isOwnProfile && (
@@ -270,7 +375,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             </div>
 
             <div className="flex gap-3 items-center">
-              {user && !isOwnProfile && (
+              {user && !isOwnProfile && profileUser && (
                 <div>
                   {isFriend ? (
                     <button
@@ -303,8 +408,8 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
               <button
                 onClick={() => {
-                  const profileUrl = `${window.location.origin}/profile/${userId}`;
-                  const message = `Check out ${profileUser.name}'s movie recommendations on Cinema Chudu! ${profileUrl}`;
+                  const profileUrl = `${window.location.origin}/profile/${resolvedUserId}`;
+                  const message = `Check out ${displayUser.name}'s movie recommendations on BiB (Binge it bro)! ${profileUrl}`;
                   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
                   window.open(whatsappUrl, '_blank');
                 }}
@@ -320,7 +425,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
         </div>
 
         <h2 className="text-xl font-bold text-[var(--text-primary)] mb-4">
-          {isOwnProfile ? 'Your' : `${profileUser.name}'s`} Recommendations
+          {isOwnProfile ? 'Your' : `${displayUser.name}'s`} Recommendations
         </h2>
 
         {recommendations.length > 0 ? (

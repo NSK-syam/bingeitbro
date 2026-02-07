@@ -70,7 +70,13 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
     e.stopPropagation();
     if (user && isFriendRecommendation && !alreadyNudged) {
       // Send nudge to the recommender about their own recommendation
-      const { error } = await sendNudge(recommendedBy.id, id);
+      const { error } = await sendNudge(recommendedBy.id, {
+        recommendationId: tmdbId ? undefined : id,
+        tmdbId: tmdbId ?? undefined,
+        movieTitle: title,
+        moviePoster: poster,
+        movieYear: year ?? null,
+      });
       if (!error) {
         setNudgeSent(true);
       }
@@ -103,6 +109,7 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
   return (
     <Link
       href={`/movie/${id}`}
+      prefetch={false}
       className={`group block bg-[var(--bg-card)] rounded-xl overflow-hidden card-hover opacity-0 animate-fade-in-up stagger-${Math.min(index + 1, 6)} ${watched ? 'ring-2 ring-green-500/30' : ''}`}
     >
       {/* Poster */}
@@ -236,17 +243,9 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
           </div>
         </div>
 
-        {/* Yet to watch, Nudge & Send to Friend */}
+        {/* Nudge & Send to Friend */}
         {user && (
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
-            {!watched && (
-              <span className="text-xs text-orange-400 flex items-center gap-1">
-                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Yet to watch
-              </span>
-            )}
             <div className="flex items-center gap-2 ml-auto">
               {/* Send to Friend button */}
               <button
