@@ -2,6 +2,10 @@ import { serve } from 'https://deno.land/std@0.224.0/http/server.ts';
 
 const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
 const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+const supabaseServiceKey =
+  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ??
+  Deno.env.get('SERVICE_ROLE_KEY') ??
+  '';
 const allowedOrigins = new Set([
   'https://bingeitbro.com',
   'https://www.bingeitbro.com',
@@ -109,15 +113,45 @@ serve(async (req) => {
       movie_poster: rec.movie_poster.startsWith('https://image.tmdb.org/') ? rec.movie_poster : '',
     }));
 
+    let toInsert = sanitized;
+
+    if (supabaseServiceKey) {
+      const recipientIds = [...new Set(sanitized.map((rec) => rec.recipient_id))];
+      if (recipientIds.length > 0) {
+        const friendsResponse = await fetch(
+          `${supabaseUrl}/rest/v1/friends?select=friend_id&user_id=eq.${user.id}&friend_id=in.(${recipientIds.join(',')})`,
+          {
+            method: 'GET',
+            headers: {
+              apikey: supabaseAnonKey,
+              Authorization: `Bearer ${supabaseServiceKey}`,
+            },
+          },
+        );
+
+        if (friendsResponse.ok) {
+          const friends = await friendsResponse.json().catch(() => []) as { friend_id?: string }[];
+          const allowed = new Set(friends.map((row) => row.friend_id).filter(Boolean) as string[]);
+          toInsert = sanitized.filter((rec) => allowed.has(rec.recipient_id));
+        }
+      }
+    }
+
+    if (toInsert.length === 0) {
+      return new Response(JSON.stringify({ sent: 0 }), { status: 200, headers: corsHeaders });
+    }
+
+    const insertAuth = supabaseServiceKey ? `Bearer ${supabaseServiceKey}` : `Bearer ${accessToken}`;
+
     const insertResponse = await fetch(`${supabaseUrl}/rest/v1/friend_recommendations`, {
       method: 'POST',
       headers: {
         apikey: supabaseAnonKey,
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: insertAuth,
         'Content-Type': 'application/json',
         Prefer: 'return=minimal',
       },
-      body: JSON.stringify(sanitized),
+      body: JSON.stringify(toInsert),
     });
 
     if (!insertResponse.ok) {
@@ -144,7 +178,7 @@ serve(async (req) => {
       return new Response(JSON.stringify({ message, code }), { status: 500, headers: corsHeaders });
     }
 
-    return new Response(JSON.stringify({ sent: sanitized.length }), { status: 200, headers: corsHeaders });
+    return new Response(JSON.stringify({ sent: toInsert.length }), { status: 200, headers: corsHeaders });
   } catch (err) {
     return new Response(JSON.stringify({ message: String(err) }), { status: 500, headers: corsHeaders });
   }
