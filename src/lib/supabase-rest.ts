@@ -631,15 +631,14 @@ export async function sendFriendRecommendations(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
-    const response = await fetch(`${supabaseUrl}/rest/v1/friend_recommendations`, {
+    const response = await fetch(`${supabaseUrl}/functions/v1/send-friend-recommendations`, {
       method: 'POST',
       headers: {
         apikey: supabaseAnonKey,
         Authorization: `Bearer ${token ?? supabaseAnonKey}`,
         'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
       },
-      body: JSON.stringify(rows),
+      body: JSON.stringify({ recommendations: rows }),
       signal: controller.signal,
     });
 
@@ -662,7 +661,9 @@ export async function sendFriendRecommendations(
     const message =
       typeof data === 'object' && data !== null && 'message' in data
         ? String((data as { message?: string }).message)
-        : response.statusText;
+        : typeof data === 'object' && data !== null && 'error' in data
+          ? String((data as { error?: string }).error)
+          : response.statusText;
     if (code === '23505') {
       throw new Error('DUPLICATE');
     }
