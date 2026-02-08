@@ -193,21 +193,12 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
         <div className="flex items-center justify-between h-16 sm:h-20">
           {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="bib-logo w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-gradient-to-br from-[var(--accent)] to-orange-600 flex items-center justify-center shadow-lg shadow-[var(--accent)]/20">
-              <svg
-                className="w-5 h-5 sm:w-6 sm:h-6 text-[var(--bg-primary)]"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M7 4v16M17 4v16M3 8h4m10 0h4M3 12h18M3 16h4m10 0h4M4 20h16a1 1 0 001-1V5a1 1 0 00-1-1H4a1 1 0 00-1 1v14a1 1 0 001 1z"
-                />
-              </svg>
-              <span className="bib-logo-orbit" aria-hidden="true" />
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-[var(--accent)]/20 ring-1 ring-white/10">
+              <img
+                src="/bib-logo.png"
+                alt="BiB"
+                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+              />
             </div>
             <div>
               <h1 className="bib-wordmark text-lg sm:text-xl font-bold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
