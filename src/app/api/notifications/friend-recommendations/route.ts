@@ -13,11 +13,34 @@ type RecommendationInput = {
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
 const unosendApiKey = (process.env.UNOSEND_API_KEY ?? '').trim();
+const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/i;
 const normalizeEmailHeader = (value: string) => {
   const trimmed = value.trim();
   if (!trimmed) return '';
-  // Strip wrapping quotes that often get pasted into env vars
-  return trimmed.replace(/^["']+|["']+$/g, '');
+  const cleaned = trimmed.replace(/[\r\n]+/g, ' ').replace(/^["']+|["']+$/g, '').trim();
+  if (!cleaned) return '';
+
+  const angleMatch = cleaned.match(/^(.*)<([^>]+)>$/);
+  if (angleMatch) {
+    const name = angleMatch[1].trim().replace(/^["']+|["']+$/g, '');
+    const email = angleMatch[2].trim();
+    if (EMAIL_RE.test(email)) {
+      return name ? `${name} <${email}>` : email;
+    }
+  }
+
+  if (EMAIL_RE.test(cleaned)) {
+    return cleaned;
+  }
+
+  const parts = cleaned.split(/\s+/);
+  const last = parts[parts.length - 1];
+  if (EMAIL_RE.test(last)) {
+    const name = parts.slice(0, -1).join(' ').trim().replace(/^["']+|["']+$/g, '');
+    return name ? `${name} <${last}>` : last;
+  }
+
+  return '';
 };
 const unosendFrom = normalizeEmailHeader(process.env.UNOSEND_FROM ?? '');
 const unosendReplyTo = normalizeEmailHeader(process.env.UNOSEND_REPLY_TO ?? '');
@@ -82,8 +105,11 @@ export async function POST(request: Request) {
   if (!supabaseUrl || !supabaseAnonKey) {
     return NextResponse.json({ error: 'Supabase is not configured.' }, { status: 500 });
   }
-  if (!unosendApiKey || !unosendFrom) {
-    return NextResponse.json({ error: 'Email is not configured.' }, { status: 500 });
+  if (!unosendApiKey) {
+    return NextResponse.json({ error: 'Email provider is not configured.' }, { status: 500 });
+  }
+  if (!unosendFrom) {
+    return NextResponse.json({ error: 'Email "from" address is missing or invalid.' }, { status: 500 });
   }
 
   const token = getBearerToken(request);
