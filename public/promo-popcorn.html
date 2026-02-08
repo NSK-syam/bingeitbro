@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>BiB Popcorn Promo</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=IBM+Plex+Sans:wght@300;400;600&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg: #0b0b0d;
+        --bg-2: #121215;
+        --ink: #f5f4ef;
+        --muted: #c7c2b7;
+        --accent: #f59e0b;
+        --accent-soft: #f7b733;
+        --accent-glow: rgba(245, 158, 11, 0.35);
+        --popcorn: #fff4cc;
+        --popcorn-2: #f9e39b;
+        --shadow: rgba(0, 0, 0, 0.45);
+        --duration: 12s;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font-family: "IBM Plex Sans", sans-serif;
+      }
+
+      body {
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+      }
+
+      .stage {
+        position: relative;
+        width: min(92vw, 1280px);
+        aspect-ratio: 16 / 9;
+        background: radial-gradient(120% 120% at 70% 10%, #1b1410 0%, var(--bg) 55%, #070708 100%);
+        border-radius: 24px;
+        overflow: hidden;
+        box-shadow: 0 40px 120px rgba(0, 0, 0, 0.55);
+      }
+
+      .grain {
+        position: absolute;
+        inset: 0;
+        background-image:
+          repeating-radial-gradient(circle at 0 0, rgba(255, 255, 255, 0.06) 0 1px, transparent 1px 3px),
+          repeating-radial-gradient(circle at 100% 0, rgba(255, 255, 255, 0.03) 0 1px, transparent 1px 4px);
+        opacity: 0.25;
+        mix-blend-mode: soft-light;
+        pointer-events: none;
+      }
+
+      .glow {
+        position: absolute;
+        width: 520px;
+        height: 520px;
+        background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%);
+        top: -120px;
+        right: -140px;
+        filter: blur(4px);
+      }
+
+      .film-strip {
+        position: absolute;
+        inset: auto 0 0 0;
+        height: 120px;
+        background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.5));
+        display: grid;
+        grid-auto-flow: column;
+        grid-auto-columns: 72px;
+        gap: 18px;
+        padding: 16px 40px;
+        opacity: 0.25;
+      }
+
+      .film-strip span {
+        border: 1px solid rgba(245, 245, 245, 0.2);
+        border-radius: 8px;
+      }
+
+      .popcorn {
+        position: absolute;
+        left: 70px;
+        bottom: 110px;
+        width: 230px;
+        height: 260px;
+        z-index: 3;
+      }
+
+      .bucket {
+        position: absolute;
+        left: 10px;
+        bottom: 0;
+        width: 200px;
+        height: 190px;
+        background: linear-gradient(180deg, #fb923c 0%, #f97316 100%);
+        clip-path: polygon(10% 0%, 90% 0%, 100% 100%, 0% 100%);
+        border: 2px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+      }
+
+      .bucket::before {
+        content: "";
+        position: absolute;
+        inset: 12px 18px 12px 18px;
+        background: repeating-linear-gradient(
+          -20deg,
+          rgba(255, 255, 255, 0.6) 0 12px,
+          rgba(255, 255, 255, 0) 12px 28px
+        );
+        opacity: 0.5;
+        border-radius: 8px;
+      }
+
+      .popcorn-top {
+        position: absolute;
+        left: 24px;
+        top: 10px;
+        width: 180px;
+        height: 80px;
+        background: radial-gradient(circle at 20% 40%, var(--popcorn) 0 35px, transparent 38px),
+          radial-gradient(circle at 50% 20%, var(--popcorn-2) 0 40px, transparent 42px),
+          radial-gradient(circle at 80% 45%, var(--popcorn) 0 36px, transparent 40px);
+        filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.35));
+      }
+
+      .kernel {
+        position: absolute;
+        width: 24px;
+        height: 24px;
+        border-radius: 8px 12px 10px 6px;
+        background: linear-gradient(135deg, var(--popcorn) 0%, var(--popcorn-2) 70%);
+        box-shadow: 0 8px 12px rgba(0, 0, 0, 0.35);
+        opacity: 0;
+        animation: pop var(--duration) infinite;
+      }
+
+      .k1 { left: 40px; bottom: 120px; animation-delay: 0.3s; }
+      .k2 { left: 120px; bottom: 130px; animation-delay: 0.6s; }
+      .k3 { left: 160px; bottom: 125px; animation-delay: 0.9s; }
+      .k4 { left: 90px; bottom: 140px; animation-delay: 1.2s; }
+      .k5 { left: 140px; bottom: 115px; animation-delay: 1.5s; }
+      .k6 { left: 70px; bottom: 115px; animation-delay: 1.8s; }
+
+      @keyframes pop {
+        0%, 15% {
+          transform: translateY(0) scale(0.3);
+          opacity: 0;
+        }
+        22% {
+          opacity: 1;
+          transform: translateY(-60px) scale(1);
+        }
+        30% {
+          opacity: 0;
+          transform: translateY(-100px) scale(0.6);
+        }
+        100% {
+          opacity: 0;
+        }
+      }
+
+      .logo {
+        font-family: "Bebas Neue", sans-serif;
+        font-size: clamp(40px, 6vw, 86px);
+        letter-spacing: 0.08em;
+        color: var(--ink);
+      }
+
+      .tagline {
+        font-size: clamp(18px, 2vw, 24px);
+        color: var(--muted);
+        max-width: 520px;
+        line-height: 1.4;
+      }
+
+      .scene {
+        position: absolute;
+        right: 70px;
+        top: 120px;
+        width: min(62%, 720px);
+        opacity: 0;
+        transform: translateY(10px);
+      }
+
+      .scene h2 {
+        font-family: "Bebas Neue", sans-serif;
+        font-size: clamp(36px, 4.8vw, 72px);
+        letter-spacing: 0.05em;
+        margin: 0 0 10px;
+      }
+
+      .scene p {
+        margin: 0;
+        font-size: clamp(16px, 1.8vw, 22px);
+        line-height: 1.5;
+        color: var(--muted);
+      }
+
+      .chips {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+      }
+
+      .chip {
+        padding: 8px 14px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.05);
+        font-size: 13px;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #fef3c7;
+      }
+
+      .cta {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        padding: 12px 22px;
+        margin-top: 22px;
+        background: var(--accent);
+        color: #1a1206;
+        font-weight: 600;
+        border-radius: 999px;
+        text-decoration: none;
+        box-shadow: 0 14px 30px rgba(245, 158, 11, 0.3);
+      }
+
+      .url {
+        margin-top: 10px;
+        font-size: 14px;
+        letter-spacing: 0.18em;
+        color: #fcd34d;
+      }
+
+      @keyframes scene1 {
+        0% { opacity: 0; transform: translateY(18px); }
+        6% { opacity: 1; transform: translateY(0); }
+        20% { opacity: 1; }
+        25% { opacity: 0; transform: translateY(-8px); }
+        100% { opacity: 0; }
+      }
+
+      @keyframes scene2 {
+        0%, 25% { opacity: 0; transform: translateY(18px); }
+        31% { opacity: 1; transform: translateY(0); }
+        45% { opacity: 1; }
+        50% { opacity: 0; transform: translateY(-8px); }
+        100% { opacity: 0; }
+      }
+
+      @keyframes scene3 {
+        0%, 50% { opacity: 0; transform: translateY(18px); }
+        56% { opacity: 1; transform: translateY(0); }
+        70% { opacity: 1; }
+        75% { opacity: 0; transform: translateY(-8px); }
+        100% { opacity: 0; }
+      }
+
+      @keyframes scene4 {
+        0%, 75% { opacity: 0; transform: translateY(18px); }
+        81% { opacity: 1; transform: translateY(0); }
+        96% { opacity: 1; }
+        100% { opacity: 0; transform: translateY(-8px); }
+      }
+
+      .s1 { animation: scene1 var(--duration) infinite; }
+      .s2 { animation: scene2 var(--duration) infinite; }
+      .s3 { animation: scene3 var(--duration) infinite; }
+      .s4 { animation: scene4 var(--duration) infinite; }
+
+      .spark {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        background: #fef3c7;
+        border-radius: 50%;
+        margin-right: 8px;
+        box-shadow: 0 0 12px rgba(254, 243, 199, 0.8);
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .kernel,
+        .scene {
+          animation: none !important;
+          opacity: 1;
+          transform: none;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <div class="grain"></div>
+      <div class="glow"></div>
+
+      <div class="popcorn">
+        <div class="popcorn-top"></div>
+        <div class="bucket"></div>
+        <div class="kernel k1"></div>
+        <div class="kernel k2"></div>
+        <div class="kernel k3"></div>
+        <div class="kernel k4"></div>
+        <div class="kernel k5"></div>
+        <div class="kernel k6"></div>
+      </div>
+
+      <div class="scene s1">
+        <div class="logo">BiB</div>
+        <div class="tagline">Binge it bro — the friend-powered movie night.</div>
+      </div>
+
+      <div class="scene s2">
+        <h2>Your movie night, curated by people who know you.</h2>
+        <p>Skip the endless scroll. Get real picks from your circle, not a machine.</p>
+      </div>
+
+      <div class="scene s3">
+        <h2>Friends only. No algorithms.</h2>
+        <p>Share a recommendation, add a note, and keep the vibe personal.</p>
+        <div class="chips">
+          <span class="chip"><span class="spark"></span>Friends-only picks</span>
+          <span class="chip"><span class="spark"></span>One-tap share</span>
+          <span class="chip"><span class="spark"></span>Watch together</span>
+        </div>
+      </div>
+
+      <div class="scene s4">
+        <h2>Build your watch crew.</h2>
+        <p>Join BiB and start trading the picks you actually trust.</p>
+        <a class="cta" href="https://bingeitbro.com">Join BiB</a>
+        <div class="url">BINGEITBRO.COM</div>
+      </div>
+
+      <div class="film-strip">
+        <span></span><span></span><span></span><span></span><span></span>
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </div>
+  </body>
+</html>
