@@ -14,6 +14,7 @@ function AuthCallbackContent() {
     const errorParam = searchParams.get('error');
     const errorDescription = searchParams.get('error_description');
     const next = searchParams.get('next') ?? '/';
+    const code = searchParams.get('code');
 
     if (errorParam) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -28,51 +29,61 @@ function AuthCallbackContent() {
       return;
     }
 
-    // The Supabase client with detectSessionInUrl: true automatically
-    // detects the ?code= parameter and exchanges it for a session.
-    // We just need to listen for the auth state change.
     const supabase = createClient();
+    let isActive = true;
 
-    console.log('[Auth Callback] Waiting for session from URL detection...');
+    console.log('[Auth Callback] Processing auth callback...');
 
     const timeoutId = setTimeout(() => {
+      if (!isActive) return;
       console.error('[Auth Callback] Timed out after 15s');
       setStatus('error');
       setErrorMessage('Sign-in timed out. Please try again.');
     }, 15000);
 
-    // Listen for the SIGNED_IN event that fires after auto code exchange
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[Auth Callback] Auth state changed:', event, !!session);
+    const finish = () => {
+      if (!isActive) return;
+      clearTimeout(timeoutId);
+      setStatus('success');
+      window.location.replace(next);
+    };
 
-      if (event === 'SIGNED_IN' && session) {
-        clearTimeout(timeoutId);
-        setStatus('success');
-        subscription.unsubscribe();
-        window.location.replace(next);
-      } else if (event === 'TOKEN_REFRESHED' && session) {
-        // Also handle token refresh which can happen on redirect
-        clearTimeout(timeoutId);
-        setStatus('success');
-        subscription.unsubscribe();
-        window.location.replace(next);
-      }
-    });
+    const fail = (message: string) => {
+      if (!isActive) return;
+      clearTimeout(timeoutId);
+      setStatus('error');
+      setErrorMessage(message);
+    };
 
-    // Also check if session already exists (in case event already fired)
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        console.log('[Auth Callback] Session already exists');
-        clearTimeout(timeoutId);
-        setStatus('success');
-        subscription.unsubscribe();
-        window.location.replace(next);
+    (async () => {
+      try {
+        // If we have a PKCE code, exchange it explicitly.
+        if (code) {
+          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          if (error) {
+            fail(error.message || 'Authentication failed');
+            return;
+          }
+          finish();
+          return;
+        }
+
+        // Fallback: check for an existing session (e.g., already signed in).
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session) {
+          finish();
+        } else {
+          fail('Sign-in failed. Missing authentication code.');
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Authentication failed';
+        fail(message);
       }
-    });
+    })();
 
     return () => {
+      isActive = false;
       clearTimeout(timeoutId);
-      subscription.unsubscribe();
     };
   }, [searchParams]);
 
