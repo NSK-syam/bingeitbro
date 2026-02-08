@@ -618,9 +618,13 @@ export async function getAlreadyRecommendedRecipientIds(
   }
 }
 
+const SEND_REC_MAX_RETRIES = 2;
+const SEND_REC_RETRY_DELAYS_MS = [1500, 3000];
+
 /**
  * Insert friend recommendations via REST (same token-based approach as fetch).
  * Avoids createClient() hanging on cold start.
+ * Retries on XX000 / "Server is busy" (Supabase/Postgres internal error).
  */
 export async function sendFriendRecommendations(
   rows: FriendRecommendationRow[],
@@ -629,54 +633,76 @@ export async function sendFriendRecommendations(
   if (!token) {
     throw new Error('Not authenticated');
   }
-  const controller = new AbortController();
-  const timeoutMs = DEFAULT_TIMEOUT_MS;
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const base = typeof window !== 'undefined' ? window.location.origin : '';
+  const url = `${base}/api/send-friend-recommendations`;
+  const body = JSON.stringify({ recommendations: rows });
+  let lastErr: Error | null = null;
 
-  try {
-    const response = await fetch(`${supabaseUrl}/functions/v1/send-friend-recommendations?apikey=${supabaseAnonKey}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({ access_token: token, recommendations: rows }),
-      signal: controller.signal,
-    });
+  for (let attempt = 0; attempt <= SEND_REC_MAX_RETRIES; attempt++) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT_MS);
 
-    const text = await response.text();
-    let data: unknown = null;
-    if (text) {
-      try {
-        data = JSON.parse(text);
-      } catch {
-        data = text;
+    try {
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body,
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      const text = await response.text();
+      let data: unknown = null;
+      if (text) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = text;
+        }
       }
-    }
 
-    if (response.ok) return;
+      if (response.ok) return;
 
-    const code =
-      typeof data === 'object' && data !== null && 'code' in data
-        ? String((data as { code?: string }).code)
-        : '';
-    const message =
-      typeof data === 'object' && data !== null && 'message' in data
-        ? String((data as { message?: string }).message)
-        : typeof data === 'object' && data !== null && 'error' in data
-          ? String((data as { error?: string }).error)
-          : response.statusText;
-    if (code === '23505') {
-      throw new Error('DUPLICATE');
+      const code =
+        typeof data === 'object' && data !== null && 'code' in data
+          ? String((data as { code?: string }).code)
+          : '';
+      const message =
+        typeof data === 'object' && data !== null && 'message' in data
+          ? String((data as { message?: string }).message)
+          : typeof data === 'object' && data !== null && 'error' in data
+            ? String((data as { error?: string }).error)
+            : response.statusText;
+      if (code === '23505') {
+        throw new Error('DUPLICATE');
+      }
+      lastErr = new Error(message || 'Request failed');
+      const isRetryable =
+        code === 'XX000' || /server is busy|try again/i.test(message || '');
+      if (!isRetryable || attempt >= SEND_REC_MAX_RETRIES) {
+        throw lastErr;
+      }
+      await new Promise((r) => setTimeout(r, SEND_REC_RETRY_DELAYS_MS[attempt]));
+    } catch (err) {
+      clearTimeout(timeoutId);
+      if (err instanceof Error && err.message === 'DUPLICATE') throw err;
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        throw new Error(`Request timed out after ${DEFAULT_TIMEOUT_MS / 1000}s`);
+      }
+      lastErr = err instanceof Error ? err : new Error(String(err));
+      const isRetryable =
+        lastErr.message.includes('Server is busy') ||
+        lastErr.message.includes('XX000');
+      if (!isRetryable || attempt >= SEND_REC_MAX_RETRIES) {
+        throw lastErr;
+      }
+      await new Promise((r) => setTimeout(r, SEND_REC_RETRY_DELAYS_MS[attempt]));
     }
-    throw new Error(message || 'Request failed');
-  } catch (err) {
-    if (err instanceof Error && err.message === 'DUPLICATE') throw err;
-    if (err instanceof DOMException && err.name === 'AbortError') {
-      throw new Error(`Request timed out after ${timeoutMs / 1000}s`);
-    }
-    throw err;
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  throw lastErr ?? new Error('Request failed');
 }

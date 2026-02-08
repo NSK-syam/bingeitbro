@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  output: "export",
+  // Removed output: "export" so /api/send-friend-recommendations is deployed (avoids CORS with Supabase Edge Function).
   images: {
     remotePatterns: [
       {
