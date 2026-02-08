@@ -13,8 +13,14 @@ type RecommendationInput = {
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
 const unosendApiKey = (process.env.UNOSEND_API_KEY ?? '').trim();
-const unosendFrom = (process.env.UNOSEND_FROM ?? '').trim();
-const unosendReplyTo = (process.env.UNOSEND_REPLY_TO ?? '').trim();
+const normalizeEmailHeader = (value: string) => {
+  const trimmed = value.trim();
+  if (!trimmed) return '';
+  // Strip wrapping quotes that often get pasted into env vars
+  return trimmed.replace(/^["']+|["']+$/g, '');
+};
+const unosendFrom = normalizeEmailHeader(process.env.UNOSEND_FROM ?? '');
+const unosendReplyTo = normalizeEmailHeader(process.env.UNOSEND_REPLY_TO ?? '');
 const siteUrl =
   process.env.NEXT_PUBLIC_SITE_URL ??
   process.env.SITE_URL ??
