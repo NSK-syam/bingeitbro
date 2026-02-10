@@ -38,15 +38,26 @@ function isValidBirthdate(birthdate: string) {
 }
 
 export async function POST(req: Request) {
-  const url = (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '').trim();
+  const url = (
+    process.env.NEXT_PUBLIC_SUPABASE_URL ||
+    process.env.SUPABASE_URL ||
+    process.env.SUPABASE_PROJECT_URL ||
+    ''
+  ).trim();
   const serviceRole =
-    (process.env.SUPABASE_SERVICE_ROLE_KEY ||
+    (
+      process.env.SUPABASE_SERVICE_ROLE_KEY ||
+      process.env.SUPABASE_SERVICE_KEY ||
       process.env.SUPABASE_SERVICE_ROLE ||
-      '').trim();
+      ''
+    ).trim();
 
   if (!url || !serviceRole) {
+    const missing: string[] = [];
+    if (!url) missing.push('NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL)');
+    if (!serviceRole) missing.push('SUPABASE_SERVICE_ROLE_KEY');
     return NextResponse.json(
-      { error: 'Server is missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_URL.' },
+      { error: `Server is missing ${missing.join(' and ')}.` },
       { status: 500 },
     );
   }
@@ -139,4 +150,3 @@ export async function POST(req: Request) {
 
   return NextResponse.json({ ok: true }, { status: 200 });
 }
-
