@@ -810,14 +810,14 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
           className="absolute inset-0 opacity-80"
           style={{
             background:
-              'radial-gradient(1400px circle at 50% -6%, var(--stage-spot) 0%, rgba(10,10,12,0) 78%)',
+              'radial-gradient(2000px 1400px at 50% -8%, var(--stage-spot) 0%, rgba(10,10,12,0) 90%)',
           }}
         />
         <div
           className="absolute inset-0 opacity-70"
           style={{
             background:
-              'radial-gradient(1100px circle at 50% -2%, var(--stage-spot-soft) 0%, rgba(10,10,12,0) 80%)',
+              'radial-gradient(1800px 1200px at 50% -4%, var(--stage-spot-soft) 0%, rgba(10,10,12,0) 92%)',
           }}
         />
         <div className="absolute inset-0 bg-[radial-gradient(1200px_circle_at_20%_10%,rgba(255,203,74,0.22),rgba(10,10,12,0)_60%),radial-gradient(900px_circle_at_80%_0%,rgba(0,170,255,0.18),rgba(10,10,12,0)_55%),radial-gradient(700px_circle_at_70%_80%,rgba(255,90,140,0.16),rgba(10,10,12,0)_60%)]" />
@@ -848,9 +848,9 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
               return (
                 <div key={theme.id} className="group relative flex flex-col items-center">
                   <span
-                    className={`absolute left-1/2 top-10 h-64 w-56 -translate-x-1/2 transition-opacity duration-300 pointer-events-none ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-70'}`}
+                    className={`absolute left-1/2 top-10 h-[520px] w-[360px] -translate-x-1/2 transition-opacity duration-300 pointer-events-none ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-70'}`}
                     style={{
-                      background: `linear-gradient(180deg, ${theme.beam} 0%, ${theme.beamSoft} 68%, rgba(0,0,0,0) 100%)`,
+                      background: `linear-gradient(180deg, ${theme.beam} 0%, ${theme.beamSoft} 78%, rgba(0,0,0,0) 100%)`,
                       clipPath: 'polygon(50% 0%, 0 100%, 100% 100%)',
                     }}
                   />
