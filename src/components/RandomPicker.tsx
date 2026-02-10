@@ -370,9 +370,6 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                     <p className="text-sm text-[var(--text-muted)] mt-1">
                       {selectedMovie.year} • {selectedMovie.language}
                     </p>
-                    <p className="text-xs text-[var(--accent)] mt-2">
-                      {selectedMovie.recommendedBy.avatar} {selectedMovie.recommendedBy.name}&apos;s pick
-                    </p>
                   </div>
                 ) : (
                   <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-secondary)]">
