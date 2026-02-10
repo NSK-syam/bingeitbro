@@ -22,3 +22,4 @@ export { RecommendationToast } from './RecommendationToast';
 export { BingeCalculatorModal } from './BingeCalculatorModal';
 export { BirthdayPopup } from './BirthdayPopup';
 export { ConfettiBoom } from './ConfettiBoom';
+export { BalloonRain } from './BalloonRain';
