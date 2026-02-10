@@ -119,16 +119,15 @@ export default function Home() {
     setShowTour(false);
   }, [user?.id]);
 
-  // Friends + anyone who has a rec in the Friends view (e.g. senders of "Send to Friend" who aren't in friends list)
+  // Recommenders shown in Friends view (only people who sent recommendations)
   const recommenders = useMemo(() => {
     const byId = new Map<string, Recommender>();
-    userFriends.forEach((f) => byId.set(f.id, f));
     friendsRecommendations.forEach((r) => {
       const rb = r.recommendedBy;
       if (rb?.id && !byId.has(rb.id)) byId.set(rb.id, rb);
     });
     return Array.from(byId.values());
-  }, [userFriends, friendsRecommendations]);
+  }, [friendsRecommendations]);
 
   const filmstripItems = useMemo(() => {
     if (!user) return [];
@@ -143,11 +142,13 @@ export default function Home() {
       return acc;
     }, {});
 
-    if (recommenders.length === 0) {
-      return ['Add friends to unlock their picks', 'Share your taste', 'Start a binge'];
+    const activeRecommenders = recommenders.filter((person) => (unwatchedCounts[person.id] || 0) > 0);
+
+    if (activeRecommenders.length === 0) {
+      return ['No new recommendations yet', 'Ask a friend to send a pick', 'Start a binge'];
     }
 
-    return recommenders.map((person) => {
+    return activeRecommenders.map((person) => {
       const count = unwatchedCounts[person.id] || 0;
       const label = count === 1 ? 'movie' : 'movies';
       return `${count} ${label} from ${person.name}`;
@@ -402,8 +403,12 @@ export default function Home() {
       // Year filter
       if (filters.year != null && rec.year !== filters.year) return false;
 
-      // Watched status filter
-      if (filters.watchedStatus === 'watched' && !isWatched(rec.id)) return false;
+      // Watched status filter (Friends view hides watched by default)
+      if (filters.watchedStatus === 'watched') {
+        if (!isWatched(rec.id)) return false;
+      } else if (isWatched(rec.id)) {
+        return false;
+      }
 
       return true;
     });
@@ -813,7 +818,7 @@ export default function Home() {
                         : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
                         }`}
                     >
-                      {status === 'all' ? 'All' : (
+                      {status === 'all' ? 'Unwatched' : (
                         <>
                           ✓ Watched
                           <span className="opacity-90 font-normal">
@@ -874,10 +879,10 @@ export default function Home() {
               <div className="text-center py-20">
                 <div className="text-6xl mb-4">👥</div>
                 <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
-                  {recommenders.length === 0 ? 'No friends yet' : 'No recommendations'}
+                  {userFriends.length === 0 ? 'No friends yet' : 'No recommendations'}
                 </h3>
                 <p className="text-[var(--text-secondary)] mb-4">
-                  {recommenders.length === 0
+                  {userFriends.length === 0
                     ? 'Add friends to see their movie recommendations'
                     : filters.recommendedBy
                       ? 'This friend hasn\'t added any recommendations yet'
