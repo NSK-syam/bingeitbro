@@ -40,6 +40,7 @@ export interface DBUser {
   username: string;
   avatar: string;
   theme?: string | null;
+  birthdate?: string | null; // YYYY-MM-DD
   created_at: string;
 }
 
