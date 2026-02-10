@@ -71,11 +71,67 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
 
   const moodConfig = MOOD_OPTIONS.find((m) => m.id === selectedMood) || null;
   const languageOptions = useMemo(() => {
-    const unique = Array.from(
-      new Set(recommendations.map((rec) => rec.language).filter((lang) => lang && lang.trim()))
-    );
-    return ['Any', ...unique.sort((a, b) => a.localeCompare(b))];
-  }, [recommendations]);
+    try {
+      const intlAny = Intl as unknown as { supportedValuesOf?: (key: 'language') => string[] };
+      if (typeof intlAny.supportedValuesOf === 'function') {
+        const codes = intlAny.supportedValuesOf('language');
+        const display = new Intl.DisplayNames(['en'], { type: 'language' });
+        const names = codes
+          .map((code) => display.of(code))
+          .filter((name): name is string => Boolean(name))
+          .map((name) => name.trim())
+          .filter((name) => name.length > 0);
+        const unique = Array.from(new Set(names));
+        unique.sort((a, b) => a.localeCompare(b));
+        return ['Any', ...unique];
+      }
+    } catch {
+      // fall back to a curated list below
+    }
+
+    return [
+      'Any',
+      'English',
+      'Telugu',
+      'Hindi',
+      'Tamil',
+      'Malayalam',
+      'Kannada',
+      'Marathi',
+      'Bengali',
+      'Punjabi',
+      'Gujarati',
+      'Urdu',
+      'Spanish',
+      'French',
+      'German',
+      'Italian',
+      'Portuguese',
+      'Russian',
+      'Japanese',
+      'Korean',
+      'Chinese',
+      'Arabic',
+      'Turkish',
+      'Thai',
+      'Indonesian',
+      'Vietnamese',
+      'Filipino',
+      'Persian',
+      'Greek',
+      'Hebrew',
+      'Swedish',
+      'Norwegian',
+      'Danish',
+      'Finnish',
+      'Dutch',
+      'Polish',
+      'Czech',
+      'Hungarian',
+      'Romanian',
+      'Ukrainian',
+    ];
+  }, []);
 
   const isReady = Boolean(selectedMood) && Boolean(selectedLanguage);
   const moodLanguageMatches = useMemo(() => {
@@ -202,7 +258,7 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
 
       {/* Modal */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 sm:p-6">
           {/* Backdrop */}
           <div
             className="absolute inset-0 bg-black/80 backdrop-blur-sm"
@@ -210,7 +266,7 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
           />
 
           {/* Modal Content */}
-          <div className="relative w-full max-w-md bg-[var(--bg-card)] rounded-2xl p-6 shadow-2xl border border-white/10 animate-fade-in-up">
+          <div className="relative w-full max-w-md max-h-[85vh] overflow-y-auto bg-[var(--bg-card)] rounded-2xl p-6 shadow-2xl border border-white/10 animate-fade-in-up">
             {/* Close button */}
             <button
               onClick={handleClose}
@@ -253,7 +309,7 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
 
                 <div>
                   <p className="text-sm font-medium text-[var(--text-primary)]">Pick a language</p>
-                  <div className="flex flex-wrap gap-2 mt-2">
+                  <div className="flex flex-wrap gap-2 mt-2 max-h-32 overflow-y-auto pr-1">
                     {languageOptions.map((lang) => (
                       <button
                         key={lang}
