@@ -13,7 +13,6 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Recommendation | null>(null);
-  const [showUnwatchedOnly, setShowUnwatchedOnly] = useState(true);
   const [selectedMood, setSelectedMood] = useState<string>('');
   const [selectedLanguage, setSelectedLanguage] = useState<string>('');
   const { isWatched } = useWatched();
@@ -177,8 +176,40 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
     return recommendations;
   }, [isReady, moodLanguageMatches, moodOnlyMatches, languageOnlyMatches, recommendations]);
 
-  const unwatchedMovies = basePool.filter((r) => !isWatched(r.id));
-  const availableMovies = showUnwatchedOnly ? unwatchedMovies : basePool;
+  const unwatchedMovies = useMemo(
+    () => basePool.filter((r) => !isWatched(r.id)),
+    [basePool, isWatched]
+  );
+  const scoredPool = useMemo(() => {
+    if (!isReady) return [];
+    return unwatchedMovies
+      .map((rec) => {
+        let score = 0;
+        if (moodConfig) {
+          const recMoods = (rec.mood ?? []).map((m) => m.toLowerCase());
+          const recGenres = (rec.genres ?? []).map((g) => g.toLowerCase());
+          const moodHits = moodConfig.tags.filter((tag) => recMoods.includes(tag)).length;
+          const genreHits = moodConfig.genres.filter((g) => recGenres.includes(g.toLowerCase())).length;
+          score += moodHits * 4 + genreHits * 2;
+        }
+        if (selectedLanguage && selectedLanguage !== 'Any') {
+          score += rec.language?.toLowerCase() === selectedLanguage.toLowerCase() ? 4 : 0;
+        }
+        if (typeof rec.rating === 'number') {
+          score += Math.min(2, rec.rating / 5);
+        }
+        if (rec.personalNote) score += 0.5;
+        return { rec, score };
+      })
+      .sort((a, b) => b.score - a.score);
+  }, [isReady, moodConfig, selectedLanguage, unwatchedMovies]);
+
+  const availableMovies = useMemo(() => {
+    if (!isReady) return [];
+    if (scoredPool.length === 0) return [];
+    const top = scoredPool.slice(0, Math.min(8, scoredPool.length)).map((item) => item.rec);
+    return top.length > 0 ? top : [];
+  }, [isReady, scoredPool]);
   const showFallbackNote = isReady && moodLanguageMatches.length === 0;
   const cheerMessage = isReady
     ? `${moodConfig?.cheer ?? 'We’ll find the right vibe for you.'} ${
@@ -203,8 +234,9 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
       if (count >= maxSpins) {
         clearInterval(spinInterval);
         // Final selection
-        const finalIndex = Math.floor(Math.random() * availableMovies.length);
-        setSelectedMovie(availableMovies[finalIndex]);
+        const topPicks = availableMovies.slice(0, Math.min(4, availableMovies.length));
+        const finalIndex = Math.floor(Math.random() * topPicks.length);
+        setSelectedMovie(topPicks[finalIndex]);
         setIsSpinning(false);
       }
     }, 100);
@@ -216,7 +248,6 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
     setIsSpinning(false);
     setSelectedMood('');
     setSelectedLanguage('');
-    setShowUnwatchedOnly(true);
   };
 
   const handleClose = () => {
@@ -339,22 +370,6 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                 )}
               </div>
 
-              {/* Toggle for unwatched only */}
-              <label className="flex items-center justify-center gap-2 mb-6 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={showUnwatchedOnly}
-                  onChange={(e) => setShowUnwatchedOnly(e.target.checked)}
-                  className="sr-only peer"
-                  disabled={!isReady}
-                />
-                <div className="w-10 h-6 bg-[var(--bg-secondary)] peer-checked:bg-[var(--accent)] rounded-full relative transition-colors">
-                  <div className="absolute w-4 h-4 bg-white rounded-full top-1 left-1 peer-checked:left-5 transition-all" />
-                </div>
-                <span className="text-sm text-[var(--text-secondary)]">
-                  {isReady ? `Unwatched only (${unwatchedMovies.length} available)` : 'Unwatched only'}
-                </span>
-              </label>
 
               {/* Selected Movie Display */}
               <div className={`relative h-64 mb-6 rounded-xl overflow-hidden ${isSpinning ? 'animate-pulse' : ''}`}>
@@ -423,10 +438,7 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                 ) : (
                   <div className="flex-1 py-4 text-center">
                     <p className="text-[var(--text-muted)]">
-                      {showUnwatchedOnly
-                        ? "You've watched everything! Toggle off 'Unwatched only' to pick from all movies."
-                        : 'No movies available.'
-                      }
+                      You've watched the matches for this mood. Try another mood or language.
                     </p>
                   </div>
                 )}
