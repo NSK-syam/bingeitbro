@@ -4,7 +4,6 @@ import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { AvatarPickerModal } from './AvatarPickerModal';
-import { BingeCalculatorModal } from './BingeCalculatorModal';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { enablePushNotifications } from '@/lib/push';
 
@@ -37,7 +36,6 @@ export function Header({ onSearch, onLoginClick, onWatchlistClick, onNudgesClick
   const [pushStatus, setPushStatus] = useState<'unsupported' | 'default' | 'granted' | 'denied'>('default');
   const [pushLoading, setPushLoading] = useState(false);
   const [pushError, setPushError] = useState('');
-  const [showBinge, setShowBinge] = useState(false);
   const searchRef = useRef<HTMLDivElement>(null);
   const { user, signOut, isConfigured } = useAuth();
 
@@ -280,18 +278,6 @@ export function Header({ onSearch, onLoginClick, onWatchlistClick, onNudgesClick
               )}
             </div>
 
-            {/* Can I Binge? */}
-            <button
-              type="button"
-              onClick={() => setShowBinge(true)}
-              className="relative p-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
-              title="Can I Binge?"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-            </button>
-
             {/* Friend Recommendations, Nudges, Watchlist */}
             {user ? (
               <>
@@ -477,8 +463,6 @@ export function Header({ onSearch, onLoginClick, onWatchlistClick, onNudgesClick
         userId={user?.id ?? ''}
         onSaved={(avatar) => setUserAvatar(avatar)}
       />
-
-      <BingeCalculatorModal isOpen={showBinge} onClose={() => setShowBinge(false)} />
     </header>
   );
 }
