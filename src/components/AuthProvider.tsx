@@ -4,6 +4,8 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode } fro
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { BirthdayPopup } from './BirthdayPopup';
+import { BalloonRain } from './BalloonRain';
+import { ConfettiBoom } from './ConfettiBoom';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -29,6 +31,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const ensuredProfileRef = useRef<string | null>(null);
   const [birthdayOpen, setBirthdayOpen] = useState(false);
   const [birthdayName, setBirthdayName] = useState('');
+  const [birthdayToday, setBirthdayToday] = useState(false);
+  const [birthdayBoom, setBirthdayBoom] = useState(false);
+
+  useEffect(() => {
+    if (!user?.id) {
+      setBirthdayToday(false);
+      setBirthdayBoom(false);
+      setBirthdayOpen(false);
+      setBirthdayName('');
+    }
+  }, [user?.id]);
 
   useEffect(() => {
     if (!isConfigured) {
@@ -128,7 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     const supabase = createClient();
 
-    const shouldShowBirthday = (birthdate: string | null | undefined) => {
+    const isBirthday = (birthdate: string | null | undefined) => {
       if (!birthdate) return false;
       const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthdate);
       if (!match) return false;
@@ -137,13 +150,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const now = new Date();
       if (now.getMonth() + 1 !== month) return false;
       if (now.getDate() !== day) return false;
+      return true;
+    };
+
+    const openPopupOnce = () => {
+      if (typeof window === 'undefined') return;
+      const now = new Date();
       const y = now.getFullYear();
       const m = String(now.getMonth() + 1).padStart(2, '0');
       const d = String(now.getDate()).padStart(2, '0');
-      const key = `bib-bday:${user.id}:${y}-${m}-${d}`;
-      if (typeof window !== 'undefined' && window.localStorage.getItem(key)) return false;
-      if (typeof window !== 'undefined') window.localStorage.setItem(key, '1');
-      return true;
+      const key = `bib-bday-popup:${user.id}:${y}-${m}-${d}`;
+      if (window.localStorage.getItem(key)) return;
+      window.localStorage.setItem(key, '1');
+      setBirthdayOpen(true);
+    };
+
+    const boomOncePerSession = () => {
+      if (typeof window === 'undefined') return;
+      const now = new Date();
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const key = `bib-bday-boom:${user.id}:${y}-${m}-${d}`;
+      if (window.sessionStorage.getItem(key)) return;
+      window.sessionStorage.setItem(key, '1');
+      setBirthdayBoom(true);
     };
 
     void (async () => {
@@ -157,8 +188,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (cancelled) return;
         const display = (data?.username || data?.name || user.user_metadata?.name || user.email?.split('@')[0] || 'there') as string;
         setBirthdayName(display);
-        if (shouldShowBirthday((data as { birthdate?: string | null } | null)?.birthdate)) {
-          setBirthdayOpen(true);
+        const bday = isBirthday((data as { birthdate?: string | null } | null)?.birthdate);
+        setBirthdayToday(bday);
+        if (bday) {
+          boomOncePerSession();
+          openPopupOnce();
+        } else {
+          setBirthdayBoom(false);
         }
       } catch {
         // ignore
@@ -317,6 +353,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isConfigured
     }}>
       {children}
+      <BalloonRain isOn={birthdayToday} />
+      <ConfettiBoom isOpen={birthdayBoom} onDone={() => setBirthdayBoom(false)} />
       <BirthdayPopup
         isOpen={birthdayOpen}
         onClose={() => setBirthdayOpen(false)}
