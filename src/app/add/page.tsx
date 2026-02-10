@@ -11,7 +11,11 @@ import {
   TMDBMovie,
   TMDBMovieDetails,
 } from '@/lib/tmdb';
-import data from '@/data/recommendations.json';
+import rawData from '@/data/recommendations.json';
+
+type Recommender = { id: string; name: string; avatar?: string };
+type RecommendationsData = { recommenders: Recommender[]; recommendations: unknown[] };
+const data = rawData as RecommendationsData;
 
 type OTTPlatform = 'Netflix' | 'Prime Video' | 'Hotstar' | 'Aha' | 'YouTube' | 'Zee5' | 'SonyLiv' | 'Jio Cinema' | 'Apple TV+' | 'Other';
 
