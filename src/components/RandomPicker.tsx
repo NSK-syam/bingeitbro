@@ -376,7 +376,11 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                     <div className="text-center">
                       <span className="text-6xl block mb-4">🎲</span>
                       <p className="text-[var(--text-muted)]">
-                        Pick your mood and language to get started
+                        {!isReady
+                          ? 'Pick your mood and language to get started'
+                          : availableMovies.length === 0
+                            ? "You've watched the matches for this mood. Try another mood or language."
+                            : "Ready! Click Find My Pick below."}
                       </p>
                     </div>
                   </div>

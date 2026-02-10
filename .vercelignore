@@ -1,0 +1,12 @@
+.next
+node_modules
+.git
+*.log
+.DS_Store
+.env*.local
+coverage
+.turbo
+*.backup
+docs
+public/share
+.vercel
