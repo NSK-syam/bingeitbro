@@ -1,0 +1,70 @@
+<svg width="1080" height="1350" viewBox="0 0 1080 1350" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#0A0A0C" />
+      <stop offset="100%" stop-color="#121215" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(180 260) rotate(90) scale(900)">
+      <stop offset="0%" stop-color="#F59E0B" stop-opacity="0.7" />
+      <stop offset="55%" stop-color="#F59E0B" stop-opacity="0.15" />
+      <stop offset="100%" stop-color="#F59E0B" stop-opacity="0" />
+    </radialGradient>
+    <filter id="grain" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="8" />
+      <feColorMatrix type="saturate" values="0" />
+      <feComponentTransfer>
+        <feFuncA type="table" tableValues="0 0.05" />
+      </feComponentTransfer>
+    </filter>
+    <filter id="soft-glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="12" />
+    </filter>
+  </defs>
+
+  <rect width="1080" height="1350" fill="url(#bg)" />
+  <rect width="1080" height="1350" fill="url(#glow)" />
+  <rect width="1080" height="1350" filter="url(#grain)" opacity="0.7" />
+
+  <!-- Film perforations -->
+  <g opacity="0.25" fill="#FFFFFF">
+    <rect x="948" y="170" width="24" height="44" rx="8" />
+    <rect x="948" y="266" width="24" height="44" rx="8" />
+    <rect x="948" y="362" width="24" height="44" rx="8" />
+    <rect x="948" y="458" width="24" height="44" rx="8" />
+    <rect x="948" y="554" width="24" height="44" rx="8" />
+    <rect x="948" y="650" width="24" height="44" rx="8" />
+    <rect x="948" y="746" width="24" height="44" rx="8" />
+    <rect x="948" y="842" width="24" height="44" rx="8" />
+    <rect x="948" y="938" width="24" height="44" rx="8" />
+    <rect x="948" y="1034" width="24" height="44" rx="8" />
+  </g>
+
+  <!-- Title glow -->
+  <text x="90" y="300" font-family="Avenir Next, Avenir, sans-serif" font-size="110" font-weight="700" fill="#F59E0B" opacity="0.7" filter="url(#soft-glow)">
+    BingeItBro
+  </text>
+
+  <!-- Title -->
+  <text x="90" y="300" font-family="Avenir Next, Avenir, sans-serif" font-size="110" font-weight="700" fill="#FAFAFA">
+    BingeItBro
+  </text>
+
+  <!-- Tagline -->
+  <text x="90" y="430" font-family="Avenir, sans-serif" font-size="44" font-weight="500" fill="#A1A1AA">
+    Friends don’t let friends
+  </text>
+  <text x="90" y="486" font-family="Avenir, sans-serif" font-size="44" font-weight="500" fill="#A1A1AA">
+    scroll forever.
+  </text>
+
+  <!-- CTA pill -->
+  <rect x="90" y="980" width="520" height="86" rx="43" fill="#F59E0B" />
+  <text x="170" y="1038" font-family="Avenir, sans-serif" font-size="36" font-weight="700" fill="#0A0A0C">
+    Join the watchlist
+  </text>
+
+  <!-- URL -->
+  <text x="90" y="1138" font-family="Avenir, sans-serif" font-size="28" font-weight="500" fill="#A1A1AA">
+    bingeitbro.com
+  </text>
+</svg>

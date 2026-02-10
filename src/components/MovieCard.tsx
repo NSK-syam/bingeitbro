@@ -105,6 +105,19 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
     }
     return colors[Math.abs(hash) % colors.length];
   };
+  const uniqueOttLinks = (ottLinks || []).filter(
+    (link, index, arr) => arr.findIndex((l) => l.platform === link.platform) === index
+  );
+  const displayOttLinks = uniqueOttLinks.length > 0
+    ? uniqueOttLinks
+    : [{ platform: 'OTT', url: `/movie/${id}`, logoPath: '' }];
+  const posterOttLinks = displayOttLinks.slice(0, 3);
+  const getOttLogoUrl = (logoPath?: string) => (logoPath ? `https://image.tmdb.org/t/p/w92${logoPath}` : '');
+  const openOttLink = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    window.location.href = `/movie/${id}`;
+  };
 
   return (
     <Link
@@ -189,6 +202,29 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
           </div>
         )}
 
+        <div className="absolute bottom-14 right-3 flex items-center -space-x-2">
+          {posterOttLinks.map((link) => {
+            const logoUrl = getOttLogoUrl(link.logoPath);
+            return (
+              <button
+                key={link.platform}
+                type="button"
+                title={link.platform}
+                onClick={openOttLink}
+                className="w-7 h-7 rounded-full bg-[var(--bg-primary)]/80 border border-white/10 flex items-center justify-center overflow-hidden"
+              >
+                {logoUrl ? (
+                  <img src={logoUrl} alt={link.platform} className="w-5 h-5 object-contain" />
+                ) : (
+                  <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                    <path d="M4 4.5a1 1 0 0 1 1.6-.8l9 6.5a1 1 0 0 1 0 1.6l-9 6.5A1 1 0 0 1 4 17.5v-13z" />
+                  </svg>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Recommender badge - bottom left */}
         <div className="absolute bottom-3 left-3 right-3">
           <div className="flex items-center justify-between">
@@ -227,17 +263,29 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
         <div className="flex items-center gap-2 mt-4">
           <span className="text-xs text-[var(--text-muted)]">Watch on:</span>
           <div className="flex gap-1">
-            {(Array.isArray(ottLinks) ? ottLinks : []).slice(0, 3).map((link) => (
-              <span
-                key={link.platform}
-                className={`platform-${link.platform.toLowerCase().replace(' ', '-').replace('+', '')} px-2 py-0.5 text-[10px] font-medium rounded text-white`}
-              >
-                {link.platform === 'Prime Video' ? 'Prime' : link.platform.replace(' Video', '')}
-              </span>
-            ))}
-            {(Array.isArray(ottLinks) ? ottLinks : []).length > 3 && (
+            {displayOttLinks.slice(0, 3).map((link) => {
+              const logoUrl = getOttLogoUrl(link.logoPath);
+              return (
+                <button
+                  key={link.platform}
+                  type="button"
+                  title={link.platform}
+                  onClick={openOttLink}
+                  className="w-6 h-6 rounded-full bg-[var(--bg-primary)]/80 border border-white/10 flex items-center justify-center overflow-hidden"
+                >
+                  {logoUrl ? (
+                    <img src={logoUrl} alt={link.platform} className="w-4 h-4 object-contain" />
+                  ) : (
+                    <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                      <path d="M4 4.5a1 1 0 0 1 1.6-.8l9 6.5a1 1 0 0 1 0 1.6l-9 6.5A1 1 0 0 1 4 17.5v-13z" />
+                    </svg>
+                  )}
+                </button>
+              );
+            })}
+            {displayOttLinks.length > 3 && (
               <span className="px-2 py-0.5 text-[10px] font-medium rounded bg-[var(--text-muted)] text-white">
-                +{ottLinks.length - 3}
+                +{displayOttLinks.length - 3}
               </span>
             )}
           </div>

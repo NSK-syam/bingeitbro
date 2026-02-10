@@ -19,3 +19,4 @@ export { SendToFriendModal } from './SendToFriendModal';
 export { FriendRecommendationsModal } from './FriendRecommendationsModal';
 export { DailyQuoteBanner } from './DailyQuoteBanner';
 export { RecommendationToast } from './RecommendationToast';
+export { OnboardingTour } from './OnboardingTour';

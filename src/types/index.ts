@@ -4,6 +4,7 @@ export interface OTTLink {
   platform: string;
   url: string;
   availableIn?: string; // e.g., "India", "USA", "India & USA"
+  logoPath?: string; // TMDB logo_path (optional)
 }
 
 export interface Recommender {

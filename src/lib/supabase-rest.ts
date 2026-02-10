@@ -113,6 +113,7 @@ export async function fetchProfileUser(userId: string): Promise<DBUser | null> {
       name: row.name ?? '',
       username: row.username ?? '',
       avatar: row.avatar ?? '🎬',
+      theme: row.theme ?? null,
       created_at: row.created_at ?? new Date().toISOString(),
     };
   } catch {
@@ -186,7 +187,7 @@ interface ReceivedRecRow {
   is_watched?: boolean;
   watched_at?: string | null;
   created_at: string;
-  tmdb_id: number | null;
+  tmdb_id: string | number | null;
   recommendation_id: string | null;
 }
 
@@ -202,7 +203,7 @@ export interface ReceivedRecommendationRow {
   is_watched?: boolean;
   watched_at?: string | null;
   created_at: string;
-  tmdb_id: number | null;
+  tmdb_id: string | number | null;
   recommendation_id: string | null;
   sender: { id: string; name: string; avatar?: string; email?: string } | null;
 }
@@ -277,7 +278,7 @@ export async function getRecentFriendRecommendations(
     sender_id: string;
     movie_title: string;
     created_at: string;
-    tmdb_id: number | null;
+    tmdb_id: string | number | null;
     recommendation_id: string | null;
   };
   const params = new URLSearchParams({
@@ -598,18 +599,20 @@ export async function getAlreadyRecommendedRecipientIds(
     recipient_id: `in.(${recipientIds.join(',')})`,
   });
   try {
-    const rows = await supabaseRestRequest<{ recipient_id: string; tmdb_id: number | null; recommendation_id: string | null }[]>(
+    const rows = await supabaseRestRequest<{ recipient_id: string; tmdb_id: string | number | null; recommendation_id: string | null }[]>(
       `friend_recommendations?${params.toString()}`,
       { method: 'GET', timeoutMs: 10000 },
       token ?? undefined,
     );
     const set = new Set<string>();
     const arr = Array.isArray(rows) ? rows : [];
+    const movieTmdb = movie.tmdbId != null ? String(movie.tmdbId) : null;
     for (const r of arr) {
+      const rowTmdb = r.tmdb_id != null ? String(r.tmdb_id) : null;
       const sameMovie =
-        (movie.tmdbId != null && r.tmdb_id === movie.tmdbId) ||
+        (movieTmdb != null && rowTmdb === movieTmdb) ||
         (movie.recommendationId != null && r.recommendation_id === movie.recommendationId) ||
-        (movie.tmdbId == null && movie.recommendationId == null && r.tmdb_id == null && r.recommendation_id == null);
+        (movieTmdb == null && movie.recommendationId == null && rowTmdb == null && r.recommendation_id == null);
       if (sameMovie) set.add(r.recipient_id);
     }
     return set;
@@ -621,6 +624,15 @@ export async function getAlreadyRecommendedRecipientIds(
 const SEND_REC_MAX_RETRIES = 2;
 const SEND_REC_RETRY_DELAYS_MS = [1500, 3000];
 
+export type SendFriendRecommendationsResult = {
+  sent: number;
+  sentRecipientIds: string[];
+  skipped: {
+    duplicates: string[];
+    notAllowed: string[];
+  };
+};
+
 /**
  * Insert friend recommendations via REST (same token-based approach as fetch).
  * Avoids createClient() hanging on cold start.
@@ -628,7 +640,7 @@ const SEND_REC_RETRY_DELAYS_MS = [1500, 3000];
  */
 export async function sendFriendRecommendations(
   rows: FriendRecommendationRow[],
-): Promise<void> {
+): Promise<SendFriendRecommendationsResult> {
   const token = getSupabaseAccessToken();
   if (!token) {
     throw new Error('Not authenticated');
@@ -665,7 +677,21 @@ export async function sendFriendRecommendations(
         }
       }
 
-      if (response.ok) return;
+      if (response.ok) {
+        const payload = (typeof data === 'object' && data !== null ? data : {}) as Partial<SendFriendRecommendationsResult>;
+        const sent = typeof payload.sent === 'number' ? payload.sent : rows.length;
+        const sentRecipientIds = Array.isArray(payload.sentRecipientIds)
+          ? payload.sentRecipientIds.filter((id): id is string => typeof id === 'string')
+          : [];
+        const skipped = (payload.skipped ?? {}) as Partial<SendFriendRecommendationsResult['skipped']>;
+        const duplicates = Array.isArray(skipped.duplicates)
+          ? skipped.duplicates.filter((id): id is string => typeof id === 'string')
+          : [];
+        const notAllowed = Array.isArray(skipped.notAllowed)
+          ? skipped.notAllowed.filter((id): id is string => typeof id === 'string')
+          : [];
+        return { sent, sentRecipientIds, skipped: { duplicates, notAllowed } };
+      }
 
       const code =
         typeof data === 'object' && data !== null && 'code' in data

@@ -19,10 +19,11 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
+  const [lastSignupEmail, setLastSignupEmail] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
   const [showPassword, setShowPassword] = useState(false);
 
-  const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
+  const { signIn, signUp, signInWithGoogle, checkUsernameAvailable, resendConfirmation } = useAuth();
 
   useEffect(() => {
     if (isOpen && initialError) setError(initialError);
@@ -88,6 +89,7 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
           setError(error.message);
         } else {
           setSuccess('Check your email (and spam folder) for a confirmation link!');
+          setLastSignupEmail(email);
         }
       }
     } catch {
@@ -327,8 +329,25 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
           )}
 
           {success && (
-            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 text-sm">
-              {success}
+            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 text-sm space-y-2">
+              <div>{success}</div>
+              {mode === 'signup' && lastSignupEmail && (
+                <button
+                  type="button"
+                  onClick={async () => {
+                    setError('');
+                    const { error } = await resendConfirmation(lastSignupEmail);
+                    if (error) {
+                      setError(error.message);
+                    } else {
+                      setSuccess('Confirmation email resent. Please check your inbox/spam.');
+                    }
+                  }}
+                  className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--accent)] hover:opacity-80"
+                >
+                  Resend confirmation email
+                </button>
+              )}
             </div>
           )}
 

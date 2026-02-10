@@ -11,6 +11,7 @@ interface AuthContextType {
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, name: string, username: string) => Promise<{ error: Error | null }>;
+  resendConfirmation: (email: string) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   checkUsernameAvailable: (username: string) => Promise<boolean>;
   signOut: () => Promise<void>;
@@ -25,6 +26,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const isConfigured = isSupabaseConfigured();
   const initializedRef = useRef(false);
+  const ensuredProfileRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!isConfigured) {
@@ -35,6 +37,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const supabase = createClient();
 
+    const ensureUserProfile = async (authUser: User | null) => {
+      if (!authUser) return;
+      if (ensuredProfileRef.current === authUser.id) return;
+
+      try {
+        const { data: existingUser } = await supabase
+          .from('users')
+          .select('id')
+          .eq('id', authUser.id)
+          .maybeSingle();
+
+        if (existingUser) {
+          ensuredProfileRef.current = authUser.id;
+          return;
+        }
+
+        const metadata = authUser.user_metadata || {};
+        const email = authUser.email?.toLowerCase();
+        if (!email) {
+          console.error('Missing email for authenticated user; profile not created.');
+          return;
+        }
+
+        const baseUsername = email.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';
+        const generatedUsername = `${baseUsername}_${Math.random().toString(36).slice(2, 6)}`;
+
+        const baseInsert = {
+          id: authUser.id,
+          email,
+          name: metadata?.full_name || metadata?.name || email.split('@')[0] || 'New user',
+          avatar: getRandomMovieAvatar(),
+        };
+
+        const { error: insertError } = await supabase
+          .from('users')
+          .insert({ ...baseInsert, username: generatedUsername });
+
+        if (insertError) {
+          console.error('Failed to create user profile with username:', insertError);
+          const { error: fallbackError } = await supabase
+            .from('users')
+            .insert(baseInsert);
+          if (fallbackError) {
+            console.error('Failed to create user profile:', fallbackError);
+            return;
+          }
+        }
+
+        ensuredProfileRef.current = authUser.id;
+      } catch (err) {
+        console.error('Error ensuring user profile:', err);
+      }
+    };
+
     // Set up auth listener FIRST - this ensures we catch the SIGNED_IN event
     // that fires when the page loads after OAuth redirect
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
@@ -43,42 +99,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(session?.user ?? null);
       setLoading(false);
 
-      // Create user profile for OAuth users if it doesn't exist
-      if (session?.user && _event === 'SIGNED_IN') {
-        try {
-          const { data: existingUser } = await supabase
-            .from('users')
-            .select('id')
-            .eq('id', session.user.id)
-            .single();
-
-          if (!existingUser) {
-            const metadata = session.user.user_metadata;
-            const generatedUsername = session.user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') + '_' + Math.random().toString(36).slice(2, 6);
-
-            const { error: insertError } = await supabase.from('users').insert({
-              id: session.user.id,
-              email: session.user.email,
-              name: metadata?.full_name || metadata?.name || session.user.email?.split('@')[0],
-              username: generatedUsername,
-              avatar: getRandomMovieAvatar()
-            });
-
-            if (insertError) {
-              console.error('Failed to create user profile:', insertError);
-              // Try without username in case column doesn't exist
-              await supabase.from('users').insert({
-                id: session.user.id,
-                email: session.user.email,
-                name: metadata?.full_name || metadata?.name || session.user.email?.split('@')[0],
-                avatar: getRandomMovieAvatar()
-              });
-            }
-          }
-        } catch (err) {
-          console.error('Error in auth state change:', err);
-        }
-      }
+      // Ensure user profile exists for OAuth users (SIGNED_IN) and initial sessions after redirect
+      void ensureUserProfile(session?.user ?? null);
     });
 
     // Get initial session AFTER setting up the listener
@@ -90,6 +112,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        void ensureUserProfile(session?.user ?? null);
       }
     }).catch(() => {
       setLoading(false);
@@ -183,6 +206,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
 
     if (!error && data?.user) {
+      if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        return { error: new Error('An account with this email already exists. Try logging in.') };
+      }
       // Fire-and-forget profile insert to avoid blocking the UI
       void withTimeout(
         Promise.resolve(
@@ -200,6 +226,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Ignore errors here; auth succeeded and profile can be created later.
       });
     }
+
+    return { error };
+  };
+
+  const resendConfirmation = async (email: string) => {
+    if (!isConfigured) return { error: new Error('Supabase not configured') };
+    const supabase = createClient();
+    const siteUrl = typeof window !== 'undefined'
+      ? window.location.origin
+      : 'https://bingeitbro.com';
+
+    const { error } = await supabase.auth.resend({
+      type: 'signup',
+      email,
+      options: {
+        emailRedirectTo: `${siteUrl}/auth/callback`,
+      },
+    });
 
     return { error };
   };
@@ -282,6 +326,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signIn,
       signUp,
+      resendConfirmation,
       signInWithGoogle,
       checkUsernameAvailable,
       signOut,
