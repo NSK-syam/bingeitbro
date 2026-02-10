@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Header, MovieCard, FilterBar, RandomPicker, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, BibSplash, useAuth, DailyQuoteBanner, RecommendationToast, OnboardingTour } from '@/components';
 import { Recommendation, Recommender, OTTLink } from '@/types';
 import { useWatched, useNudges, useWatchlist } from '@/hooks';
-import { createClient, isSupabaseConfigured, DBRecommendation } from '@/lib/supabase';
+import { createClient } from '@/lib/supabase';
 import { fetchFriendsList, getFriendRecommendationsUnreadCount, getRecentFriendRecommendations } from '@/lib/supabase-rest';
 import data from '@/data/recommendations.json';
 
@@ -40,7 +40,6 @@ export default function Home() {
   const { getWatchlistCount } = useWatchlist();
   const { user } = useAuth();
 
-  const [dbRecommendations, setDbRecommendations] = useState<Recommendation[]>([]);
   const [friendsRecommendations, setFriendsRecommendations] = useState<Recommendation[]>([]);
   const [userFriends, setUserFriends] = useState<Recommender[]>([]);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -167,50 +166,7 @@ export default function Home() {
     }
   }, []);
 
-  // Combine static + friends recommendations
-  const recommendations = useMemo(() => {
-    return [...friendsRecommendations, ...dbRecommendations, ...staticRecommendations];
-  }, [friendsRecommendations, dbRecommendations, staticRecommendations]);
-
-  // Fetch all recommendations from Supabase (for search)
-  const fetchRecommendations = useCallback(async () => {
-    if (!isSupabaseConfigured()) return;
-
-    const supabase = createClient();
-    const { data: recs } = await supabase
-      .from('recommendations')
-      .select('*, user:users(*)')
-      .order('created_at', { ascending: false });
-
-    if (recs) {
-      const mapped: Recommendation[] = recs.map((rec: DBRecommendation) => ({
-        id: rec.id,
-        title: rec.title,
-        originalTitle: rec.original_title,
-        year: rec.year,
-        type: rec.type,
-        poster: rec.poster,
-        backdrop: rec.backdrop,
-        genres: Array.isArray(rec.genres) ? rec.genres : [],
-        language: rec.language ?? '',
-        duration: rec.duration,
-        rating: rec.rating,
-        personalNote: rec.personal_note ?? '',
-        mood: rec.mood,
-        watchWith: rec.watch_with,
-        ottLinks: (rec.ott_links as OTTLink[]) ?? [],
-        recommendedBy: {
-          id: rec.user?.id || 'unknown',
-          name: rec.user?.name || 'Anonymous',
-          avatar: rec.user?.avatar || '🎬',
-        },
-        addedOn: rec.created_at,
-      }));
-      setDbRecommendations(mapped);
-    }
-  }, []);
-
-  // Fetch user's friends, their recommendations (table), and received "Send to Friend" recs — merge for Friends view
+  // Fetch user's friends and received "Send to Friend" recs — Friends view shows direct sends only
   const fetchFriendsData = useCallback(async () => {
     if (!user) {
       setUserFriends([]);
@@ -227,49 +183,9 @@ export default function Home() {
       }));
       setUserFriends(friends);
 
-      const friendIds = friends.map((f) => f.id);
-      const fromTable: Recommendation[] = [];
       const fromReceived: Recommendation[] = [];
 
-      if (friends.length > 0 && isSupabaseConfigured()) {
-        const supabase = createClient();
-        const { data: friendRecs } = await supabase
-          .from('recommendations')
-          .select('*, user:users(*)')
-          .in('user_id', friendIds)
-          .order('created_at', { ascending: false });
-
-        if (friendRecs) {
-          fromTable.push(
-            ...friendRecs.map((rec: DBRecommendation) => ({
-              id: rec.id,
-              title: rec.title,
-              originalTitle: rec.original_title,
-              year: rec.year,
-              type: rec.type,
-              poster: rec.poster,
-              backdrop: rec.backdrop,
-              genres: Array.isArray(rec.genres) ? rec.genres : [],
-              language: rec.language ?? '',
-              duration: rec.duration,
-              rating: rec.rating,
-              personalNote: rec.personal_note ?? '',
-              mood: rec.mood,
-              watchWith: rec.watch_with,
-              ottLinks: (rec.ott_links as OTTLink[]) ?? [],
-              recommendedBy: {
-                id: rec.user?.id || 'unknown',
-                name: rec.user?.name || 'Anonymous',
-                avatar: rec.user?.avatar || '🎬',
-              },
-              addedOn: rec.created_at,
-            }))
-          );
-        }
-      }
-
       // Received via "Send to Friend" — fetch with Supabase client so RLS uses same session as rest of app
-      const tableIds = new Set(fromTable.map((r) => r.id));
       try {
         const supabase = createClient();
         const { data: receivedRows } = await supabase
@@ -284,7 +200,7 @@ export default function Home() {
           const rawSender = r.sender ?? r.users ?? null;
           const sender = Array.isArray(rawSender) ? rawSender[0] ?? null : rawSender;
           if (!sender) continue;
-          if (row.recommendation_id && tableIds.has(row.recommendation_id)) continue;
+          if (sender.id === user.id) continue;
           const id = row.tmdb_id
             ? `tmdb-${row.tmdb_id}`
             : (row.recommendation_id || `fr-${row.id}`);
@@ -310,7 +226,7 @@ export default function Home() {
         // ignore; Friends view still works with table recs only
       }
 
-      const merged = [...fromReceived, ...fromTable].sort(
+      const merged = [...fromReceived].sort(
         (a, b) => new Date(b.addedOn).getTime() - new Date(a.addedOn).getTime()
       );
       setFriendsRecommendations(merged);
@@ -319,11 +235,6 @@ export default function Home() {
       setFriendsRecommendations([]);
     }
   }, [user]);
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchRecommendations();
-  }, [fetchRecommendations]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -416,7 +327,6 @@ export default function Home() {
   // Badge still updates on load (getFriendRecommendationsUnreadCount) and when opening the modal.
 
   const handleSubmitSuccess = () => {
-    fetchRecommendations();
     fetchFriendsData();
   };
 
@@ -460,10 +370,8 @@ export default function Home() {
   };
 
   const filteredRecommendations = useMemo(() => {
-    // Use friends' recommendations for friends view
-    const baseRecommendations = searchQuery ? recommendations : friendsRecommendations;
-
-    return baseRecommendations.filter((rec) => {
+    // Friends view: only show direct sends, even when searching
+    return friendsRecommendations.filter((rec) => {
       // Search filter
       if (searchQuery) {
         const query = searchQuery.toLowerCase();
@@ -499,7 +407,7 @@ export default function Home() {
 
       return true;
     });
-  }, [recommendations, friendsRecommendations, searchQuery, filters, isWatched]);
+  }, [friendsRecommendations, searchQuery, filters, isWatched]);
 
   // Sort by date added (newest first)
   const sortedRecommendations = useMemo(() => {
@@ -515,8 +423,7 @@ export default function Home() {
   const watchedCount = getWatchedCount();
   const watchedThisMonth = getWatchedCountThisMonth();
   const watchedThisYear = getWatchedCountThisYear();
-  const hasNoFriends = friendsRecommendations.length === 0;
-  const totalCount = hasNoFriends ? recommendations.length : friendsRecommendations.length;
+  const totalCount = friendsRecommendations.length;
 
   return (
     <div className="min-h-screen relative">
