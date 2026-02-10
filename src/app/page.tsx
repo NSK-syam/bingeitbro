@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
-import { Header, MovieCard, FilterBar, RandomPicker, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, BibSplash, useAuth, DailyQuoteBanner, RecommendationToast, OnboardingTour } from '@/components';
+import { Header, MovieCard, FilterBar, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, BibSplash, useAuth, DailyQuoteBanner, RecommendationToast, OnboardingTour } from '@/components';
 import { Recommendation, Recommender, OTTLink } from '@/types';
 import { useWatched, useNudges, useWatchlist } from '@/hooks';
 import { createClient } from '@/lib/supabase';
@@ -66,10 +66,6 @@ export default function Home() {
     count: number;
   } | null>(null);
   const [showTour, setShowTour] = useState(false);
-
-  const whatToWatchPool = useMemo(() => {
-    return [...staticRecommendations, ...friendsRecommendations];
-  }, [staticRecommendations, friendsRecommendations]);
 
   const displayName = useMemo(() => {
     if (!user) return '';
@@ -626,13 +622,6 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {/* What to Watch - show on homepage */}
-              {activeView === 'trending' && whatToWatchPool.length > 0 && (
-                <div className="flex items-center justify-center">
-                  <RandomPicker recommendations={whatToWatchPool} />
                 </div>
               )}
 
