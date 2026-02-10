@@ -82,7 +82,7 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14.828 14.828a4 4 0 01-5.656 0M9 10h.01M15 10h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
         </svg>
-        <span>I&apos;m Feeling Lucky</span>
+        <span>What to Watch</span>
       </button>
 
       {/* Modal */}
@@ -108,10 +108,10 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
 
             <div className="text-center">
               <h3 className="text-2xl font-bold text-[var(--text-primary)] mb-2">
-                🎰 Random Pick
+                🎯 What to Watch
               </h3>
               <p className="text-sm text-[var(--text-muted)] mb-6">
-                Let fate decide what you watch tonight
+                Quick pick from your friend recommendations
               </p>
 
               {/* Toggle for unwatched only */}
