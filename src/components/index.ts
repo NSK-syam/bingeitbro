@@ -19,6 +19,6 @@ export { SendToFriendModal } from './SendToFriendModal';
 export { FriendRecommendationsModal } from './FriendRecommendationsModal';
 export { DailyQuoteBanner } from './DailyQuoteBanner';
 export { RecommendationToast } from './RecommendationToast';
-export { OnboardingTour } from './OnboardingTour';
 export { BingeCalculatorModal } from './BingeCalculatorModal';
 export { BirthdayPopup } from './BirthdayPopup';
+export { ConfettiBoom } from './ConfettiBoom';

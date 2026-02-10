@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
-import { Header, MovieCard, FilterBar, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, BibSplash, useAuth, DailyQuoteBanner, RecommendationToast, OnboardingTour, BingeCalculatorModal } from '@/components';
+import { Header, MovieCard, FilterBar, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, BibSplash, useAuth, DailyQuoteBanner, RecommendationToast, BingeCalculatorModal, ConfettiBoom } from '@/components';
 import { Recommendation, Recommender, OTTLink } from '@/types';
 import { useWatched, useNudges, useWatchlist } from '@/hooks';
 import { createClient } from '@/lib/supabase';
@@ -38,7 +38,7 @@ export default function Home() {
   const staticRecommendations = data.recommendations as Recommendation[];
   const { getWatchedCount, getWatchedCountThisMonth, getWatchedCountThisYear, isWatched } = useWatched();
   const { getWatchlistCount } = useWatchlist();
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
 
   const [friendsRecommendations, setFriendsRecommendations] = useState<Recommendation[]>([]);
   const [userFriends, setUserFriends] = useState<Recommender[]>([]);
@@ -66,7 +66,8 @@ export default function Home() {
     movieTitle: string;
     count: number;
   } | null>(null);
-  const [showTour, setShowTour] = useState(false);
+  const [confettiBoom, setConfettiBoom] = useState(false);
+  const prevUserIdRef = useRef<string | null>(null);
 
   const displayName = useMemo(() => {
     if (!user) return '';
@@ -104,21 +105,20 @@ export default function Home() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    if (!user?.id) {
-      setShowTour(false);
-      return;
-    }
-    const key = `bib-onboarding-v1:${user.id}`;
-    const seen = window.localStorage.getItem(key);
-    if (!seen) setShowTour(true);
-  }, [user?.id]);
+    if (authLoading) return;
+    const prev = prevUserIdRef.current;
+    const current = user?.id ?? null;
+    prevUserIdRef.current = current;
 
-  const handleTourComplete = useCallback(() => {
-    if (typeof window !== 'undefined' && user?.id) {
-      window.localStorage.setItem(`bib-onboarding-v1:${user.id}`, 'done');
+    // One big boom per tab session when user becomes signed in.
+    if (!prev && current) {
+      const key = `bib-signin-boom:${current}`;
+      if (!window.sessionStorage.getItem(key)) {
+        window.sessionStorage.setItem(key, '1');
+        setConfettiBoom(true);
+      }
     }
-    setShowTour(false);
-  }, [user?.id]);
+  }, [authLoading, user?.id]);
 
   // Recommenders shown in Friends view (only people who sent recommendations)
   const recommenders = useMemo(() => {
@@ -514,11 +514,7 @@ export default function Home() {
         isOpen={showBingeCalculator}
         onClose={() => setShowBingeCalculator(false)}
       />
-
-      <OnboardingTour
-        isOpen={showTour}
-        onComplete={handleTourComplete}
-      />
+      <ConfettiBoom isOpen={confettiBoom} onDone={() => setConfettiBoom(false)} />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
         {!user ? (
