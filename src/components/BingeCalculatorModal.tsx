@@ -274,7 +274,7 @@ export function BingeCalculatorModal({
             Can I binge it in {timeLabel}?
           </h2>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
-            Search a TV show, pick a time window, get a simple yes or no plus a watch plan.
+            Search any movie or TV show, pick a time window, get a simple yes or no plus a watch plan.
           </p>
         </div>
 
@@ -285,7 +285,7 @@ export function BingeCalculatorModal({
         )}
 
         <div className="mt-6">
-          <label className="text-sm font-medium text-[var(--text-primary)]">TV show</label>
+          <label className="text-sm font-medium text-[var(--text-primary)]">Movie or TV show</label>
           <div className="relative mt-2">
             <input
               ref={inputRef}
@@ -315,7 +315,7 @@ export function BingeCalculatorModal({
                   setSuggestionOpen(false);
                 }
               }}
-              placeholder="Type a TV show name..."
+              placeholder="Type any movie or show..."
               className="w-full px-4 py-3 text-sm bg-[var(--bg-secondary)] border border-white/10 rounded-2xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/60 focus:ring-1 focus:ring-[var(--accent)]/50 transition-all"
             />
 
