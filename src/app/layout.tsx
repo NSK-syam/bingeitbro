@@ -6,7 +6,12 @@ import { AuthProvider } from "@/components";
 const fontClass = "font-sans antialiased";
 
 export const metadata: Metadata = {
-  title: "BiB - Binge it bro",
+  metadataBase: new URL("https://bingeitbro.com"),
+  title: {
+    default: "BiB - Binge it bro",
+    template: "%s | BiB - Binge it bro",
+  },
+  applicationName: "BiB - Binge it bro",
   description:
     "Discover what to watch next with personalized movie and series recommendations from your friends. Binge it bro.",
   icons: {

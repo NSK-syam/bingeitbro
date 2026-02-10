@@ -39,6 +39,7 @@ export interface DBUser {
   name: string;
   username: string;
   avatar: string;
+  theme?: string | null;
   created_at: string;
 }
 

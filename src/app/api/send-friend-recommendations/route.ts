@@ -56,16 +56,16 @@ export async function POST(request: Request) {
     const raw = Array.isArray(body?.recommendations) ? body.recommendations : [];
 
     const authRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}`, apikey: supabaseAnonKey },
-  });
-  if (!authRes.ok) {
-    return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
-  }
-  const user = (await authRes.json().catch(() => null)) as { id?: string } | null;
-  if (!user?.id) {
-    return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
-  }
+      method: 'GET',
+      headers: { Authorization: `Bearer ${token}`, apikey: supabaseAnonKey },
+    });
+    if (!authRes.ok) {
+      return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
+    }
+    const user = (await authRes.json().catch(() => null)) as { id?: string } | null;
+    if (!user?.id) {
+      return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
+    }
 
   const toInsert: RecRow[] = [];
   for (let i = 0; i < Math.min(raw.length, 50); i++) {
@@ -90,7 +90,10 @@ export async function POST(request: Request) {
   }
 
   if (toInsert.length === 0) {
-    return NextResponse.json({ sent: 0 }, { status: 200 });
+    return NextResponse.json(
+      { sent: 0, sentRecipientIds: [], skipped: { duplicates: [], notAllowed: [] } },
+      { status: 200 },
+    );
   }
 
   let allowed = toInsert;
@@ -112,8 +115,16 @@ export async function POST(request: Request) {
     }
   }
 
+  const allowedRecipientIds = new Set(allowed.map((r) => r.recipient_id));
+  const notAllowedRecipientIds = toInsert
+    .filter((r) => !allowedRecipientIds.has(r.recipient_id))
+    .map((r) => r.recipient_id);
+
   if (allowed.length === 0) {
-    return NextResponse.json({ sent: 0 }, { status: 200 });
+    return NextResponse.json(
+      { sent: 0, sentRecipientIds: [], skipped: { duplicates: [], notAllowed: notAllowedRecipientIds } },
+      { status: 200 },
+    );
   }
 
   const insertAuth = useServiceRole && serviceRoleKey ? serviceRoleKey : token;
@@ -127,6 +138,8 @@ export async function POST(request: Request) {
   let lastCode = '';
   let lastMessage = '';
   let sent = 0;
+  const sentRecipientIds: string[] = [];
+  const duplicateRecipientIds: string[] = [];
 
   const tryInsert = async (row: RecRow): Promise<{ ok: boolean; code: string; message: string }> => {
     const insertBody: InsertRow = {
@@ -171,7 +184,10 @@ export async function POST(request: Request) {
         code: lastCode,
         message: lastMessage,
       });
-      if (lastCode === '23505') continue;
+      if (lastCode === '23505') {
+        duplicateRecipientIds.push(row.recipient_id);
+        continue;
+      }
       const userMessage =
         lastCode === 'XX000' || /out of memory/i.test(lastMessage)
           ? 'Server is busy. Please try again in a moment.'
@@ -179,9 +195,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ message: userMessage, code: lastCode }, { status: 500 });
     }
     sent += 1;
+    sentRecipientIds.push(row.recipient_id);
   }
 
-  return NextResponse.json({ sent }, { status: 200 });
+  return NextResponse.json(
+    {
+      sent,
+      sentRecipientIds,
+      skipped: {
+        duplicates: duplicateRecipientIds,
+        notAllowed: notAllowedRecipientIds,
+      },
+    },
+    { status: 200 },
+  );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[send-friend-recommendations] Unexpected error', err);

@@ -39,6 +39,8 @@ interface FilterBarProps {
   onManageFriends?: () => void;
   onRemoveFriend?: (friendId: string) => void;
   showManageFriends?: boolean;
+  /** When true, do not render the Friends row (friends list lives in Friends tab dropdown) */
+  hideFriendsSection?: boolean;
 }
 
 export function FilterBar({
@@ -49,6 +51,7 @@ export function FilterBar({
   onManageFriends,
   onRemoveFriend,
   showManageFriends,
+  hideFriendsSection = false,
 }: FilterBarProps) {
   // Extract unique values (guard against undefined from DB)
   const types = [...new Set(recommendations.map((r) => r.type))];
@@ -87,60 +90,63 @@ export function FilterBar({
         ))}
       </div>
 
-      {/* Friends filters */}
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="text-xs text-[var(--text-muted)] w-16">Friends:</span>
-        <FilterButton
-          active={activeFilters.recommendedBy === null}
-          onClick={() => onFilterChange('recommendedBy', null)}
-        >
-          All
-        </FilterButton>
-        {recommenders.map((person) => (
-          <div key={person.id} className="flex items-center">
-            <button
-              onClick={() =>
-                onFilterChange(
-                  'recommendedBy',
-                  activeFilters.recommendedBy === person.id ? null : person.id
-                )
-              }
-              className={`px-3 py-1.5 text-sm transition-all ${
-                onRemoveFriend ? 'rounded-l-full' : 'rounded-full'
-              } ${
-                activeFilters.recommendedBy === person.id
-                  ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                  : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
-              }`}
-            >
-              {person.avatar} {person.name}
-            </button>
-            {onRemoveFriend && (
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onRemoveFriend(person.id);
-                }}
-                className="px-2 py-1.5 text-sm rounded-r-full bg-[var(--bg-secondary)] text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all border-l border-white/10"
-                title="Remove friend"
-              >
-                ×
-              </button>
-            )}
-          </div>
-        ))}
-        {showManageFriends && onManageFriends && (
-          <button
-            onClick={onManageFriends}
-            className="px-3 py-1.5 text-sm rounded-full bg-[var(--bg-card)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)] transition-all flex items-center gap-1"
+      {!hideFriendsSection && (
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-xs text-[var(--text-muted)] w-16">Friends:</span>
+          <FilterButton
+            active={activeFilters.recommendedBy === null}
+            onClick={() => onFilterChange('recommendedBy', null)}
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-            </svg>
-            Add Friends
-          </button>
-        )}
-      </div>
+            All
+          </FilterButton>
+          {[...recommenders]
+            .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+            .map((person) => (
+            <div key={person.id} className="flex items-center">
+              <button
+                onClick={() =>
+                  onFilterChange(
+                    'recommendedBy',
+                    activeFilters.recommendedBy === person.id ? null : person.id
+                  )
+                }
+                className={`px-3 py-1.5 text-sm transition-all ${
+                  onRemoveFriend ? 'rounded-l-full' : 'rounded-full'
+                } ${
+                  activeFilters.recommendedBy === person.id
+                    ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)]'
+                }`}
+              >
+                {person.avatar} {person.name}
+              </button>
+              {onRemoveFriend && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onRemoveFriend(person.id);
+                  }}
+                  className="px-2 py-1.5 text-sm rounded-r-full bg-[var(--bg-secondary)] text-red-400 hover:bg-red-500/20 hover:text-red-300 transition-all border-l border-white/10"
+                  title="Remove friend"
+                >
+                  ×
+                </button>
+              )}
+            </div>
+          ))}
+          {showManageFriends && onManageFriends && (
+            <button
+              onClick={onManageFriends}
+              className="px-3 py-1.5 text-sm rounded-full bg-[var(--bg-card)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)] transition-all flex items-center gap-1"
+            >
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Friends
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Genre filters */}
       <div className="flex flex-wrap items-center gap-2">

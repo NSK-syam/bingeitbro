@@ -24,7 +24,6 @@ function ResetPasswordForm() {
 
         // Listen for PASSWORD_RECOVERY or SIGNED_IN event
         const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-            console.log('[ResetPassword] Auth event:', event, !!session);
             if (session && (event === 'PASSWORD_RECOVERY' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED' || event === 'INITIAL_SESSION')) {
                 setSessionReady(true);
             }

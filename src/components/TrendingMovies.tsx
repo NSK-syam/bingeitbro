@@ -5,7 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { SendToFriendModal } from './SendToFriendModal';
 import { useAuth } from './AuthProvider';
-import { getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, resolveOttProvider } from '@/lib/tmdb';
+import { getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, resolveOttProvider, type TMDBWatchProviders } from '@/lib/tmdb';
 
 interface TrendingMovie {
   id: number;
@@ -22,17 +22,103 @@ interface TrendingMovie {
   genre_ids?: number[];
 }
 
+const CACHE_TTL_MS = 5 * 60 * 1000;
+const trendingCache = new Map<string, { movies: TrendingMovie[]; upcoming: Record<string, TrendingMovie[]>; ts: number }>();
+const PROVIDER_CACHE_TTL_MS = 60 * 60 * 1000;
+export type ProviderLogoItem = { url: string; name: string };
+const providerCache = new Map<number, { logos: ProviderLogoItem[]; link?: string; hasOtt: boolean; ts: number }>();
+const TMDB_LOGO_BASE = 'https://image.tmdb.org/t/p/w45';
+
+type ProviderEntry = { provider_id?: number; provider_name?: string; logo_path?: string | null };
+type ProviderRegion = {
+  link?: string;
+  flatrate?: ProviderEntry[];
+  free?: ProviderEntry[];
+  ads?: ProviderEntry[];
+  rent?: ProviderEntry[];
+  buy?: ProviderEntry[];
+};
+
+const collectProviders = (regionData?: ProviderRegion) => [
+  ...(regionData?.flatrate ?? []),
+  ...(regionData?.free ?? []),
+  ...(regionData?.ads ?? []),
+  ...(regionData?.rent ?? []),
+  ...(regionData?.buy ?? []),
+];
+
+const collectStreamingProviders = (regionData?: ProviderRegion) => [
+  ...(regionData?.flatrate ?? []),
+  ...(regionData?.free ?? []),
+  ...(regionData?.ads ?? []),
+];
+
+const normalizeProviderKey = (name: string) => {
+  const lower = name.toLowerCase();
+  if (lower.includes('netflix')) return 'netflix';
+  if (lower.includes('prime')) return 'prime video';
+  if (lower.includes('amazon video')) return 'prime video';
+  if (lower.includes('disney') || lower.includes('hotstar')) return 'jiohotstar';
+  if (lower.includes('apple')) return 'apple tv';
+  if (lower.includes('aha')) return 'aha';
+  if (lower.includes('sonyliv')) return 'sonyliv';
+  if (lower.includes('zee5')) return 'zee5';
+  if (lower.includes('youtube')) return 'youtube';
+  if (lower.includes('hulu')) return 'hulu';
+  if (lower.includes('peacock')) return 'peacock';
+  if (lower.includes('paramount')) return 'paramount+';
+  return lower.replace(/\s+with\s+ads/g, '').replace(/\s+/g, ' ').trim();
+};
+
+const extractProviderMeta = (providers?: TMDBWatchProviders | null): { logos: ProviderLogoItem[]; link?: string; hasOtt: boolean } => {
+  if (!providers?.results) return { logos: [], hasOtt: false };
+  const inRegion = providers.results?.IN as ProviderRegion | undefined;
+  const usRegion = providers.results?.US as ProviderRegion | undefined;
+  const inProviders = collectProviders(inRegion);
+  const usProviders = collectProviders(usRegion);
+  const allProviders = [...inProviders, ...usProviders];
+  const link = inRegion?.link ?? usRegion?.link;
+  // Include streaming (flatrate/free/ads) and rent/buy so more movies get at least one OTT logo
+  const streamingProviders = [
+    ...collectStreamingProviders(inRegion),
+    ...collectStreamingProviders(usRegion),
+  ];
+  const rentBuyProviders = [
+    ...(inRegion?.rent ?? []),
+    ...(inRegion?.buy ?? []),
+    ...(usRegion?.rent ?? []),
+    ...(usRegion?.buy ?? []),
+  ];
+  const providersForLogos = [...streamingProviders, ...rentBuyProviders];
+
+  const logos: ProviderLogoItem[] = [];
+  const seen = new Set<string>();
+
+  for (const provider of providersForLogos) {
+    const name = provider?.provider_name?.trim();
+    if (!name) continue;
+    const key = normalizeProviderKey(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    if (provider.logo_path) {
+      logos.push({ url: `${TMDB_LOGO_BASE}${provider.logo_path}`, name });
+    }
+  }
+
+  return { logos, link, hasOtt: allProviders.length > 0 };
+};
+
 const LANGUAGES = [
-  { name: 'English', code: 'en', flag: '🇺🇸' },
-  { name: 'Hindi', code: 'hi', flag: '🇮🇳' },
-  { name: 'Telugu', code: 'te', flag: '🎬' },
-  { name: 'Tamil', code: 'ta', flag: '🎭' },
-  { name: 'Malayalam', code: 'ml', flag: '🌴' },
-  { name: 'Korean', code: 'ko', flag: '🇰🇷' },
-  { name: 'Japanese', code: 'ja', flag: '🇯🇵' },
-  { name: 'Chinese', code: 'zh', flag: '🇨🇳' },
-  { name: 'French', code: 'fr', flag: '🇫🇷' },
-  { name: 'Spanish', code: 'es', flag: '🇪🇸' },
+  { name: 'English', code: 'en' },
+  { name: 'Hindi', code: 'hi' },
+  { name: 'Telugu', code: 'te' },
+  { name: 'Tamil', code: 'ta' },
+  { name: 'Malayalam', code: 'ml' },
+  { name: 'Korean', code: 'ko' },
+  { name: 'Japanese', code: 'ja' },
+  { name: 'Chinese', code: 'zh' },
+  { name: 'French', code: 'fr' },
+  { name: 'Spanish', code: 'es' },
 ];
 interface TrendingMoviesProps {
   searchQuery?: string;
@@ -49,7 +135,9 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
   const [error, setError] = useState('');
   const [sendModalMovie, setSendModalMovie] = useState<TrendingMovie | null>(null);
   const [streamingStatus, setStreamingStatus] = useState<Record<number, 'ott' | 'soon'>>({});
+  const [providerLogos, setProviderLogos] = useState<Record<number, { logos: ProviderLogoItem[]; link?: string }>>({});
   const [filterOpen, setFilterOpen] = useState(false);
+  const [expandedDecade, setExpandedDecade] = useState<number | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
 
   // Filter params from URL
@@ -73,7 +161,20 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
   };
 
   const currentYear = new Date().getFullYear();
-  const YEAR_OPTIONS = useMemo(() => Array.from({ length: 16 }, (_, i) => currentYear - i), [currentYear]);
+  const MIN_YEAR = 1980;
+  const MAX_YEAR = 2026;
+  const DECADES = useMemo(() => {
+    const list: number[] = [];
+    for (let d = Math.min(currentYear, MAX_YEAR); d >= MIN_YEAR; d -= 10) {
+      list.push(Math.floor(d / 10) * 10);
+    }
+    return [...new Set(list)].sort((a, b) => b - a);
+  }, [currentYear]);
+  const getYearsInDecade = (decade: number) => {
+    const start = decade;
+    const end = Math.min(decade + 9, MAX_YEAR);
+    return Array.from({ length: end - start + 1 }, (_, i) => end - i);
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -90,8 +191,25 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
       setError('');
 
       try {
+        const cacheKey = [
+          searchQuery.trim(),
+          selectedLang,
+          selectedGenre,
+          selectedYear,
+          selectedOtt,
+          sortParam,
+        ].join('|');
+        const cached = trendingCache.get(cacheKey);
+        if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+          setMovies(cached.movies);
+          setComingSoonByLang(cached.upcoming);
+          setLoading(false);
+          return;
+        }
+
         let allMovies: TrendingMovie[] = [];
         let allUpcoming: TrendingMovie[] = [];
+        let upcomingByLang: Record<string, TrendingMovie[]> = {};
 
         // If there's a search query, use the search API instead of discover
         if (searchQuery && searchQuery.trim()) {
@@ -119,11 +237,23 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
           searchResults.sort(sortFn);
           allMovies = searchResults;
 
-          setComingSoonByLang({});
+          upcomingByLang = {};
+          setComingSoonByLang(upcomingByLang);
         } else {
           // Original discover logic when no search query
           const today = new Date().toISOString().split('T')[0];
           const sixMonthsFromNow = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          const currentYear = new Date().getFullYear();
+          const selectedYearNum = selectedYear ? parseInt(selectedYear, 10) : null;
+          const hasValidYear = Number.isFinite(selectedYearNum);
+          const yearEnd = `${currentYear}-12-31`;
+          const upcomingWindow = !hasValidYear
+            ? { start: today, end: sixMonthsFromNow }
+            : selectedYearNum! > currentYear
+              ? { start: `${selectedYearNum}-01-01`, end: `${selectedYearNum}-12-31` }
+              : selectedYearNum === currentYear
+                ? { start: today, end: yearEnd }
+                : null;
 
           const sortByMap: Record<string, string> = {
             date: 'primary_release_date.desc',
@@ -145,10 +275,16 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
           const releasedBase = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=${sortBy}&primary_release_date.lte=${today}&with_watch_monetization_types=flatrate${genrePart}${yearPart}`;
           const releasedBaseUrlUS = includeUS ? `${releasedBase}&watch_region=US${ottPartUS}` : '';
           const releasedBaseUrlIN = includeIN ? `${releasedBase}&watch_region=IN${ottPartIN}` : '';
-          const upcomingBaseUrl = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.asc&primary_release_date.gte=${today}&primary_release_date.lte=${sixMonthsFromNow}${genrePart}${selectedYear ? `&primary_release_year=${selectedYear}` : ''}`;
+          const upcomingBaseUrl = upcomingWindow
+            ? `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.asc&primary_release_date.gte=${upcomingWindow.start}&primary_release_date.lte=${upcomingWindow.end}${genrePart}${selectedYear ? `&primary_release_year=${selectedYear}` : ''}`
+            : '';
 
-          const pagesToFetch = [1, 2, 3, 4, 5, 6, 7];
-          const currentYear = new Date().getFullYear();
+          const hasFilters = Boolean(selectedLang || selectedGenre || selectedYear || selectedOtt);
+          const maxPages = hasFilters ? 4 : 2;
+          const pagesToFetch = Array.from({ length: maxPages }, (_, i) => i + 1);
+          // Fetch more upcoming pages when filtering by language or future year so we get more "Coming Soon" titles (e.g. 2026 Telugu)
+          const upcomingMaxPages = (selectedLang || (selectedYearNum && selectedYearNum > currentYear)) ? 10 : 2;
+          const upcomingPagesToFetch = Array.from({ length: upcomingMaxPages }, (_, i) => i + 1);
           const yearStart = `${currentYear}-01-01`;
           const releasedThisYearUS = includeUS
             ? `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=${sortBy}&primary_release_date.gte=${yearStart}&primary_release_date.lte=${today}&with_watch_monetization_types=flatrate&watch_region=US${genrePart}${ottPartUS}`
@@ -159,9 +295,10 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
 
           // When an OTT has a language restriction (e.g. Aha = Telugu + Tamil only), use only those languages
           const ottRestrictedLangs = resolvedOttProvider?.languages ?? (numericOtt ? OTT_TO_LANGUAGES[numericOtt] : null);
+          const defaultLangs = ['en', 'hi', 'te', 'ta'];
           const langCodesToFetch: string[] = ottRestrictedLangs
             ? (selectedLang && ottRestrictedLangs.includes(selectedLang) ? [selectedLang] : ottRestrictedLangs)
-            : (selectedLang ? [selectedLang] : LANGUAGES.map(l => l.code));
+            : (selectedLang ? [selectedLang] : defaultLangs);
 
           const releasedPromises: Promise<Response>[] = [];
           const upcomingPromises: Promise<Response>[] = [];
@@ -180,10 +317,14 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                 );
               }
             }
+            for (const page of upcomingPagesToFetch) {
+              if (upcomingBaseUrl) {
+                upcomingPromises.push(
+                  fetch(`${upcomingBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                );
+              }
+            }
             for (const page of [1, 2]) {
-              upcomingPromises.push(
-                fetch(`${upcomingBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
-              );
               if (releasedThisYearUS) {
                 yearPromises.push(
                   fetch(`${releasedThisYearUS}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
@@ -221,7 +362,8 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
 
           // Filter: need poster and at least some rating (no unrated movies)
           allMovies = allMovies.filter(movie => movie.poster_path && typeof movie.vote_average === 'number' && movie.vote_average > 0);
-          allUpcoming = allUpcoming.filter(movie => movie.poster_path && typeof movie.vote_average === 'number' && movie.vote_average > 0);
+          // Upcoming: allow unrated titles so future releases show up
+          allUpcoming = allUpcoming.filter(movie => movie.poster_path);
 
           // Ensure no movie appears in both Released and Coming Soon (dedupe by id)
           const releasedIds = new Set(allMovies.map(m => m.id));
@@ -230,7 +372,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
           allUpcoming = allUpcoming.filter(m => !releasedIds.has(m.id));
 
           // Group upcoming movies by language
-          const upcomingByLang: Record<string, TrendingMovie[]> = {};
+          upcomingByLang = {};
           for (const movie of allUpcoming) {
             const lang = movie.original_language;
             if (!upcomingByLang[lang]) {
@@ -255,6 +397,8 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
         if (allMovies.length === 0) {
           setError('No results');
         }
+
+        trendingCache.set(cacheKey, { movies: allMovies, upcoming: upcomingByLang, ts: Date.now() });
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         if (err.name !== 'AbortError') {
@@ -293,14 +437,23 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
     (async () => {
       const next: Record<number, 'ott' | 'soon'> = {};
       for (const movie of movies.slice(0, limit)) {
+        const cached = providerCache.get(movie.id);
+        if (cached && Date.now() - cached.ts < PROVIDER_CACHE_TTL_MS) {
+          next[movie.id] = cached.hasOtt ? 'ott' : 'soon';
+          continue;
+        }
         try {
           const providers = await getWatchProviders(movie.id);
           const hasOtt =
             (providers?.results?.IN?.flatrate?.length ?? 0) > 0 ||
             (providers?.results?.US?.flatrate?.length ?? 0) > 0;
           next[movie.id] = hasOtt ? 'ott' : 'soon';
+          const { logos, link, hasOtt: metaHasOtt } = extractProviderMeta(providers);
+          providerCache.set(movie.id, { logos, link, hasOtt: metaHasOtt, ts: Date.now() });
+          setProviderLogos((prev) => (prev[movie.id] ? prev : { ...prev, [movie.id]: { logos, link } }));
         } catch {
           next[movie.id] = 'soon';
+          setProviderLogos((prev) => (prev[movie.id] ? prev : { ...prev, [movie.id]: { logos: [] } }));
         }
       }
       if (!controller.signal.aborted) setStreamingStatus((prev) => ({ ...prev, ...next }));
@@ -308,12 +461,67 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
     return () => controller.abort();
   }, [searchQuery, movies]);
 
+  useEffect(() => {
+    if (loading || movies.length === 0) return;
+    let cancelled = false;
+    const limit = searchQuery ? 36 : 60;
+    const targets = movies.slice(0, limit).map((m) => m.id);
+
+    const hydrateFromCache = () => {
+      const fromCache: Record<number, { logos: ProviderLogoItem[]; link?: string }> = {};
+      for (const id of targets) {
+        const cached = providerCache.get(id);
+        if (cached && Date.now() - cached.ts < PROVIDER_CACHE_TTL_MS && cached.logos.length > 0) {
+          fromCache[id] = { logos: cached.logos, link: cached.link };
+        }
+      }
+      if (Object.keys(fromCache).length > 0) {
+        setProviderLogos((prev) => ({ ...fromCache, ...prev }));
+      }
+    };
+
+    hydrateFromCache();
+
+    const queue = targets.filter((id) => {
+      const cached = providerCache.get(id);
+      return !(cached && Date.now() - cached.ts < PROVIDER_CACHE_TTL_MS);
+    });
+
+    const concurrency = 6;
+
+    const runQueue = async () => {
+      const workers = Array.from({ length: concurrency }).map(async () => {
+        while (queue.length > 0 && !cancelled) {
+          const id = queue.shift();
+          if (!id) break;
+          try {
+            const providers = await getWatchProviders(id);
+            if (cancelled) return;
+            const { logos, link, hasOtt } = extractProviderMeta(providers);
+            providerCache.set(id, { logos, link, hasOtt, ts: Date.now() });
+            setProviderLogos((prev) => (prev[id] ? prev : { ...prev, [id]: { logos, link } }));
+          } catch {
+            providerCache.set(id, { logos: [], hasOtt: false, ts: Date.now() });
+            setProviderLogos((prev) => (prev[id] ? prev : { ...prev, [id]: { logos: [] } }));
+          }
+        }
+      });
+      await Promise.all(workers);
+    };
+
+    runQueue();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [movies, loading, searchQuery]);
+
   const handleLanguageClick = (code: string) => {
     updateFilters({ lang: selectedLang === code ? '' : code });
   };
 
   const getLangInfo = (code: string) => {
-    return LANGUAGES.find(l => l.code === code) || { name: code.toUpperCase(), flag: '🌐' };
+    return LANGUAGES.find(l => l.code === code) || { name: code.toUpperCase() };
   };
 
   const currentLang = selectedLang ? getLangInfo(selectedLang) : null;
@@ -348,6 +556,21 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
 
         {filterOpen && (
           <div className="absolute left-0 top-full mt-2 z-50 w-[min(100%,420px)] max-h-[80vh] overflow-y-auto bg-[var(--bg-secondary)] rounded-2xl border border-white/10 shadow-xl p-4 space-y-4">
+            {(selectedLang || selectedGenre || selectedYear || selectedOtt) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setExpandedDecade(null);
+                  updateFilters({ lang: '', genre: '', year: '', ott: '', sort: 'date' });
+                }}
+                className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm font-medium rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all border border-red-500/30"
+              >
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+                Clear all filters
+              </button>
+            )}
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-[var(--text-muted)] w-20">Language:</span>
               {selectedLang && (
@@ -367,8 +590,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                     : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
                     }`}
                 >
-                  <span>{lang.flag}</span>
-                  <span>{lang.name}</span>
+                  {lang.name}
                 </button>
               ))}
             </div>
@@ -392,23 +614,38 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-[var(--text-muted)] w-20">Year:</span>
-              <button
-                onClick={() => updateFilters({ year: '' })}
-                className={`px-3 py-1.5 text-sm rounded-full transition-all ${!selectedYear ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
-              >
-                Any
-              </button>
-              {YEAR_OPTIONS.map((y) => (
+            <div className="flex flex-col gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs text-[var(--text-muted)] w-20">Year:</span>
                 <button
-                  key={y}
-                  onClick={() => updateFilters({ year: selectedYear === String(y) ? '' : String(y) })}
-                  className={`px-3 py-1.5 text-sm rounded-full transition-all ${selectedYear === String(y) ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+                  onClick={() => updateFilters({ year: '' })}
+                  className={`px-3 py-1.5 text-sm rounded-full transition-all ${!selectedYear ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
                 >
-                  {y}
+                  Any
                 </button>
-              ))}
+                {DECADES.map((decade) => (
+                  <button
+                    key={decade}
+                    onClick={() => setExpandedDecade((prev) => (prev === decade ? null : decade))}
+                    className={`px-3 py-1.5 text-sm rounded-full transition-all ${expandedDecade === decade ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-primary)]' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+                  >
+                    {decade}s
+                  </button>
+                ))}
+              </div>
+              {expandedDecade !== null && (
+                <div className="flex flex-wrap items-center gap-2 pl-20">
+                  {getYearsInDecade(expandedDecade).map((y) => (
+                    <button
+                      key={y}
+                      onClick={() => updateFilters({ year: selectedYear === String(y) ? '' : String(y) })}
+                      className={`px-3 py-1.5 text-sm rounded-full transition-all ${selectedYear === String(y) ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
+                    >
+                      {y}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -462,7 +699,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                 <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
                   <span className="text-purple-400">🎬 Coming Soon</span>
                   <span className="text-[var(--text-muted)]">•</span>
-                  <span>{lang.flag} {lang.name}</span>
+                  <span>{lang.name}</span>
                   <span className="text-xs font-normal text-[var(--text-muted)]">(Streaming soon)</span>
                 </h3>
                 <span className="text-xs text-[var(--text-muted)]">
@@ -546,10 +783,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
               🔍 <span>Search: &quot;{searchQuery}&quot;</span>
             </>
           ) : currentLang ? (
-            <>
-              {currentLang.flag}
-              <span>{currentLang.name} Movies</span>
-            </>
+            <span>{currentLang.name} Movies</span>
           ) : (
             <>
               🔥 <span>Latest & Trending</span>
@@ -610,9 +844,39 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                     </div>
                   )}
 
+                  <div className="absolute bottom-12 right-3 flex items-center gap-1">
+                    {providerLogos[movie.id]?.logos?.length > 0 ? (
+                      providerLogos[movie.id].logos.slice(0, 3).map((item, idx) => {
+                        const watchLink = providerLogos[movie.id].link ?? `https://www.themoviedb.org/movie/${movie.id}/watch`;
+                        const content = (
+                          <div
+                            className="w-8 h-8 rounded-xl bg-[var(--bg-primary)]/90 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-lg transition-all duration-200 hover:scale-110 hover:border-[var(--accent)]/50 hover:shadow-[var(--accent)]/20 hover:shadow-md active:scale-95"
+                            title={`Watch on ${item.name} (opens in new tab)`}
+                          >
+                            <img src={item.url} alt={item.name} className="w-5 h-5 object-contain" />
+                          </div>
+                        );
+                        return (
+                          <a
+                            key={`${movie.id}-logo-${idx}`}
+                            href={watchLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] rounded-xl"
+                          >
+                            {content}
+                          </a>
+                        );
+                      })
+                    ) : providerLogos[movie.id] && providerLogos[movie.id].logos?.length === 0 ? (
+                      <span className="text-[10px] text-[var(--text-muted)] px-1.5 py-0.5 bg-[var(--bg-primary)]/60 rounded-lg">—</span>
+                    ) : null}
+                  </div>
+
                   <div className="absolute top-3 left-3 flex flex-col gap-1">
                     <span className="px-2 py-1 text-xs font-medium bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md text-[var(--text-secondary)]">
-                      {langInfo.flag}
+                      {langInfo.name}
                     </span>
                     {searchQuery && (streamingStatus[movie.id] === 'soon' || streamingStatus[movie.id] === undefined) && (
                       <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-500/90 rounded text-[var(--bg-primary)]">

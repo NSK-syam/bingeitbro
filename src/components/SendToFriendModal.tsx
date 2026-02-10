@@ -35,6 +35,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
     const [isLoading, setIsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [error, setError] = useState('');
+    const [statusMessage, setStatusMessage] = useState('');
     const [friendsLoadError, setFriendsLoadError] = useState('');
     const [success, setSuccess] = useState(false);
     const [alreadySentTo, setAlreadySentTo] = useState<Set<string>>(new Set());
@@ -62,6 +63,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
     useEffect(() => {
         if (!isOpen || !user) return;
         setError('');
+        setStatusMessage('');
         fetchFriends();
     }, [isOpen, user, fetchFriends]);
 
@@ -102,6 +104,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
 
         setIsSending(true);
         setError('');
+        setStatusMessage('');
 
         try {
             const recipientList = Array.from(selectedFriends);
@@ -138,20 +141,52 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 personal_message: safeMessage,
             }));
 
-            await sendFriendRecommendations(recommendations);
+            const result = await sendFriendRecommendations(recommendations);
 
-            const emailPayload = recommendations.map((rec) => ({
+            const sentCount = result.sent ?? 0;
+            const duplicateCount = result.skipped?.duplicates?.length ?? 0;
+            const notAllowedCount = result.skipped?.notAllowed?.length ?? 0;
+            const alreadyCount = alreadySent.size + duplicateCount;
+
+            const messageParts: string[] = [];
+            if (sentCount > 0) {
+                messageParts.push(`Sent to ${sentCount} friend${sentCount === 1 ? '' : 's'}.`);
+            }
+            if (alreadyCount > 0) {
+                messageParts.push(`Skipped ${alreadyCount} who already had this recommendation.`);
+            }
+            if (notAllowedCount > 0) {
+                messageParts.push(`Skipped ${notAllowedCount} who aren't in your friends list.`);
+            }
+
+            if (sentCount === 0) {
+                setError(messageParts.join(' ') || 'No recommendations were sent. Please try again.');
+                return;
+            }
+
+            const sentRecipientIds = Array.isArray(result.sentRecipientIds) ? result.sentRecipientIds : [];
+            let emailRecipients = recommendations;
+            if (sentRecipientIds.length > 0) {
+                const sentSet = new Set(sentRecipientIds);
+                emailRecipients = recommendations.filter((rec) => sentSet.has(rec.recipient_id));
+            } else if (sentCount !== recommendations.length) {
+                emailRecipients = [];
+            }
+
+            const emailPayload = emailRecipients.map((rec) => ({
                 recipient_id: rec.recipient_id,
                 movie_title: rec.movie_title,
                 movie_year: rec.movie_year ?? null,
                 personal_message: rec.personal_message ?? null,
             }));
-            void notifyFriendRecommendationEmails(emailPayload).catch((err) => {
-                console.warn('Failed to send recommendation email:', err);
-            });
+            if (emailPayload.length > 0) {
+                void notifyFriendRecommendationEmails(emailPayload).catch((err) => {
+                    console.warn('Failed to send recommendation email:', err);
+                });
+            }
 
-            if (alreadySent.size > 0) {
-                setError(`Sent to ${toSend.length} friend(s). Skipped ${alreadySent.size} who already have this recommendation.`);
+            if (alreadyCount > 0 || notAllowedCount > 0) {
+                setStatusMessage(messageParts.join(' '));
             }
             setSuccess(true);
             setTimeout(() => {
@@ -161,7 +196,8 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 setSearchQuery('');
                 setSuccess(false);
                 setError('');
-            }, alreadySent.size > 0 ? 2500 : 1500);
+                setStatusMessage('');
+            }, alreadyCount > 0 || notAllowedCount > 0 ? 2500 : 1500);
         } catch (err) {
             console.error('Error sending recommendations:', err);
             if (err instanceof Error && err.message === 'DUPLICATE') {
@@ -182,6 +218,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
             setSearchQuery('');
             setError('');
             setSuccess(false);
+            setStatusMessage('');
         }
     };
 
@@ -228,6 +265,9 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                 </svg>
                             </div>
                             <p className="text-lg font-medium text-[var(--text-primary)]">Recommendation sent! 🎬</p>
+                            {statusMessage && (
+                                <p className="text-sm text-[var(--text-muted)] mt-2 text-center">{statusMessage}</p>
+                            )}
                         </div>
                     ) : (
                         <>

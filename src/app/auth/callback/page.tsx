@@ -1,20 +1,26 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 
 function AuthCallbackContent() {
-  const searchParams = useSearchParams();
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const errorParam = searchParams.get('error');
-    const errorDescription = searchParams.get('error_description');
-    const next = searchParams.get('next') ?? '/';
-    const code = searchParams.get('code');
+    const params = new URLSearchParams(window.location.search);
+    const errorParam = params.get('error');
+    const errorDescription = params.get('error_description');
+    const rawNext = params.get('next') ?? '/';
+    const next =
+      typeof rawNext === 'string' &&
+      rawNext.startsWith('/') &&
+      !rawNext.startsWith('//') &&
+      !rawNext.startsWith('/\\\\')
+        ? rawNext
+        : '/';
+    const code = params.get('code');
 
     if (errorParam) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
@@ -31,6 +37,7 @@ function AuthCallbackContent() {
 
     const supabase = createClient();
     let isActive = true;
+    let completed = false;
 
     console.log('[Auth Callback] Processing auth callback...');
 
@@ -42,34 +49,76 @@ function AuthCallbackContent() {
     }, 15000);
 
     const finish = () => {
-      if (!isActive) return;
+      if (!isActive || completed) return;
+      completed = true;
       clearTimeout(timeoutId);
       setStatus('success');
       window.location.replace(next);
     };
 
     const fail = (message: string) => {
-      if (!isActive) return;
+      if (!isActive || completed) return;
+      completed = true;
       clearTimeout(timeoutId);
       setStatus('error');
       setErrorMessage(message);
     };
 
+    const withTimeout = async <T,>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
+      let timeoutHandle: ReturnType<typeof setTimeout> | null = null;
+      const timeout = new Promise<T>((_, reject) => {
+        timeoutHandle = setTimeout(() => reject(new Error(message)), ms);
+      });
+      try {
+        return await Promise.race([promise, timeout]);
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+      }
+    };
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session) {
+        finish();
+      }
+    });
+
     (async () => {
       try {
         // If we have a PKCE code, exchange it explicitly.
         if (code) {
-          const { error } = await supabase.auth.exchangeCodeForSession(code);
+          const { error } = await withTimeout(
+            supabase.auth.exchangeCodeForSession(code),
+            10000,
+            'Authentication timed out. Please try again.'
+          );
           if (error) {
+            // If the exchange errored but a session exists, prefer the session.
+            try {
+              const { data: { session } } = await supabase.auth.getSession();
+              if (session) {
+                finish();
+                return;
+              }
+            } catch {
+              // Ignore and surface the original error below.
+            }
             fail(error.message || 'Authentication failed');
             return;
           }
-          finish();
+          // If auth state change fired, finish will no-op. Otherwise, check session.
+          const { data: { session } } = await supabase.auth.getSession();
+          if (session) {
+            finish();
+          }
           return;
         }
 
         // Fallback: check for an existing session (e.g., already signed in).
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await withTimeout(
+          supabase.auth.getSession(),
+          8000,
+          'Sign-in timed out. Please try again.'
+        );
         if (session) {
           finish();
         } else {
@@ -83,9 +132,10 @@ function AuthCallbackContent() {
 
     return () => {
       isActive = false;
+      subscription.unsubscribe();
       clearTimeout(timeoutId);
     };
-  }, [searchParams]);
+  }, []);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center gap-4 px-4">

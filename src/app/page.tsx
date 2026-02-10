@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useMemo, useEffect, useCallback, Suspense } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
-import { Header, MovieCard, FilterBar, RandomPicker, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, BibSplash, useAuth, DailyQuoteBanner, RecommendationToast } from '@/components';
+import { Header, MovieCard, FilterBar, RandomPicker, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, BibSplash, useAuth, DailyQuoteBanner, RecommendationToast, OnboardingTour } from '@/components';
 import { Recommendation, Recommender, OTTLink } from '@/types';
 import { useWatched, useNudges, useWatchlist } from '@/hooks';
 import { createClient, isSupabaseConfigured, DBRecommendation } from '@/lib/supabase';
@@ -53,6 +53,10 @@ export default function Home() {
     return new URLSearchParams(window.location.search).get('view') === 'friends';
   });
   const [showTodayReleases, setShowTodayReleases] = useState(false);
+  const [friendsDropdownOpen, setFriendsDropdownOpen] = useState(false);
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const friendsDropdownRef = useRef<HTMLDivElement>(null);
+  const filterPanelRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<'trending' | 'friends'>('trending');
   const [friendRecommendationsCount, setFriendRecommendationsCount] = useState(0);
   const [authErrorFromRedirect, setAuthErrorFromRedirect] = useState(false);
@@ -62,6 +66,7 @@ export default function Home() {
     movieTitle: string;
     count: number;
   } | null>(null);
+  const [showTour, setShowTour] = useState(false);
 
   const displayName = useMemo(() => {
     if (!user) return '';
@@ -96,6 +101,24 @@ export default function Home() {
     const line = HERO_LINES[idx] || HERO_LINES[0];
     return line(displayName);
   }, [visitIndex, displayName]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    if (!user?.id) {
+      setShowTour(false);
+      return;
+    }
+    const key = `bib-onboarding-v1:${user.id}`;
+    const seen = window.localStorage.getItem(key);
+    if (!seen) setShowTour(true);
+  }, [user?.id]);
+
+  const handleTourComplete = useCallback(() => {
+    if (typeof window !== 'undefined' && user?.id) {
+      window.localStorage.setItem(`bib-onboarding-v1:${user.id}`, 'done');
+    }
+    setShowTour(false);
+  }, [user?.id]);
 
   // Friends + anyone who has a rec in the Friends view (e.g. senders of "Send to Friend" who aren't in friends list)
   const recommenders = useMemo(() => {
@@ -375,6 +398,20 @@ export default function Home() {
     }
   }, []);
 
+  // Close Friends dropdown and Filter panel when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (friendsDropdownRef.current && !friendsDropdownRef.current.contains(e.target as Node)) {
+        setFriendsDropdownOpen(false);
+      }
+      if (filterPanelRef.current && !filterPanelRef.current.contains(e.target as Node)) {
+        setFilterPanelOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Realtime subscription disabled: WebSocket to Supabase was failing and spamming the console.
   // Badge still updates on load (getFriendRecommendationsUnreadCount) and when opening the modal.
 
@@ -488,10 +525,10 @@ export default function Home() {
       <Header
         onSearch={setSearchQuery}
         onLoginClick={() => setShowAuthModal(true)}
-        onAddClick={() => setShowSubmitModal(true)}
         onWatchlistClick={() => setShowWatchlist(true)}
         onNudgesClick={() => setShowNudges(true)}
         onFriendRecommendationsClick={() => setShowFriendRecommendations(true)}
+        onAddClick={() => setShowSubmitModal(true)}
         nudgeCount={nudgeCount}
         watchlistCount={getWatchlistCount()}
         friendRecommendationsCount={friendRecommendationsCount}
@@ -558,6 +595,11 @@ export default function Home() {
       <TodayReleasesModal
         manualOpen={showTodayReleases}
         onClose={() => setShowTodayReleases(false)}
+      />
+
+      <OnboardingTour
+        isOpen={showTour}
+        onComplete={handleTourComplete}
       />
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
@@ -704,8 +746,8 @@ export default function Home() {
               )}
             </div>
 
-            {/* Main Tabs - Trending vs Friends */}
-            <div className="flex flex-wrap gap-2 mb-6">
+            {/* Main Tabs - Trending, Friends, Add Friends, New Today */}
+            <div className="flex flex-wrap items-center gap-2 mb-6">
               <button
                 onClick={() => setActiveView('trending')}
                 className={`px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 ${activeView === 'trending'
@@ -718,6 +760,8 @@ export default function Home() {
                 </svg>
                 Trending
               </button>
+
+              {/* Friends — switch to friends view (list dropdown is on the friends page row below) */}
               <button
                 onClick={() => setActiveView('friends')}
                 className={`px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 ${activeView === 'friends'
@@ -736,7 +780,20 @@ export default function Home() {
                 )}
               </button>
 
-              {/* New Today Button */}
+              {/* Add Friends — opens Manage Friends modal */}
+              {user && (
+                <button
+                  onClick={() => setShowFriendsManager(true)}
+                  className="px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] border border-white/10"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  Add Friends
+                </button>
+              )}
+
+              {/* New Today */}
               <button
                 onClick={() => setShowTodayReleases(true)}
                 className="px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 bg-gradient-to-r from-purple-500 to-pink-500 text-white hover:from-purple-600 hover:to-pink-600 shadow-lg hover:shadow-purple-500/25"
@@ -750,77 +807,95 @@ export default function Home() {
           </>
         )}
 
-        {/* Friends Filter - Only show in friends view */}
+        {/* Friends page: pill row — Friends list | Add Friends | Filters (like image) */}
         {user && activeView === 'friends' && (
-          <div className="bg-[var(--bg-secondary)] rounded-2xl p-4 sm:p-6 mb-8 border border-white/5">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-[var(--text-muted)] w-16">Filter:</span>
+          <div className="flex flex-wrap items-center gap-2 mb-6">
+            {/* 1. Friends list — pill, opens dropdown */}
+            <div className="relative" ref={friendsDropdownRef}>
               <button
-                onClick={() => handleFilterChange('recommendedBy', null)}
-                className={`px-3 py-1.5 text-sm rounded-full transition-all ${!filters.recommendedBy
-                  ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                  : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
-                  }`}
+                type="button"
+                onClick={() => setFriendsDropdownOpen((o) => !o)}
+                className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all border ${
+                  friendsDropdownOpen
+                    ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-2 border-[var(--accent)]'
+                    : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border border-white/10 hover:bg-[var(--bg-card)] hover:border-white/20'
+                }`}
               >
-                All Friends
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                </svg>
+                Friends
+                {recommenders.length > 0 && (
+                  <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-xs">
+                    {recommenders.length}
+                  </span>
+                )}
+                <svg className={`w-4 h-4 transition-transform ${friendsDropdownOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
               </button>
-              {recommenders.map((person) => (
-                <div key={person.id} className="flex items-center">
+              {friendsDropdownOpen && (
+                <div className="absolute left-0 top-full mt-2 z-50 min-w-[220px] max-h-[70vh] overflow-y-auto bg-[var(--bg-secondary)] rounded-xl border border-white/10 shadow-xl py-2">
                   <button
-                    onClick={() =>
-                      handleFilterChange(
-                        'recommendedBy',
-                        filters.recommendedBy === person.id ? null : person.id
-                      )
-                    }
-                    className={`px-3 py-1.5 text-sm rounded-l-full transition-all ${filters.recommendedBy === person.id
-                      ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                      : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)]'
-                      }`}
+                    onClick={() => { handleFilterChange('recommendedBy', null); setFriendsDropdownOpen(false); }}
+                    className={`w-full text-left px-4 py-2.5 text-sm ${filters.recommendedBy === null ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'text-[var(--text-primary)] hover:bg-[var(--bg-card)]'}`}
                   >
-                    {person.avatar} {person.name}
+                    All
                   </button>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleRemoveFriend(person.id);
-                    }}
-                    className="px-2 py-1.5 text-sm rounded-r-full bg-[var(--bg-card)] text-red-400 hover:bg-red-500/20 transition-all border-l border-white/10"
-                    title="Remove friend"
-                  >
-                    ×
-                  </button>
+                  {[...recommenders]
+                    .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
+                    .map((person) => (
+                    <button
+                      key={person.id}
+                      onClick={() => { handleFilterChange('recommendedBy', filters.recommendedBy === person.id ? null : person.id); }}
+                      className={`w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 ${filters.recommendedBy === person.id ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'text-[var(--text-primary)] hover:bg-[var(--bg-card)]'}`}
+                    >
+                      <span>{person.avatar}</span>
+                      <span className="truncate">{person.name}</span>
+                    </button>
+                  ))}
                 </div>
-              ))}
-              {user && (
-                <button
-                  onClick={() => setShowFriendsManager(true)}
-                  className="px-3 py-1.5 text-sm rounded-full bg-[var(--bg-card)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)] transition-all flex items-center gap-1"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Friends
-                </button>
               )}
             </div>
 
-            {/* Additional filters */}
+            {/* 2. Filters — pill like image: filter icon + "Filters" + chevron, orange border when open */}
             {friendsRecommendations.length > 0 && (
-              <>
+              <div className="relative" ref={filterPanelRef}>
+                <button
+                  type="button"
+                  onClick={() => setFilterPanelOpen((o) => !o)}
+                  className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all border-2 ${
+                    filterPanelOpen
+                      ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-[var(--accent)]'
+                      : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-white/10 hover:bg-[var(--bg-card)] hover:border-white/20'
+                  }`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
+                  </svg>
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="min-w-[18px] h-[18px] px-1 flex items-center justify-center rounded-full bg-[var(--bg-primary)]/20 text-xs">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                  <svg className={`w-4 h-4 transition-transform ${filterPanelOpen ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                  </svg>
+                </button>
+                {filterPanelOpen && (
+              <div className="absolute left-0 top-full mt-2 z-40 w-[min(100%,420px)] max-h-[80vh] overflow-y-auto bg-[var(--bg-secondary)] rounded-2xl border border-white/10 shadow-xl p-4 space-y-4">
                 <FilterBar
                   recommendations={filters.recommendedBy
                     ? friendsRecommendations.filter(r => r.recommendedBy.id === filters.recommendedBy)
                     : friendsRecommendations
                   }
-                  recommenders={[]}
+                  recommenders={recommenders}
                   activeFilters={filters}
                   onFilterChange={handleFilterChange}
-                  showManageFriends={false}
+                  hideFriendsSection={true}
                 />
-
-                {/* Watched status filter */}
-                <div className="flex flex-wrap items-center gap-2 mt-4 pt-4 border-t border-white/5">
+                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5">
                   <span className="text-xs text-[var(--text-muted)] w-16">Status:</span>
                   {(['all', 'watched'] as const).map((status) => (
                     <button
@@ -842,8 +917,10 @@ export default function Home() {
                     </button>
                   ))}
                 </div>
-              </>
+              </div>
             )}
+          </div>
+        )}
           </div>
         )}
 

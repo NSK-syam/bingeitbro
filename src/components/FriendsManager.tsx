@@ -243,7 +243,7 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
           return;
         }
 
-        const orFilter = `name.ilike.*${sanitizedQuery}*,username.ilike.*${sanitizedQuery}*`;
+        const orFilter = `name.ilike.*${sanitizedQuery}*,username.ilike.*${sanitizedQuery}*,email.ilike.*${sanitizedQuery}*`;
         const searchParams = new URLSearchParams({
           select: 'id,name,username,avatar,email',
           or: `(${orFilter})`,
@@ -373,7 +373,7 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
               type="text"
               name="friendSearch"
               id="friendSearch"
-              placeholder="Search users by name..."
+              placeholder="Search users by name or email..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="w-full px-4 py-2.5 pl-10 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50"

@@ -21,8 +21,13 @@ CREATE TABLE IF NOT EXISTS users (
   name TEXT NOT NULL,
   username TEXT UNIQUE,
   avatar TEXT DEFAULT '🎬',
+  theme TEXT DEFAULT 'gold',
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Add missing columns for existing installs
+ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT DEFAULT 'gold';
+UPDATE users SET theme = 'gold' WHERE theme IS NULL;
 
 -- Enable RLS
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;

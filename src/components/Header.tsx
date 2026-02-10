@@ -10,10 +10,10 @@ import { enablePushNotifications } from '@/lib/push';
 interface HeaderProps {
   onSearch?: (query: string) => void;
   onLoginClick?: () => void;
-  onAddClick?: () => void;
   onWatchlistClick?: () => void;
   onNudgesClick?: () => void;
   onFriendRecommendationsClick?: () => void;
+  onAddClick?: () => void;
   nudgeCount?: number;
   watchlistCount?: number;
   friendRecommendationsCount?: number;
@@ -24,7 +24,7 @@ interface MovieSuggestion {
   title: string;
 }
 
-export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, onNudgesClick, onFriendRecommendationsClick, nudgeCount = 0, watchlistCount = 0, friendRecommendationsCount = 0 }: HeaderProps) {
+export function Header({ onSearch, onLoginClick, onWatchlistClick, onNudgesClick, onFriendRecommendationsClick, onAddClick, nudgeCount = 0, watchlistCount = 0, friendRecommendationsCount = 0 }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [suggestions, setSuggestions] = useState<MovieSuggestion[]>([]);
@@ -200,16 +200,11 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                 className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
               />
             </div>
-            <div>
-              <h1 className="bib-wordmark text-lg sm:text-xl font-bold text-[var(--text-primary)] group-hover:text-[var(--accent)] transition-colors">
-                <span className="bib-letter">B</span>
-                <span className="bib-letter">i</span>
-                <span className="bib-letter">B</span>
-              </h1>
-              <p className="text-[10px] sm:text-xs text-[var(--text-muted)] hidden sm:block">
-                Binge it bro
-              </p>
+            <div className="hidden sm:flex flex-col leading-tight">
+              <span className="text-sm font-semibold text-[var(--text-primary)]">Binge It Bro</span>
+              <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]">BiB</span>
             </div>
+            <span className="sr-only">Binge It Bro</span>
           </Link>
 
           {/* Actions */}
@@ -283,7 +278,7 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
               )}
             </div>
 
-            {/* Friend Recommendations, Nudges, Watchlist & Add Buttons */}
+            {/* Friend Recommendations, Nudges, Watchlist */}
             {user ? (
               <>
                 {/* Friend Recommendations */}
@@ -330,15 +325,6 @@ export function Header({ onSearch, onLoginClick, onAddClick, onWatchlistClick, o
                       {watchlistCount > 9 ? '9+' : watchlistCount}
                     </span>
                   )}
-                </button>
-                <button
-                  onClick={onAddClick}
-                  className="flex items-center gap-1.5 px-3 py-2 text-sm bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  <span className="hidden sm:inline">Add</span>
                 </button>
               </>
             ) : null}
