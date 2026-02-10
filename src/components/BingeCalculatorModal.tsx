@@ -215,12 +215,13 @@ export function BingeCalculatorModal({
     }
     const last = selected.last_episode_to_air?.runtime;
     if (typeof last === 'number' && Number.isFinite(last) && last > 0) return Math.round(last);
-    return 45; // safe-ish default when TMDB does not provide runtime
+    return 0;
   }, [selected]);
 
   const calc = useMemo(() => {
     if (!selected) return null;
     const episodes = selected.number_of_episodes;
+    if (!avgRuntimeMin) return null;
     const totalMin = episodes * avgRuntimeMin;
     const totalHours = totalMin / 60;
     const totalDaysNonstop = totalHours / 24;
@@ -254,7 +255,7 @@ export function BingeCalculatorModal({
 
       <div
         ref={rootRef}
-        className="relative w-full max-w-xl max-h-[85vh] overflow-y-auto bg-[var(--bg-card)] rounded-2xl p-6 shadow-2xl border border-white/10"
+        className="relative w-full max-w-2xl max-h-[85vh] overflow-y-auto bg-[var(--bg-card)] rounded-2xl p-6 sm:p-7 shadow-2xl border border-white/10"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -268,9 +269,12 @@ export function BingeCalculatorModal({
         </button>
 
         <div className="text-center">
-          <h2 className="text-2xl sm:text-3xl font-bold text-[var(--text-primary)]">Can I Binge?</h2>
+          <p className="text-[11px] uppercase tracking-[0.25em] text-[var(--text-muted)]">Binge Calculator</p>
+          <h2 className="mt-2 text-2xl sm:text-3xl font-bold text-[var(--text-primary)]">
+            Can I binge it in {timeLabel}?
+          </h2>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
-            Pick a show and a time window. We will estimate the pace.
+            Search a TV show, pick a time window, get a simple yes or no plus a watch plan.
           </p>
         </div>
 
@@ -281,7 +285,7 @@ export function BingeCalculatorModal({
         )}
 
         <div className="mt-6">
-          <label className="text-sm font-medium text-[var(--text-primary)]">Search a show</label>
+          <label className="text-sm font-medium text-[var(--text-primary)]">TV show</label>
           <div className="relative mt-2">
             <input
               ref={inputRef}
@@ -312,11 +316,11 @@ export function BingeCalculatorModal({
                 }
               }}
               placeholder="Type a TV show name..."
-              className="w-full px-4 py-3 text-sm bg-[var(--bg-secondary)] border border-white/10 rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/60 focus:ring-1 focus:ring-[var(--accent)]/50 transition-all"
+              className="w-full px-4 py-3 text-sm bg-[var(--bg-secondary)] border border-white/10 rounded-2xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/60 focus:ring-1 focus:ring-[var(--accent)]/50 transition-all"
             />
 
             {suggestionOpen && suggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--bg-card)] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50">
+              <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--bg-card)] border border-white/10 rounded-2xl shadow-2xl overflow-hidden z-50 max-h-64 overflow-y-auto">
                 {loadingSuggestions ? (
                   <div className="px-4 py-3 text-sm text-[var(--text-muted)]">Searching...</div>
                 ) : (
@@ -326,7 +330,7 @@ export function BingeCalculatorModal({
                       type="button"
                       onClick={() => void selectSuggestion(s)}
                       onMouseEnter={() => setSelectedIndex(idx)}
-                      className={`w-full px-4 py-2.5 text-left flex items-center justify-between transition-colors ${
+                      className={`w-full px-4 py-3 text-left flex items-center justify-between transition-colors ${
                         idx === selectedIndex
                           ? 'bg-[var(--accent)]/10 text-[var(--accent)]'
                           : 'text-[var(--text-primary)] hover:bg-[var(--bg-secondary)]'
@@ -348,14 +352,15 @@ export function BingeCalculatorModal({
           )}
         </div>
 
-        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="text-sm font-medium text-[var(--text-primary)]">Time window</label>
-            <div className="mt-2 flex items-center gap-2">
+        <div className="mt-6">
+          <label className="text-sm font-medium text-[var(--text-primary)]">Time window</label>
+          <div className="mt-2 rounded-2xl bg-[var(--bg-secondary)]/70 border border-white/10 p-4">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 type="button"
-                className="h-10 w-10 rounded-xl bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
+                className="h-11 w-11 rounded-2xl bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
                 onClick={() => setTimeAmount((v) => clampInt(v - 1, 1, 3650))}
+                aria-label="Decrease"
               >
                 -
               </button>
@@ -363,12 +368,12 @@ export function BingeCalculatorModal({
                 value={timeAmount}
                 onChange={(e) => setTimeAmount(clampInt(Number(e.target.value || 1), 1, 3650))}
                 inputMode="numeric"
-                className="flex-1 h-10 px-3 rounded-xl bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/60"
+                className="h-11 w-20 text-center rounded-2xl bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/60"
               />
               <select
                 value={timeUnit}
                 onChange={(e) => setTimeUnit(e.target.value as TimeUnit)}
-                className="h-10 px-3 rounded-xl bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/60"
+                className="h-11 px-3 rounded-2xl bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/60"
               >
                 <option value="day">days</option>
                 <option value="week">weeks</option>
@@ -377,72 +382,101 @@ export function BingeCalculatorModal({
               </select>
               <button
                 type="button"
-                className="h-10 w-10 rounded-xl bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
+                className="h-11 w-11 rounded-2xl bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
                 onClick={() => setTimeAmount((v) => clampInt(v + 1, 1, 3650))}
+                aria-label="Increase"
               >
                 +
               </button>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {[
-                { label: '1 day', amount: 1, unit: 'day' as const },
-                { label: '1 week', amount: 1, unit: 'week' as const },
-                { label: '1 month', amount: 1, unit: 'month' as const },
-                { label: '3 months', amount: 3, unit: 'month' as const },
-              ].map((p) => (
-                <button
-                  key={p.label}
-                  type="button"
-                  onClick={() => {
-                    setTimeAmount(p.amount);
-                    setTimeUnit(p.unit);
-                  }}
-                  className="px-3 py-2 rounded-full text-xs bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-secondary)] hover:bg-[var(--bg-card)]"
-                >
-                  {p.label}
-                </button>
-              ))}
+              <div className="flex flex-wrap items-center gap-2 ml-0 sm:ml-auto">
+                {[
+                  { label: '1 day', amount: 1, unit: 'day' as const },
+                  { label: '1 week', amount: 1, unit: 'week' as const },
+                  { label: '1 month', amount: 1, unit: 'month' as const },
+                  { label: '3 months', amount: 3, unit: 'month' as const },
+                ].map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => {
+                      setTimeAmount(p.amount);
+                      setTimeUnit(p.unit);
+                    }}
+                    className="px-3 py-2 rounded-full text-xs bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-secondary)] hover:bg-[var(--bg-card)]"
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
+        </div>
 
-          <div>
-            <label className="text-sm font-medium text-[var(--text-primary)]">Estimate</label>
-            <div className="mt-2 rounded-xl bg-[var(--bg-secondary)]/70 border border-white/10 p-4">
-              {!selected ? (
-                <p className="text-sm text-[var(--text-muted)]">Select a show to see the binge plan.</p>
-              ) : !calc ? null : (
-                <div className="space-y-2">
-                  <div className="text-sm text-[var(--text-secondary)]">
-                    <span className="text-[var(--text-primary)] font-semibold">{selected.name}</span>
-                    <span className="text-[var(--text-muted)]"> · {calc.episodes} episodes</span>
+        <div className="mt-6">
+          <label className="text-sm font-medium text-[var(--text-primary)]">Result</label>
+          <div className="mt-2 rounded-2xl bg-[var(--bg-secondary)]/70 border border-white/10 p-5">
+            {!selected ? (
+              <p className="text-sm text-[var(--text-muted)]">Search and select a show to see the binge plan.</p>
+            ) : !calc ? (
+              <p className="text-sm text-[var(--text-muted)]">
+                We could not find runtime metadata for this show on TMDB, so we cannot estimate it reliably.
+              </p>
+            ) : (
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm text-[var(--text-muted)]">Show</div>
+                    <div className="text-lg font-semibold text-[var(--text-primary)]">{selected.name}</div>
                   </div>
-                  <div className="text-xs text-[var(--text-muted)]">
-                    Avg runtime: {avgRuntimeMin} min. Total: {formatNumber(calc.totalHours, 1)} hours.
-                  </div>
-                  <div className={`mt-2 rounded-lg px-3 py-2 text-sm border ${
+                  <div className={`px-3 py-2 rounded-2xl border text-sm font-semibold ${
                     calc.can
                       ? 'border-green-500/30 bg-green-500/10 text-green-200'
                       : 'border-red-500/30 bg-red-500/10 text-red-200'
                   }`}>
-                    {calc.can ? (
-                      <>
-                        Yes, you can binge it in {timeLabel}. You will need about{' '}
-                        <span className="font-semibold">{formatNumber(calc.episodesPerDay, 1)}</span> episodes per day
-                        ({formatNumber(calc.hoursPerDay, 1)} hours/day).
-                      </>
-                    ) : (
-                      <>
-                        No. You would need to watch non stop for at least{' '}
-                        <span className="font-semibold">{formatNumber(calc.totalDaysNonstop, 1)}</span> days.
-                      </>
-                    )}
-                  </div>
-                  <div className="text-[11px] text-[var(--text-muted)]">
-                    This is an estimate using TMDB metadata and average runtime. Episodes vary.
+                    {calc.can ? 'YES' : 'NO'}
                   </div>
                 </div>
-              )}
-            </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/60 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Episodes</div>
+                    <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{calc.episodes}</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/60 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Avg runtime</div>
+                    <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{avgRuntimeMin}m</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/60 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Total time</div>
+                    <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{formatNumber(calc.totalHours, 1)}h</div>
+                  </div>
+                  <div className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/60 p-3">
+                    <div className="text-[11px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Per day</div>
+                    <div className="mt-1 text-lg font-semibold text-[var(--text-primary)]">{formatNumber(calc.hoursPerDay, 1)}h</div>
+                  </div>
+                </div>
+
+                <div className="text-sm text-[var(--text-secondary)]">
+                  {calc.can ? (
+                    <>
+                      You can finish in {timeLabel}. Aim for about{' '}
+                      <span className="font-semibold text-[var(--text-primary)]">{formatNumber(calc.episodesPerDay, 1)}</span>{' '}
+                      episodes per day.
+                    </>
+                  ) : (
+                    <>
+                      Not in {timeLabel}. You would need to watch nonstop for about{' '}
+                      <span className="font-semibold text-[var(--text-primary)]">{formatNumber(calc.totalDaysNonstop, 1)}</span>{' '}
+                      days.
+                    </>
+                  )}
+                </div>
+
+                <div className="text-[11px] text-[var(--text-muted)]">
+                  Estimate uses TMDB metadata and average runtime. Episodes vary.
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>

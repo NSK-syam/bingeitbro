@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useEffect, useCallback, useRef, Suspense } from 'react';
 import Link from 'next/link';
-import { Header, MovieCard, FilterBar, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, BibSplash, useAuth, DailyQuoteBanner, RecommendationToast, OnboardingTour } from '@/components';
+import { Header, MovieCard, FilterBar, AuthModal, SubmitRecommendation, FriendsManager, MovieBackground, WatchlistModal, NudgesModal, TrendingMovies, TodayReleasesModal, FriendRecommendationsModal, BibSplash, useAuth, DailyQuoteBanner, RecommendationToast, OnboardingTour, BingeCalculatorModal } from '@/components';
 import { Recommendation, Recommender, OTTLink } from '@/types';
 import { useWatched, useNudges, useWatchlist } from '@/hooks';
 import { createClient } from '@/lib/supabase';
@@ -52,6 +52,7 @@ export default function Home() {
     return new URLSearchParams(window.location.search).get('view') === 'friends';
   });
   const [showTodayReleases, setShowTodayReleases] = useState(false);
+  const [showBingeCalculator, setShowBingeCalculator] = useState(false);
   const [friendsDropdownOpen, setFriendsDropdownOpen] = useState(false);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const friendsDropdownRef = useRef<HTMLDivElement>(null);
@@ -509,6 +510,11 @@ export default function Home() {
         onClose={() => setShowTodayReleases(false)}
       />
 
+      <BingeCalculatorModal
+        isOpen={showBingeCalculator}
+        onClose={() => setShowBingeCalculator(false)}
+      />
+
       <OnboardingTour
         isOpen={showTour}
         onComplete={handleTourComplete}
@@ -711,6 +717,17 @@ export default function Home() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
                 </svg>
                 New Today
+              </button>
+
+              {/* Binge Calculator */}
+              <button
+                onClick={() => setShowBingeCalculator(true)}
+                className="px-6 py-3 text-sm font-medium rounded-xl transition-all flex items-center gap-2 bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] border border-white/10"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                Binge Calculator
               </button>
             </div>
           </>
