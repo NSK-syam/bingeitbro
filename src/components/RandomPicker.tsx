@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Recommendation } from '@/types';
 import { useWatched } from '@/hooks';
 import Link from 'next/link';
@@ -14,9 +14,121 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
   const [isSpinning, setIsSpinning] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<Recommendation | null>(null);
   const [showUnwatchedOnly, setShowUnwatchedOnly] = useState(true);
+  const [selectedMood, setSelectedMood] = useState<string>('');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('');
   const { isWatched } = useWatched();
-  const unwatchedMovies = recommendations.filter((r) => !isWatched(r.id));
-  const availableMovies = showUnwatchedOnly ? unwatchedMovies : recommendations;
+
+  const MOOD_OPTIONS = [
+    {
+      id: 'sad',
+      label: 'Feeling low',
+      emoji: '💛',
+      tags: ['heartwarming', 'inspiring', 'emotional', 'slice-of-life'],
+      genres: ['Comedy', 'Drama', 'Romance'],
+      cheer: 'Here is a feel‑good pick to make your mood brighter.',
+    },
+    {
+      id: 'laugh',
+      label: 'Need laughs',
+      emoji: '😂',
+      tags: ['heartwarming'],
+      genres: ['Comedy'],
+      cheer: 'A laugh is on the way. Let’s lift the vibe.',
+    },
+    {
+      id: 'chill',
+      label: 'Chill & cozy',
+      emoji: '🧘',
+      tags: ['slice-of-life', 'heartwarming'],
+      genres: ['Drama', 'Romance'],
+      cheer: 'Soft, cozy vibes coming up.',
+    },
+    {
+      id: 'thrill',
+      label: 'Adrenaline',
+      emoji: '🔥',
+      tags: ['thrilling', 'intense', 'epic', 'raw', 'rebellious'],
+      genres: ['Action', 'Thriller', 'Crime'],
+      cheer: 'Strap in — something intense and punchy is coming.',
+    },
+    {
+      id: 'mind',
+      label: 'Mind‑bending',
+      emoji: '🧠',
+      tags: ['mind-bending', 'thought-provoking'],
+      genres: ['Sci-Fi', 'Mystery', 'Thriller'],
+      cheer: 'Ready for a twist? We’ll find something that makes you think.',
+    },
+    {
+      id: 'inspired',
+      label: 'Inspired',
+      emoji: '✨',
+      tags: ['inspiring', 'epic'],
+      genres: ['Drama'],
+      cheer: 'Let’s lift your spirit with something inspiring.',
+    },
+  ];
+
+  const moodConfig = MOOD_OPTIONS.find((m) => m.id === selectedMood) || null;
+  const languageOptions = useMemo(() => {
+    const unique = Array.from(
+      new Set(recommendations.map((rec) => rec.language).filter((lang) => lang && lang.trim()))
+    );
+    return ['Any', ...unique.sort((a, b) => a.localeCompare(b))];
+  }, [recommendations]);
+
+  const isReady = Boolean(selectedMood) && Boolean(selectedLanguage);
+  const moodLanguageMatches = useMemo(() => {
+    return recommendations.filter((rec) => {
+      const recMoods = (rec.mood ?? []).map((m) => m.toLowerCase());
+      const recGenres = (rec.genres ?? []).map((g) => g.toLowerCase());
+      const moodMatch = !moodConfig
+        ? true
+        : moodConfig.tags.some((tag) => recMoods.includes(tag)) ||
+          moodConfig.genres.some((genre) => recGenres.includes(genre.toLowerCase()));
+      const languageMatch =
+        !selectedLanguage || selectedLanguage === 'Any'
+          ? true
+          : rec.language?.toLowerCase() === selectedLanguage.toLowerCase();
+      return moodMatch && languageMatch;
+    });
+  }, [recommendations, moodConfig, selectedLanguage]);
+
+  const moodOnlyMatches = useMemo(() => {
+    return recommendations.filter((rec) => {
+      if (!moodConfig) return true;
+      const recMoods = (rec.mood ?? []).map((m) => m.toLowerCase());
+      const recGenres = (rec.genres ?? []).map((g) => g.toLowerCase());
+      return (
+        moodConfig.tags.some((tag) => recMoods.includes(tag)) ||
+        moodConfig.genres.some((genre) => recGenres.includes(genre.toLowerCase()))
+      );
+    });
+  }, [recommendations, moodConfig]);
+
+  const languageOnlyMatches = useMemo(() => {
+    return recommendations.filter((rec) => {
+      if (!selectedLanguage || selectedLanguage === 'Any') return true;
+      return rec.language?.toLowerCase() === selectedLanguage.toLowerCase();
+    });
+  }, [recommendations, selectedLanguage]);
+
+  const basePool = useMemo(() => {
+    if (!isReady) return [];
+    if (moodLanguageMatches.length > 0) return moodLanguageMatches;
+    if (moodOnlyMatches.length > 0) return moodOnlyMatches;
+    if (languageOnlyMatches.length > 0) return languageOnlyMatches;
+    return recommendations;
+  }, [isReady, moodLanguageMatches, moodOnlyMatches, languageOnlyMatches, recommendations]);
+
+  const unwatchedMovies = basePool.filter((r) => !isWatched(r.id));
+  const availableMovies = showUnwatchedOnly ? unwatchedMovies : basePool;
+  const showFallbackNote = isReady && moodLanguageMatches.length === 0;
+  const cheerMessage = isReady
+    ? `${moodConfig?.cheer ?? 'We’ll find the right vibe for you.'} ${
+        selectedLanguage === 'Any' ? 'Any language works tonight.' : `Let’s keep it ${selectedLanguage}.`
+      }`
+    : '';
 
   const pickRandom = () => {
     if (availableMovies.length === 0) return;
@@ -46,6 +158,9 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
     setIsOpen(true);
     setSelectedMovie(null);
     setIsSpinning(false);
+    setSelectedMood('');
+    setSelectedLanguage('');
+    setShowUnwatchedOnly(true);
   };
 
   const handleClose = () => {
@@ -111,8 +226,62 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                 🎯 What to Watch
               </h3>
               <p className="text-sm text-[var(--text-muted)] mb-6">
-                Quick pick from your friend recommendations
+                Tell us your mood and language — we’ll handle the rest.
               </p>
+
+              <div className="space-y-5 text-left mb-6">
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">Tell us your mood</p>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {MOOD_OPTIONS.map((mood) => (
+                      <button
+                        key={mood.id}
+                        type="button"
+                        onClick={() => setSelectedMood(mood.id)}
+                        className={`px-3 py-2 rounded-full text-xs sm:text-sm transition-all border ${
+                          selectedMood === mood.id
+                            ? 'bg-[var(--accent)] text-[var(--bg-primary)] border-[var(--accent)]'
+                            : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-white/10 hover:bg-[var(--bg-card)]'
+                        }`}
+                      >
+                        <span className="mr-1">{mood.emoji}</span>
+                        {mood.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-sm font-medium text-[var(--text-primary)]">Pick a language</p>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {languageOptions.map((lang) => (
+                      <button
+                        key={lang}
+                        type="button"
+                        onClick={() => setSelectedLanguage(lang)}
+                        className={`px-3 py-2 rounded-full text-xs sm:text-sm transition-all border ${
+                          selectedLanguage === lang
+                            ? 'bg-[var(--accent)] text-[var(--bg-primary)] border-[var(--accent)]'
+                            : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] border-white/10 hover:bg-[var(--bg-card)]'
+                        }`}
+                      >
+                        {lang}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {isReady && (
+                  <div className="rounded-xl bg-[var(--bg-secondary)]/70 border border-white/10 p-3 text-sm text-[var(--text-secondary)]">
+                    {cheerMessage}
+                  </div>
+                )}
+                {showFallbackNote && (
+                  <p className="text-xs text-[var(--text-muted)]">
+                    No exact matches for that combo. We’ll still pick something good.
+                  </p>
+                )}
+              </div>
 
               {/* Toggle for unwatched only */}
               <label className="flex items-center justify-center gap-2 mb-6 cursor-pointer">
@@ -121,12 +290,13 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                   checked={showUnwatchedOnly}
                   onChange={(e) => setShowUnwatchedOnly(e.target.checked)}
                   className="sr-only peer"
+                  disabled={!isReady}
                 />
                 <div className="w-10 h-6 bg-[var(--bg-secondary)] peer-checked:bg-[var(--accent)] rounded-full relative transition-colors">
                   <div className="absolute w-4 h-4 bg-white rounded-full top-1 left-1 peer-checked:left-5 transition-all" />
                 </div>
                 <span className="text-sm text-[var(--text-secondary)]">
-                  Unwatched only ({unwatchedMovies.length} available)
+                  {isReady ? `Unwatched only (${unwatchedMovies.length} available)` : 'Unwatched only'}
                 </span>
               </label>
 
@@ -154,7 +324,9 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                   <div className="absolute inset-0 flex items-center justify-center bg-[var(--bg-secondary)]">
                     <div className="text-center">
                       <span className="text-6xl block mb-4">🎲</span>
-                      <p className="text-[var(--text-muted)]">Press the button to pick a movie</p>
+                      <p className="text-[var(--text-muted)]">
+                        Pick your mood and language to get started
+                      </p>
                     </div>
                   </div>
                 )}
@@ -162,7 +334,13 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
 
               {/* Action Buttons */}
               <div className="flex gap-3">
-                {availableMovies.length > 0 ? (
+                {!isReady ? (
+                  <div className="flex-1 py-4 text-center">
+                    <p className="text-[var(--text-muted)]">
+                      Pick your mood and language to continue.
+                    </p>
+                  </div>
+                ) : availableMovies.length > 0 ? (
                   <>
                     <button
                       onClick={pickRandom}
@@ -173,7 +351,7 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                           : 'bg-gradient-to-r from-purple-600 to-pink-600 text-white hover:from-purple-500 hover:to-pink-500'
                       }`}
                     >
-                      {isSpinning ? 'Picking...' : selectedMovie ? 'Try Again' : 'Pick for Me!'}
+                      {isSpinning ? 'Picking...' : selectedMovie ? 'Try Again' : 'Find My Pick'}
                     </button>
                     {selectedMovie && !isSpinning && (
                       <Link
