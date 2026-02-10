@@ -217,29 +217,12 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
       }`
     : '';
 
-  const pickRandom = () => {
+  const pickBest = () => {
     if (availableMovies.length === 0) return;
-
+    const best = availableMovies[0];
     setIsSpinning(true);
-    setSelectedMovie(null);
-
-    // Simulate spinning through movies
-    let count = 0;
-    const maxSpins = 15;
-    const spinInterval = setInterval(() => {
-      const randomIndex = Math.floor(Math.random() * availableMovies.length);
-      setSelectedMovie(availableMovies[randomIndex]);
-      count++;
-
-      if (count >= maxSpins) {
-        clearInterval(spinInterval);
-        // Final selection
-        const topPicks = availableMovies.slice(0, Math.min(4, availableMovies.length));
-        const finalIndex = Math.floor(Math.random() * topPicks.length);
-        setSelectedMovie(topPicks[finalIndex]);
-        setIsSpinning(false);
-      }
-    }, 100);
+    setSelectedMovie(best);
+    window.setTimeout(() => setIsSpinning(false), 350);
   };
 
   const handleOpen = () => {
@@ -414,7 +397,7 @@ export function RandomPicker({ recommendations }: RandomPickerProps) {
                 ) : availableMovies.length > 0 ? (
                   <>
                     <button
-                      onClick={pickRandom}
+                      onClick={pickBest}
                       disabled={isSpinning}
                       className={`flex-1 py-3 px-4 rounded-xl font-medium transition-all ${
                         isSpinning
