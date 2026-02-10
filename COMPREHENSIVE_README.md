@@ -1326,7 +1326,7 @@ This project is private and not licensed for public use.
 
 For questions or support:
 - **Website**: [bingeitbro.com](https://bingeitbro.com)
-- **GitHub**: [Your GitHub Profile]
+- **GitHub**: https://github.com/NSK-syam
 - **Email**: support@bingeitbro.com
 
 ---
