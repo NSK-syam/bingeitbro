@@ -67,6 +67,10 @@ export default function Home() {
   } | null>(null);
   const [showTour, setShowTour] = useState(false);
 
+  const whatToWatchPool = useMemo(() => {
+    return [...staticRecommendations, ...friendsRecommendations];
+  }, [staticRecommendations, friendsRecommendations]);
+
   const displayName = useMemo(() => {
     if (!user) return '';
     const metadata = user.user_metadata as { full_name?: string; name?: string } | undefined;
@@ -626,9 +630,9 @@ export default function Home() {
               )}
 
               {/* What to Watch - show on homepage */}
-              {activeView === 'trending' && friendsRecommendations.length > 0 && (
+              {activeView === 'trending' && whatToWatchPool.length > 0 && (
                 <div className="flex items-center justify-center">
-                  <RandomPicker recommendations={sortedRecommendations} />
+                  <RandomPicker recommendations={whatToWatchPool} />
                 </div>
               )}
 
