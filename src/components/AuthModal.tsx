@@ -19,11 +19,13 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState('');
-  const [lastSignupEmail, setLastSignupEmail] = useState('');
   const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
   const [showPassword, setShowPassword] = useState(false);
+  const [birthDay, setBirthDay] = useState('');
+  const [birthMonth, setBirthMonth] = useState('');
+  const [birthYear, setBirthYear] = useState('');
 
-  const { signIn, signUp, signInWithGoogle, checkUsernameAvailable, resendConfirmation } = useAuth();
+  const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
 
   useEffect(() => {
     if (isOpen && initialError) setError(initialError);
@@ -84,12 +86,27 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
           return;
         }
 
-        const { error } = await signUp(email, password, name, username);
+        const y = Number(birthYear);
+        const m = Number(birthMonth);
+        const d = Number(birthDay);
+        if (!y || !m || !d) {
+          setError('Please select your birthday (day, month, year)');
+          setLoading(false);
+          return;
+        }
+        const dt = new Date(Date.UTC(y, m - 1, d));
+        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+          setError('Please select a valid birthday');
+          setLoading(false);
+          return;
+        }
+        const birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+        const { error } = await signUp(email, password, name, username, birthdate);
         if (error) {
           setError(error.message);
         } else {
-          setSuccess('Check your email (and spam folder) for a confirmation link!');
-          setLastSignupEmail(email);
+          onClose();
         }
       }
     } catch {
@@ -250,6 +267,47 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
                   <p className="text-xs text-green-400 mt-1">Username is available!</p>
                 )}
               </div>
+
+              <div>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Birthday</label>
+                <div className="grid grid-cols-3 gap-2">
+                  <select
+                    value={birthDay}
+                    onChange={(e) => setBirthDay(e.target.value)}
+                    className="w-full px-3 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+                    required
+                  >
+                    <option value="">Day</option>
+                    {Array.from({ length: 31 }, (_, i) => String(i + 1)).map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={birthMonth}
+                    onChange={(e) => setBirthMonth(e.target.value)}
+                    className="w-full px-3 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+                    required
+                  >
+                    <option value="">Month</option>
+                    {[
+                      'January','February','March','April','May','June','July','August','September','October','November','December'
+                    ].map((label, idx) => (
+                      <option key={label} value={String(idx + 1)}>{label}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={birthYear}
+                    onChange={(e) => setBirthYear(e.target.value)}
+                    className="w-full px-3 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+                    required
+                  >
+                    <option value="">Year</option>
+                    {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => String(new Date().getFullYear() - i)).map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
             </>
           )}
 
@@ -331,23 +389,6 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
           {success && (
             <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 text-sm space-y-2">
               <div>{success}</div>
-              {mode === 'signup' && lastSignupEmail && (
-                <button
-                  type="button"
-                  onClick={async () => {
-                    setError('');
-                    const { error } = await resendConfirmation(lastSignupEmail);
-                    if (error) {
-                      setError(error.message);
-                    } else {
-                      setSuccess('Confirmation email resent. Please check your inbox/spam.');
-                    }
-                  }}
-                  className="inline-flex items-center gap-2 text-xs font-semibold text-[var(--accent)] hover:opacity-80"
-                >
-                  Resend confirmation email
-                </button>
-              )}
             </div>
           )}
 

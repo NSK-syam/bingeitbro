@@ -29,6 +29,9 @@ CREATE TABLE IF NOT EXISTS users (
 ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT DEFAULT 'gold';
 UPDATE users SET theme = 'gold' WHERE theme IS NULL;
 
+-- Birthday (optional, used for in-app celebration)
+ALTER TABLE users ADD COLUMN IF NOT EXISTS birthdate DATE;
+
 -- Enable RLS
 ALTER TABLE users ENABLE ROW LEVEL SECURITY;
 

@@ -3,6 +3,7 @@
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
+import { BirthdayPopup } from './BirthdayPopup';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -10,8 +11,7 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, name: string, username: string) => Promise<{ error: Error | null }>;
-  resendConfirmation: (email: string) => Promise<{ error: Error | null }>;
+  signUp: (email: string, password: string, name: string, username: string, birthdate: string | null) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   checkUsernameAvailable: (username: string) => Promise<boolean>;
   signOut: () => Promise<void>;
@@ -27,6 +27,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isConfigured = isSupabaseConfigured();
   const initializedRef = useRef(false);
   const ensuredProfileRef = useRef<string | null>(null);
+  const [birthdayOpen, setBirthdayOpen] = useState(false);
+  const [birthdayName, setBirthdayName] = useState('');
 
   useEffect(() => {
     if (!isConfigured) {
@@ -121,6 +123,53 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, [isConfigured]);
 
+  useEffect(() => {
+    if (!isConfigured || !user?.id) return;
+    let cancelled = false;
+    const supabase = createClient();
+
+    const shouldShowBirthday = (birthdate: string | null | undefined) => {
+      if (!birthdate) return false;
+      const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(birthdate);
+      if (!match) return false;
+      const month = Number(match[2]);
+      const day = Number(match[3]);
+      const now = new Date();
+      if (now.getMonth() + 1 !== month) return false;
+      if (now.getDate() !== day) return false;
+      const y = now.getFullYear();
+      const m = String(now.getMonth() + 1).padStart(2, '0');
+      const d = String(now.getDate()).padStart(2, '0');
+      const key = `bib-bday:${user.id}:${y}-${m}-${d}`;
+      if (typeof window !== 'undefined' && window.localStorage.getItem(key)) return false;
+      if (typeof window !== 'undefined') window.localStorage.setItem(key, '1');
+      return true;
+    };
+
+    void (async () => {
+      try {
+        const { data } = await supabase
+          .from('users')
+          .select('username,name,birthdate')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (cancelled) return;
+        const display = (data?.username || data?.name || user.user_metadata?.name || user.email?.split('@')[0] || 'there') as string;
+        setBirthdayName(display);
+        if (shouldShowBirthday((data as { birthdate?: string | null } | null)?.birthdate)) {
+          setBirthdayOpen(true);
+        }
+      } catch {
+        // ignore
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isConfigured, user?.id]);
+
   const signIn = async (email: string, password: string) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
 
@@ -147,21 +196,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return !data || data.length === 0;
   };
 
-  const signUp = async (email: string, password: string, name: string, username: string) => {
+  const signUp = async (email: string, password: string, name: string, username: string, birthdate: string | null) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
-
-    const supabase = createClient();
-    const withTimeout = async <T,>(promise: Promise<T>, ms: number, message: string): Promise<T> => {
-      let timeoutId: ReturnType<typeof setTimeout> | null = null;
-      const timeout = new Promise<T>((_, reject) => {
-        timeoutId = setTimeout(() => reject(new Error(message)), ms);
-      });
-      try {
-        return await Promise.race([promise, timeout]);
-      } finally {
-        if (timeoutId) clearTimeout(timeoutId);
-      }
-    };
 
     // Check if username is available
     const isAvailable = await checkUsernameAvailable(username);
@@ -169,83 +205,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { error: new Error('Username is already taken') };
     }
 
-    // Check if email already exists
-    const { data: existingEmail } = await supabase
-      .from('users')
-      .select('id')
-      .eq('email', email.toLowerCase())
-      .maybeSingle();
-
-    if (existingEmail) {
-      return { error: new Error('An account with this email already exists') };
-    }
-
-    const siteUrl = typeof window !== 'undefined'
-      ? window.location.origin
-      : 'https://bingeitbro.com';
-
-    let data: { user: User | null } | null = null;
-    let error: Error | null = null;
     try {
-      const authResult = await withTimeout(
-        supabase.auth.signUp({
+      const resp = await fetch('/api/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           email,
           password,
-          options: {
-            data: { name, username: username.toLowerCase() },
-            emailRedirectTo: `${siteUrl}/auth/callback`
-          }
+          name,
+          username: username.toLowerCase(),
+          birthdate: birthdate || null,
         }),
-        12000,
-        'Signup timed out. Please try again.'
-      );
-      data = authResult.data as { user: User | null };
-      error = authResult.error as Error | null;
-    } catch (err) {
-      error = err as Error;
-    }
-
-    if (!error && data?.user) {
-      if (Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-        return { error: new Error('An account with this email already exists. Try logging in.') };
-      }
-      // Fire-and-forget profile insert to avoid blocking the UI
-      void withTimeout(
-        Promise.resolve(
-          supabase.from('users').insert({
-            id: data.user.id,
-            email: email.toLowerCase(),
-            name: name,
-            username: username.toLowerCase(),
-            avatar: getRandomMovieAvatar()
-          })
-        ),
-        8000,
-        'Profile creation timed out'
-      ).catch(() => {
-        // Ignore errors here; auth succeeded and profile can be created later.
       });
+      const payload = (await resp.json()) as { ok?: boolean; error?: string };
+      if (!resp.ok || !payload?.ok) {
+        return { error: new Error(payload?.error || 'Signup failed.') };
+      }
+
+      const supabase = createClient();
+      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      if (signInError) return { error: signInError as unknown as Error };
+      return { error: null };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Signup failed.';
+      return { error: new Error(message) };
     }
 
-    return { error };
-  };
-
-  const resendConfirmation = async (email: string) => {
-    if (!isConfigured) return { error: new Error('Supabase not configured') };
-    const supabase = createClient();
-    const siteUrl = typeof window !== 'undefined'
-      ? window.location.origin
-      : 'https://bingeitbro.com';
-
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
-      email,
-      options: {
-        emailRedirectTo: `${siteUrl}/auth/callback`,
-      },
-    });
-
-    return { error };
   };
 
   const signInWithGoogle = async () => {
@@ -326,13 +311,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loading,
       signIn,
       signUp,
-      resendConfirmation,
       signInWithGoogle,
       checkUsernameAvailable,
       signOut,
       isConfigured
     }}>
       {children}
+      <BirthdayPopup
+        isOpen={birthdayOpen}
+        onClose={() => setBirthdayOpen(false)}
+        username={birthdayName}
+      />
     </AuthContext.Provider>
   );
 }

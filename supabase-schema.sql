@@ -9,8 +9,10 @@ CREATE TABLE users (
   id UUID REFERENCES auth.users ON DELETE CASCADE PRIMARY KEY,
   email TEXT NOT NULL,
   name TEXT NOT NULL,
+  username TEXT UNIQUE,
   avatar TEXT DEFAULT '🎬',
   theme TEXT DEFAULT 'gold',
+  birthdate DATE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
