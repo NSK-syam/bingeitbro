@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 // System font stack so build works without network (no Google Fonts fetch)
 const fontClass = "font-sans antialiased";
@@ -52,6 +53,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body className={fontClass}>
         <AuthProvider>{children}</AuthProvider>
+        <SpeedInsights />
       </body>
     </html>
   );
