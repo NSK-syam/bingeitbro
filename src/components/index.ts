@@ -20,3 +20,4 @@ export { FriendRecommendationsModal } from './FriendRecommendationsModal';
 export { DailyQuoteBanner } from './DailyQuoteBanner';
 export { RecommendationToast } from './RecommendationToast';
 export { OnboardingTour } from './OnboardingTour';
+export { BingeCalculatorModal } from './BingeCalculatorModal';
