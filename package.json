@@ -5,6 +5,8 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build --webpack",
+    "cf:build": "npx @opennextjs/cloudflare build",
+    "cf:deploy": "npm run cf:build && npx @opennextjs/cloudflare deploy",
     "start": "next start",
     "lint": "eslint"
   },
