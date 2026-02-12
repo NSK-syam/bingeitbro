@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useWatchlist } from '@/hooks';
 import Link from 'next/link';
+import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 interface WatchlistModalProps {
   isOpen: boolean;
@@ -45,7 +46,7 @@ export function WatchlistModal({ isOpen, onClose }: WatchlistModalProps) {
             // Fetch from TMDB
             try {
               const tmdbId = item.id.replace('tmdb-', '');
-              const response = await fetch(
+              const response = await fetchTmdbWithProxy(
                 `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}`
               );
               if (response.ok) {

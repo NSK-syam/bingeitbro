@@ -7,6 +7,7 @@ import { useAuth } from './AuthProvider';
 import { SendToFriendModal } from './SendToFriendModal';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { GENRE_LIST, OTT_PROVIDERS, getImageUrl, getLanguageName, getTVWatchProviders, normalizeWatchProviderKey, resolveOttProvider, tmdbWatchProvidersToOttLinks, type TMDBTV, type TMDBTVSearchResult } from '@/lib/tmdb';
 
 type TrendingShow = TMDBTV;
@@ -110,7 +111,7 @@ async function fetchShows(args: {
         return out;
       })();
 
-  const responses = await Promise.all(urls.map((u) => fetch(u)));
+  const responses = await Promise.all(urls.map((u) => fetchTmdbWithProxy(u)));
   const payloads = await Promise.all(responses.map((r) => r.json().catch(() => null)));
   const flat: TrendingShow[] = [];
 

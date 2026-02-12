@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 type TimeUnit = 'day' | 'week' | 'month' | 'year';
 
@@ -132,7 +133,7 @@ export function BingeCalculatorModal({
     setLoadingSuggestions(true);
     const t = window.setTimeout(async () => {
       try {
-        const res = await fetch(
+        const res = await fetchTmdbWithProxy(
           `https://api.themoviedb.org/3/search/tv?api_key=${apiKey}&query=${encodeURIComponent(q)}&page=1&include_adult=false`
         );
         const data = (await res.json()) as SearchTvResponse;
@@ -178,7 +179,7 @@ export function BingeCalculatorModal({
       return;
     }
     try {
-      const res = await fetch(`https://api.themoviedb.org/3/tv/${s.id}?api_key=${apiKey}`);
+      const res = await fetchTmdbWithProxy(`https://api.themoviedb.org/3/tv/${s.id}?api_key=${apiKey}`);
       const raw = (await res.json()) as unknown;
       if (!isRecord(raw)) {
         setDetailsError('Could not load show details. Try another show.');

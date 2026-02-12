@@ -9,6 +9,7 @@ import { WatchedButton } from '@/components/WatchedButton';
 import { WatchlistButton } from '@/components/WatchlistButton';
 import { useWatched } from '@/hooks';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { TrailerSection } from '@/components';
 
 function PosterImage({ src, alt, title }: { src: string; alt: string; title: string }) {
@@ -134,9 +135,9 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           }
 
           const [movieResponse, providersResponse, releaseDatesResponse] = await Promise.all([
-            fetch(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}&append_to_response=credits`),
-            fetch(`https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers?api_key=${apiKey}`),
-            fetch(`https://api.themoviedb.org/3/movie/${tmdbId}/release_dates?api_key=${apiKey}`)
+            fetchTmdbWithProxy(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}&append_to_response=credits`),
+            fetchTmdbWithProxy(`https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers?api_key=${apiKey}`),
+            fetchTmdbWithProxy(`https://api.themoviedb.org/3/movie/${tmdbId}/release_dates?api_key=${apiKey}`)
           ]);
 
           if (!movieResponse.ok) {

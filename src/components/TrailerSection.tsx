@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 type MediaType = 'movie' | 'tv';
 
@@ -76,7 +77,7 @@ export function TrailerSection({
 
     void (async () => {
       try {
-        const res = await fetch(
+        const res = await fetchTmdbWithProxy(
           `https://api.themoviedb.org/3/${mediaType}/${tmdbId}/videos?api_key=${apiKey}`,
           { signal: controller.signal }
         );

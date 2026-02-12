@@ -8,6 +8,7 @@ import { WatchlistButton } from '@/components/WatchlistButton';
 import { WatchedButton } from '@/components/WatchedButton';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { getImageUrl, getLanguageName, tmdbWatchProvidersToOttLinks } from '@/lib/tmdb';
 import type { OTTLink, Recommendation } from '@/types';
 import { TrailerSection } from '@/components';
@@ -116,8 +117,8 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
         const tmdbId = raw;
 
         const [tvRes, providersRes] = await Promise.all([
-          fetch(`https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${apiKey}`),
-          fetch(`https://api.themoviedb.org/3/tv/${tmdbId}/watch/providers?api_key=${apiKey}`),
+          fetchTmdbWithProxy(`https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${apiKey}`),
+          fetchTmdbWithProxy(`https://api.themoviedb.org/3/tv/${tmdbId}/watch/providers?api_key=${apiKey}`),
         ]);
         if (!tvRes.ok) throw new Error('Not found');
         const tv = (await tvRes.json()) as TMDBTVDetailsAny;

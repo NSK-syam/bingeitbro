@@ -2,6 +2,7 @@
 // Get your API key from: https://www.themoviedb.org/settings/api
 
 import type { OTTLink } from '@/types';
+import { fetchTmdbWithProxy } from './tmdb-fetch';
 
 const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
@@ -215,7 +216,7 @@ export async function searchMovies(query: string, page: number = 1): Promise<TMD
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchTmdbWithProxy(
       `${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}&include_adult=false`
     );
 
@@ -237,7 +238,7 @@ export async function searchTV(query: string, page: number = 1): Promise<TMDBTVS
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchTmdbWithProxy(
       `${TMDB_BASE_URL}/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}&include_adult=false`
     );
 
@@ -259,7 +260,7 @@ export async function getMovieDetails(movieId: number): Promise<TMDBMovieDetails
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchTmdbWithProxy(
       `${TMDB_BASE_URL}/movie/${movieId}?api_key=${TMDB_API_KEY}`
     );
 
@@ -281,7 +282,7 @@ export async function getTVDetails(tvId: number): Promise<TMDBTVDetails | null> 
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchTmdbWithProxy(
       `${TMDB_BASE_URL}/tv/${tvId}?api_key=${TMDB_API_KEY}`
     );
 
@@ -303,7 +304,7 @@ export async function getWatchProviders(movieId: number): Promise<TMDBWatchProvi
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchTmdbWithProxy(
       `${TMDB_BASE_URL}/movie/${movieId}/watch/providers?api_key=${TMDB_API_KEY}`
     );
 
@@ -325,7 +326,7 @@ export async function getTVWatchProviders(tvId: number): Promise<TMDBWatchProvid
   }
 
   try {
-    const response = await fetch(
+    const response = await fetchTmdbWithProxy(
       `${TMDB_BASE_URL}/tv/${tvId}/watch/providers?api_key=${TMDB_API_KEY}`
     );
 
@@ -515,7 +516,7 @@ export async function getNewReleasesOnStreaming(): Promise<NewRelease[]> {
       `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&page=1`,
       `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&page=2`,
     ];
-    const responses = await Promise.all(urls.map(u => fetch(u)));
+    const responses = await Promise.all(urls.map(u => fetchTmdbWithProxy(u)));
     const collect = async (res: Response) => (res.ok ? (await res.json()).results || [] : []);
     const results = await Promise.all(responses.map(collect));
     const flat = results.flat();
@@ -670,10 +671,10 @@ export async function getTrendingToday(): Promise<NewRelease[]> {
     const base = `api_key=${TMDB_API_KEY}&with_watch_monetization_types=flatrate&primary_release_date.gte=${lastYear}-01-01&sort_by=popularity.desc`;
 
     const [usRecent, usIndian, inRecent, inIndian] = await Promise.all([
-      fetch(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=US&vote_count.gte=50&page=1`),
-      fetch(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=US&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
-      fetch(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=IN&vote_count.gte=50&page=1`),
-      fetch(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=IN&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
+      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=US&vote_count.gte=50&page=1`),
+      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=US&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
+      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=IN&vote_count.gte=50&page=1`),
+      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=IN&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
     ]);
 
     const collect = async (res: Response) => (res.ok ? (await res.json()).results || [] : []);

@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { enablePushNotifications } from '@/lib/push';
 
 interface HeaderProps {
@@ -101,7 +102,7 @@ export function Header({
         }
 
         const endpoint = searchMode === 'tv' ? 'tv' : 'movie';
-        const response = await fetch(
+        const response = await fetchTmdbWithProxy(
           `https://api.themoviedb.org/3/search/${endpoint}?api_key=${apiKey}&query=${encodeURIComponent(searchQuery)}&page=1&include_adult=false`
         );
         const data = await response.json();

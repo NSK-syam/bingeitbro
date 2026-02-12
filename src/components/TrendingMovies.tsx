@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { SendToFriendModal } from './SendToFriendModal';
 import { useAuth } from './AuthProvider';
 import { getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, normalizeWatchProviderKey, resolveOttProvider, type TMDBWatchProviders } from '@/lib/tmdb';
+import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
 
 interface TrendingMovie {
@@ -222,7 +223,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         // If there's a search query, use the search API instead of discover
         if (searchQuery && searchQuery.trim()) {
           const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(searchQuery)}&page=1&include_adult=false`;
-          const response = await fetch(searchUrl, { signal: controller.signal });
+          const response = await fetchTmdbWithProxy(searchUrl, { signal: controller.signal });
           const data = await response.json();
 
           let searchResults = (data.results || []).filter((movie: TrendingMovie) => movie.poster_path && movie.vote_average > 0);
@@ -316,31 +317,31 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             for (const page of pagesToFetch) {
               if (releasedBaseUrlUS) {
                 releasedPromises.push(
-                  fetch(`${releasedBaseUrlUS}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                  fetchTmdbWithProxy(`${releasedBaseUrlUS}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
                 );
               }
               if (releasedBaseUrlIN) {
                 releasedPromises.push(
-                  fetch(`${releasedBaseUrlIN}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                  fetchTmdbWithProxy(`${releasedBaseUrlIN}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
                 );
               }
             }
             for (const page of upcomingPagesToFetch) {
               if (upcomingBaseUrl) {
                 upcomingPromises.push(
-                  fetch(`${upcomingBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                  fetchTmdbWithProxy(`${upcomingBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
                 );
               }
             }
             for (const page of [1, 2]) {
               if (releasedThisYearUS) {
                 yearPromises.push(
-                  fetch(`${releasedThisYearUS}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                  fetchTmdbWithProxy(`${releasedThisYearUS}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
                 );
               }
               if (releasedThisYearIN) {
                 yearPromises.push(
-                  fetch(`${releasedThisYearIN}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                  fetchTmdbWithProxy(`${releasedThisYearIN}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
                 );
               }
             }

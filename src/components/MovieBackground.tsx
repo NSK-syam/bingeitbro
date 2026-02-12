@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getRenderProfile } from '@/lib/render-profile';
+import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 const CACHE_KEY = 'bib-movie-bg-posters-v2';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -62,7 +63,7 @@ export function MovieBackground() {
 
         const settled = await Promise.allSettled(
           queries.slice(0, QUERY_LIMIT).map((url) =>
-            fetch(url, { signal: controller.signal }).then((res) => res.json())
+            fetchTmdbWithProxy(url, { signal: controller.signal }).then((res) => res.json())
           )
         );
 
