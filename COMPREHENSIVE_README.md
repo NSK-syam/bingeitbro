@@ -34,7 +34,7 @@ A social movie recommendation platform where friends share personalized movie an
 
 ## 🎯 Overview
 
-**Binge It Bro** (formerly Cinema Chudu) is a full-stack movie recommendation platform that emphasizes **friend recommendations over algorithms**. Users can:
+**Binge It Bro** is a full-stack movie recommendation platform that emphasizes **friend recommendations over algorithms**. Users can:
 
 - Share personalized movie/series recommendations with friends
 - Discover trending content from USA and India streaming platforms
