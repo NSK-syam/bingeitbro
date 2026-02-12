@@ -135,6 +135,8 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
   const [providerLogos, setProviderLogos] = useState<Record<number, { logos: ProviderLogoItem[]; link?: string }>>({});
   const [filterOpen, setFilterOpen] = useState(false);
   const [expandedDecade, setExpandedDecade] = useState<number | null>(null);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [pauseHeroAutoSlide, setPauseHeroAutoSlide] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -531,6 +533,29 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
   };
 
   const currentLang = selectedLang ? getLangInfo(selectedLang) : null;
+  const topHeroMovies = useMemo(() => movies.slice(0, 5), [movies]);
+  const showHeroCarousel = !searchQuery.trim() && topHeroMovies.length > 0;
+  const activeHeroIndex = topHeroMovies.length > 0 ? heroIndex % topHeroMovies.length : 0;
+
+  useEffect(() => {
+    if (!showHeroCarousel || pauseHeroAutoSlide || topHeroMovies.length < 2) return;
+
+    const intervalId = window.setInterval(() => {
+      setHeroIndex((prev) => (prev + 1) % topHeroMovies.length);
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [showHeroCarousel, pauseHeroAutoSlide, topHeroMovies.length]);
+
+  const goToPrevHero = () => {
+    if (topHeroMovies.length < 2) return;
+    setHeroIndex((prev) => (prev - 1 + topHeroMovies.length) % topHeroMovies.length);
+  };
+
+  const goToNextHero = () => {
+    if (topHeroMovies.length < 2) return;
+    setHeroIndex((prev) => (prev + 1) % topHeroMovies.length);
+  };
 
 
   return (
@@ -692,6 +717,123 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
           </div>
         )}
       </div>
+
+      {showHeroCarousel && (
+        <section
+          className="relative mb-10 overflow-hidden rounded-3xl border border-white/10 bg-[var(--bg-secondary)]/40 shadow-[0_18px_60px_rgba(0,0,0,0.45)]"
+          aria-label="Top 5 latest and trending movies"
+          onMouseEnter={() => setPauseHeroAutoSlide(true)}
+          onMouseLeave={() => setPauseHeroAutoSlide(false)}
+        >
+          <div
+            className="flex transition-transform duration-700 ease-out"
+            style={{ transform: `translateX(-${activeHeroIndex * 100}%)` }}
+          >
+            {topHeroMovies.map((movie) => {
+              const heroImage = movie.backdrop_path
+                ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}`
+                : movie.poster_path
+                  ? `https://image.tmdb.org/t/p/w780${movie.poster_path}`
+                  : '';
+              const releaseYear = movie.release_date?.split('-')[0] || 'TBA';
+              const langInfo = getLangInfo(movie.original_language);
+
+              return (
+                <article key={`hero-${movie.id}`} className="relative min-w-full h-[52vw] min-h-[280px] max-h-[540px]">
+                  {heroImage ? (
+                    <img
+                      src={heroImage}
+                      alt={movie.title}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-[var(--bg-card)]" />
+                  )}
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_35%,rgba(0,0,0,0.12),transparent_40%),linear-gradient(90deg,rgba(2,6,23,0.95)_0%,rgba(2,6,23,0.72)_38%,rgba(2,6,23,0.2)_78%,rgba(2,6,23,0.55)_100%)]" />
+
+                  <div className="relative z-10 h-full flex items-end sm:items-center px-5 sm:px-10 pb-7 sm:pb-0">
+                    <div className="max-w-2xl">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/35 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-white/85 mb-3">
+                        <span>Top 5</span>
+                        <span className="opacity-60">•</span>
+                        <span>Latest + Trending</span>
+                      </div>
+                      <h2 className="text-3xl sm:text-5xl font-black text-white leading-tight drop-shadow-[0_10px_22px_rgba(0,0,0,0.45)]">
+                        {movie.title}
+                      </h2>
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                        <span className="px-2.5 py-1 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] font-semibold">
+                          {movie.vote_average > 0 ? `★ ${movie.vote_average.toFixed(1)}` : 'Unrated'}
+                        </span>
+                        <span className="px-2.5 py-1 rounded-full bg-white/15 text-white">{releaseYear}</span>
+                        <span className="px-2.5 py-1 rounded-full bg-white/15 text-white">{langInfo.name}</span>
+                      </div>
+                      <p className="mt-3 text-sm sm:text-lg text-white/90 max-w-xl line-clamp-3">
+                        {movie.overview || 'No synopsis available yet.'}
+                      </p>
+                      <div className="mt-4 flex items-center gap-3">
+                        <Link
+                          href={`/movie/tmdb-${movie.id}${selectedLang ? `?from=${selectedLang}` : ''}`}
+                          className="inline-flex items-center gap-2 rounded-xl bg-white/92 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-white"
+                        >
+                          More details
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </Link>
+                        <div className="hidden sm:block">
+                          <WatchlistPlusButton
+                            movieId={`tmdb-${movie.id}`}
+                            title={movie.title}
+                            poster={movie.poster_path ? `https://image.tmdb.org/t/p/w300${movie.poster_path}` : ''}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          {topHeroMovies.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={goToPrevHero}
+                className="absolute left-3 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full bg-black/45 border border-white/20 text-white grid place-items-center hover:bg-black/65"
+                aria-label="Previous movie"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={goToNextHero}
+                className="absolute right-3 top-1/2 -translate-y-1/2 z-20 h-10 w-10 rounded-full bg-black/45 border border-white/20 text-white grid place-items-center hover:bg-black/65"
+                aria-label="Next movie"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
+                {topHeroMovies.map((movie, index) => (
+                  <button
+                    key={`hero-dot-${movie.id}`}
+                    type="button"
+                    onClick={() => setHeroIndex(index)}
+                    className={`h-2.5 rounded-full transition-all ${activeHeroIndex === index ? 'w-8 bg-[var(--accent)]' : 'w-2.5 bg-white/55 hover:bg-white/75'}`}
+                    aria-label={`Go to slide ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      )}
 
       {/* Coming Soon Sections - Only show when a language is selected */}
       {!loading && selectedLang && Object.keys(comingSoonByLang).length > 0 && (
