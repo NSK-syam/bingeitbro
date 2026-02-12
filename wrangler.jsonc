@@ -7,6 +7,16 @@
     "nodejs_compat",
     "global_fetch_strictly_public"
   ],
+  "routes": [
+    {
+      "pattern": "bingeitbro.com/*",
+      "zone_name": "bingeitbro.com"
+    },
+    {
+      "pattern": "www.bingeitbro.com/*",
+      "zone_name": "bingeitbro.com"
+    }
+  ],
   "build": {
     "command": "npm run cf:build"
   },
