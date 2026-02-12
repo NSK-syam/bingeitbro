@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const TMDB_HOST = 'api.themoviedb.org';
+const TMDB_REVALIDATE_SECONDS = 300;
+
+export const runtime = 'nodejs';
+export const preferredRegion = ['bom1', 'sin1', 'iad1'];
 
 function isAllowedTmdbUrl(rawUrl: string): URL | null {
   try {
@@ -30,7 +34,7 @@ export async function GET(request: NextRequest) {
       headers: {
         Accept: 'application/json',
       },
-      next: { revalidate: 60 },
+      next: { revalidate: TMDB_REVALIDATE_SECONDS },
     });
 
     const body = await upstream.text();
@@ -38,12 +42,12 @@ export async function GET(request: NextRequest) {
       status: upstream.status,
       headers: {
         'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
-        // Cache briefly to reduce retries from regions with poor connectivity to TMDB.
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=120',
+        // Cache at CDN/edge to keep India latency low and reduce TMDB round-trips.
+        'Cache-Control': `public, max-age=0, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`,
+        'CDN-Cache-Control': `public, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`,
       },
     });
   } catch {
     return NextResponse.json({ error: 'TMDB fetch failed' }, { status: 502 });
   }
 }
-
