@@ -706,78 +706,210 @@ body {
   animation: fadeInUp 0.5s ease forwards;
 }
 
-/* Daily quote popup */
-@keyframes quoteBackdropIn {
+/* Daily quote modal */
+@keyframes dailyQuoteBackdropIn {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-@keyframes quoteBackdropOut {
+
+@keyframes dailyQuoteBackdropOut {
   from { opacity: 1; }
   to { opacity: 0; }
 }
-@keyframes quotePopIn {
+
+@keyframes dailyQuoteCardIn {
   from {
     opacity: 0;
-    transform: scale(0.85) translateY(12px);
-  }
-  70% {
-    opacity: 1;
-    transform: scale(1.03) translateY(-2px);
+    transform: translateY(20px) scale(0.97);
+    filter: blur(4px);
   }
   to {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
 }
-@keyframes quotePopOut {
+
+@keyframes dailyQuoteCardOut {
   from {
     opacity: 1;
-    transform: scale(1) translateY(0);
+    transform: translateY(0) scale(1);
+    filter: blur(0);
   }
   to {
     opacity: 0;
-    transform: scale(0.95) translateY(8px);
+    transform: translateY(12px) scale(0.985);
+    filter: blur(2px);
   }
 }
-@keyframes quoteTextIn {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
+
+@keyframes dailyQuoteSnapOut {
+  0% {
     opacity: 1;
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0) scale(1);
+    filter: blur(0) saturate(1) brightness(1);
+  }
+  25% {
+    opacity: 0.95;
+    transform: translate3d(8px, -3px, 0) scale(1.01);
+    filter: blur(0.6px) saturate(0.95) brightness(1.04);
+  }
+  65% {
+    opacity: 0.52;
+    transform: translate3d(26px, -10px, 0) scale(1.035);
+    filter: blur(3px) saturate(0.65) brightness(1.1);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(58px, -24px, 0) scale(1.07);
+    filter: blur(9px) saturate(0.18) brightness(1.2);
   }
 }
-.quote-popup-backdrop-in {
-  animation: quoteBackdropIn 0.25s ease-out forwards;
+
+@keyframes dailyQuoteSnapDust {
+  0% {
+    opacity: 0;
+    transform: translate3d(0, 0, 0);
+  }
+  20% {
+    opacity: 0.35;
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(64px, -22px, 0);
+  }
 }
-.quote-popup-backdrop-out {
-  animation: quoteBackdropOut 0.2s ease-in forwards;
+
+@keyframes dailyQuoteFloat {
+  0% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+  100% { transform: translateY(0); }
 }
-.quote-popup-in {
-  animation: quotePopIn 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+
+.daily-quote-backdrop-in {
+  animation: dailyQuoteBackdropIn 0.28s ease-out forwards;
 }
-.quote-popup-out {
-  animation: quotePopOut 0.2s ease-in forwards;
+
+.daily-quote-backdrop-out {
+  animation: dailyQuoteBackdropOut 0.2s ease-in forwards;
 }
-.quote-popup-text-in {
-  animation: quoteTextIn 0.4s ease-out 0.15s both;
+
+.daily-quote-card {
+  background:
+    radial-gradient(120% 110% at 12% -18%, rgba(245, 158, 11, 0.16), transparent 38%),
+    radial-gradient(95% 90% at 88% 120%, rgba(108, 40, 217, 0.1), transparent 48%),
+    linear-gradient(180deg, rgba(14, 16, 28, 0.97) 0%, rgba(8, 10, 19, 0.96) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.06),
+    0 30px 90px rgba(0, 0, 0, 0.62),
+    0 0 120px rgba(40, 22, 8, 0.35);
+}
+
+.daily-quote-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(120deg, rgba(255, 255, 255, 0.08), transparent 28%);
+  mask: linear-gradient(#fff, #fff) content-box, linear-gradient(#fff, #fff);
+  -webkit-mask: linear-gradient(#fff, #fff) content-box, linear-gradient(#fff, #fff);
+  mask-composite: exclude;
+  -webkit-mask-composite: xor;
+  padding: 1px;
+}
+
+.daily-quote-card-in {
+  animation: dailyQuoteCardIn 0.45s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+
+.daily-quote-card-out {
+  animation: dailyQuoteCardOut 0.2s ease-in forwards;
+}
+
+.daily-quote-card-snap-out {
+  animation: dailyQuoteSnapOut 0.64s cubic-bezier(0.22, 0.78, 0.2, 1) forwards;
+}
+
+.daily-quote-snap-dust {
+  pointer-events: none;
+  opacity: 0;
+  background:
+    radial-gradient(circle at 18% 36%, rgba(255, 214, 154, 0.45), transparent 28%),
+    radial-gradient(circle at 38% 58%, rgba(198, 163, 255, 0.3), transparent 24%),
+    radial-gradient(circle at 62% 44%, rgba(255, 190, 111, 0.35), transparent 22%),
+    radial-gradient(circle at 84% 50%, rgba(255, 255, 255, 0.2), transparent 24%);
+  filter: blur(1px);
+}
+
+.daily-quote-snap-dust-on {
+  animation: dailyQuoteSnapDust 0.64s ease-out forwards;
+}
+
+.daily-quote-icon-shell {
+  background:
+    radial-gradient(70% 70% at 30% 20%, rgba(255, 199, 99, 0.42), rgba(139, 85, 18, 0.34) 62%, rgba(69, 39, 6, 0.85) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 18px 32px rgba(0, 0, 0, 0.42);
+  animation: dailyQuoteFloat 3.8s ease-in-out infinite;
+}
+
+.daily-quote-logo {
+  filter: drop-shadow(0 8px 14px rgba(0, 0, 0, 0.32));
+}
+
+.daily-quote-line,
+.daily-quote-film,
+.daily-quote-sub {
+  opacity: 0;
+  transform: translateY(10px);
+  animation: fadeInUp 0.5s ease-out forwards;
+}
+
+.daily-quote-film {
+  animation-delay: 0.12s;
+}
+
+.daily-quote-sub {
+  animation-delay: 0.2s;
+}
+
+.daily-quote-close:hover {
+  background: rgba(255, 255, 255, 0.06);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .quote-popup-backdrop-in,
-  .quote-popup-backdrop-out {
+  .daily-quote-backdrop-in,
+  .daily-quote-backdrop-out {
     animation-duration: 0.15s;
   }
-  .quote-popup-in {
-    animation: quoteTextIn 0.2s ease-out forwards;
+
+  .daily-quote-card-in {
+    animation: none;
+    opacity: 1;
+    transform: none;
+    filter: none;
   }
-  .quote-popup-out {
-    animation: quoteBackdropOut 0.15s ease-in forwards;
+
+  .daily-quote-card-out {
+    animation: dailyQuoteBackdropOut 0.15s ease-in forwards;
   }
-  .quote-popup-text-in {
-    animation: quoteTextIn 0.2s ease-out 0.05s both;
+
+  .daily-quote-card-snap-out {
+    animation: dailyQuoteBackdropOut 0.15s ease-in forwards;
+  }
+
+  .daily-quote-icon-shell {
+    animation: none;
+  }
+
+  .daily-quote-line,
+  .daily-quote-film,
+  .daily-quote-sub {
+    animation: none;
+    opacity: 1;
+    transform: none;
   }
 }
 

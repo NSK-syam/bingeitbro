@@ -5,7 +5,6 @@ import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
-import { ConfettiBoom } from './ConfettiBoom';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -32,12 +31,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [birthdayOpen, setBirthdayOpen] = useState(false);
   const [birthdayName, setBirthdayName] = useState('');
   const [birthdayToday, setBirthdayToday] = useState(false);
-  const [birthdayBoom, setBirthdayBoom] = useState(false);
+  // Confetti removed by request; keep balloons + popup only.
 
   useEffect(() => {
     if (!user?.id) {
       setBirthdayToday(false);
-      setBirthdayBoom(false);
       setBirthdayOpen(false);
       setBirthdayName('');
     }
@@ -165,18 +163,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setBirthdayOpen(true);
     };
 
-    const boomOncePerSession = () => {
-      if (typeof window === 'undefined') return;
-      const now = new Date();
-      const y = now.getFullYear();
-      const m = String(now.getMonth() + 1).padStart(2, '0');
-      const d = String(now.getDate()).padStart(2, '0');
-      const key = `bib-bday-boom:${user.id}:${y}-${m}-${d}`;
-      if (window.sessionStorage.getItem(key)) return;
-      window.sessionStorage.setItem(key, '1');
-      setBirthdayBoom(true);
-    };
-
     void (async () => {
       try {
         const { data } = await supabase
@@ -191,10 +177,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const bday = isBirthday((data as { birthdate?: string | null } | null)?.birthdate);
         setBirthdayToday(bday);
         if (bday) {
-          boomOncePerSession();
           openPopupOnce();
-        } else {
-          setBirthdayBoom(false);
         }
       } catch {
         // ignore
@@ -354,7 +337,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }}>
       {children}
       <BalloonRain isOn={birthdayToday} />
-      <ConfettiBoom isOpen={birthdayBoom} onDone={() => setBirthdayBoom(false)} />
       <BirthdayPopup
         isOpen={birthdayOpen}
         onClose={() => setBirthdayOpen(false)}

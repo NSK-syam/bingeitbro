@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { getNewReleasesOnStreaming, getImageUrl, getGenreNames, NewRelease, isTMDBConfigured } from '@/lib/tmdb';
 import Link from 'next/link';
+import { WatchlistPlusButton } from './WatchlistPlusButton';
 
 const STORAGE_KEY = 'bingeitbro-last-releases-shown';
 
@@ -131,6 +132,15 @@ export function TodayReleasesModal({ manualOpen, onClose }: TodayReleasesModalPr
                         🎬
                       </div>
                     )}
+
+                    {/* Quick watchlist + */}
+                    <div className="absolute top-2 left-2 z-10">
+                      <WatchlistPlusButton
+                        movieId={`tmdb-${movie.id}`}
+                        title={movie.title}
+                        poster={movie.poster_path ? getImageUrl(movie.poster_path) : ''}
+                      />
+                    </div>
 
                     {/* Rating badge */}
                     {movie.vote_average > 0 && (

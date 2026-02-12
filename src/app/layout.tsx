@@ -15,9 +15,10 @@ export const metadata: Metadata = {
   description:
     "Discover what to watch next with personalized movie and series recommendations from your friends. Binge it bro.",
   icons: {
-    icon: "/bib-icon.svg",
-    shortcut: "/bib-icon.svg",
-    apple: "/bib-icon.svg",
+    // Google Search can be picky about SVG favicons. Provide PNG/ICO routes too.
+    icon: [{ url: "/favicon.ico" }, { url: "/icon" }],
+    shortcut: "/favicon.ico",
+    apple: "/icon",
   },
   keywords: [
     "movies",

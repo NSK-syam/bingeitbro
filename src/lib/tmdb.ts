@@ -1,6 +1,8 @@
 // TMDB API Integration
 // Get your API key from: https://www.themoviedb.org/settings/api
 
+import type { OTTLink } from '@/types';
+
 const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || '';
 const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
@@ -22,6 +24,31 @@ export interface TMDBMovie {
   video: boolean;
 }
 
+export interface TMDBTV {
+  id: number;
+  name: string;
+  original_name: string;
+  overview: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  first_air_date: string;
+  vote_average: number;
+  vote_count: number;
+  genre_ids: number[];
+  original_language: string;
+  popularity: number;
+}
+
+export interface TMDBTVDetails extends TMDBTV {
+  genres: { id: number; name: string }[];
+  episode_run_time: number[];
+  number_of_seasons: number;
+  number_of_episodes: number;
+  status: string;
+  tagline: string;
+  spoken_languages: { iso_639_1: string; name: string; english_name: string }[];
+}
+
 export interface TMDBMovieDetails extends TMDBMovie {
   genres: { id: number; name: string }[];
   runtime: number;
@@ -36,6 +63,13 @@ export interface TMDBMovieDetails extends TMDBMovie {
 export interface TMDBSearchResult {
   page: number;
   results: TMDBMovie[];
+  total_pages: number;
+  total_results: number;
+}
+
+export interface TMDBTVSearchResult {
+  page: number;
+  results: TMDBTV[];
   total_pages: number;
   total_results: number;
 }
@@ -91,7 +125,8 @@ export const OTT_PROVIDERS: OTTProvider[] = [
   { key: 'netflix', name: 'Netflix', ids: { US: 8, IN: 8 } },
   { key: 'prime', name: 'Prime Video', ids: { US: 9, IN: 119 } },
   { key: 'apple_tv', name: 'Apple TV+', ids: { US: 350, IN: 350 } },
-  { key: 'jio_hotstar', name: 'JioHotstar', ids: { US: 337, IN: 2336 } },
+  { key: 'disney_plus', name: 'Disney+', ids: { US: 337 } },
+  { key: 'jio_hotstar', name: 'JioHotstar', ids: { IN: 2336 } },
   { key: 'sonyliv', name: 'SonyLiv', ids: { IN: 237 } },
   { key: 'zee5', name: 'Zee5', ids: { IN: 232 } },
   { key: 'aha', name: 'Aha', ids: { IN: 532 }, languages: ['te', 'ta'] },
@@ -167,6 +202,12 @@ export function formatRuntime(minutes: number): string {
   return hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 }
 
+export function formatEpisodeRuntime(runTimes: number[] | null | undefined): string {
+  const list = Array.isArray(runTimes) ? runTimes.filter((n) => typeof n === 'number' && n > 0) : [];
+  const minutes = list.length > 0 ? list[0] : 0;
+  return minutes > 0 ? formatRuntime(minutes) : '';
+}
+
 export async function searchMovies(query: string, page: number = 1): Promise<TMDBSearchResult | null> {
   if (!TMDB_API_KEY) {
     console.warn('TMDB API key not configured');
@@ -185,6 +226,28 @@ export async function searchMovies(query: string, page: number = 1): Promise<TMD
     return response.json();
   } catch (error) {
     console.error('Error searching movies:', error);
+    return null;
+  }
+}
+
+export async function searchTV(query: string, page: number = 1): Promise<TMDBTVSearchResult | null> {
+  if (!TMDB_API_KEY) {
+    console.warn('TMDB API key not configured');
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `${TMDB_BASE_URL}/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}&include_adult=false`
+    );
+
+    if (!response.ok) {
+      throw new Error(`TMDB API error: ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Error searching TV shows:', error);
     return null;
   }
 }
@@ -211,6 +274,28 @@ export async function getMovieDetails(movieId: number): Promise<TMDBMovieDetails
   }
 }
 
+export async function getTVDetails(tvId: number): Promise<TMDBTVDetails | null> {
+  if (!TMDB_API_KEY) {
+    console.warn('TMDB API key not configured');
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `${TMDB_BASE_URL}/tv/${tvId}?api_key=${TMDB_API_KEY}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`TMDB API error: ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Error fetching TV details:', error);
+    return null;
+  }
+}
+
 export async function getWatchProviders(movieId: number): Promise<TMDBWatchProviders | null> {
   if (!TMDB_API_KEY) {
     console.warn('TMDB API key not configured');
@@ -229,6 +314,28 @@ export async function getWatchProviders(movieId: number): Promise<TMDBWatchProvi
     return response.json();
   } catch (error) {
     console.error('Error fetching watch providers:', error);
+    return null;
+  }
+}
+
+export async function getTVWatchProviders(tvId: number): Promise<TMDBWatchProviders | null> {
+  if (!TMDB_API_KEY) {
+    console.warn('TMDB API key not configured');
+    return null;
+  }
+
+  try {
+    const response = await fetch(
+      `${TMDB_BASE_URL}/tv/${tvId}/watch/providers?api_key=${TMDB_API_KEY}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`TMDB API error: ${response.status}`);
+    }
+
+    return response.json();
+  } catch (error) {
+    console.error('Error fetching TV watch providers:', error);
     return null;
   }
 }
@@ -270,6 +377,52 @@ export function tmdbToRecommendation(
     language: getLanguageName(movie.original_language),
     duration: formatRuntime(movie.runtime),
     rating: Math.round(movie.vote_average * 10) / 10,
+    recommendedBy,
+    personalNote,
+    mood: [] as string[],
+    watchWith: '',
+    ottLinks,
+    addedOn: new Date().toISOString(),
+  };
+}
+
+export function tmdbTVToRecommendation(
+  tv: TMDBTVDetails,
+  recommendedBy: { id: string; name: string; avatar: string },
+  personalNote: string,
+  ottLinks: { platform: string; url: string; availableIn?: string }[] = []
+): {
+  id: string;
+  title: string;
+  originalTitle: string | undefined;
+  year: number;
+  type: 'series';
+  poster: string;
+  backdrop: string;
+  genres: string[];
+  language: string;
+  duration: string;
+  rating: number;
+  recommendedBy: { id: string; name: string; avatar: string };
+  personalNote: string;
+  mood: string[];
+  watchWith: string;
+  ottLinks: { platform: string; url: string; availableIn?: string }[];
+  addedOn: string;
+} {
+  const year = tv.first_air_date ? new Date(tv.first_air_date).getFullYear() : new Date().getFullYear();
+  return {
+    id: `tmdbtv-${tv.id}`,
+    title: tv.name,
+    originalTitle: tv.original_name !== tv.name ? tv.original_name : undefined,
+    year,
+    type: 'series',
+    poster: getImageUrl(tv.poster_path),
+    backdrop: getImageUrl(tv.backdrop_path, 'original'),
+    genres: tv.genres.map((g) => g.name),
+    language: getLanguageName(tv.original_language),
+    duration: formatEpisodeRuntime(tv.episode_run_time),
+    rating: Math.round(tv.vote_average * 10) / 10,
     recommendedBy,
     personalNote,
     mood: [] as string[],
@@ -388,6 +541,121 @@ export async function getNewReleasesOnStreaming(): Promise<NewRelease[]> {
     console.error('Error fetching new releases:', error);
     return [];
   }
+}
+
+// Normalizes watch provider names so the UI doesn't show duplicates like
+// "Prime Video" + "Amazon Prime Video" as two separate logos.
+export function normalizeWatchProviderKey(name: string): string {
+  const raw = (name || '').toLowerCase().trim();
+  if (!raw) return '';
+  const lower = raw
+    .replace(/\s+with\s+ads/g, '')
+    .replace(/\s*\(.*?\)\s*/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  if (lower.includes('netflix')) return 'netflix';
+  if (lower.includes('prime')) return 'prime video';
+  if (lower.includes('amazon video')) return 'prime video';
+  // Important: don't merge Disney+ (US) with Hotstar/JioHotstar (India).
+  if (lower.includes('hotstar')) return 'jiohotstar';
+  if (lower.includes('jiohotstar')) return 'jiohotstar';
+  if (lower.includes('jio') && lower.includes('cinema')) return 'jiohotstar';
+  if (lower.includes('disney')) return 'disney+';
+  if (lower.includes('apple')) return 'apple tv';
+  if (lower.includes('aha')) return 'aha';
+  if (lower.includes('sonyliv')) return 'sonyliv';
+  if (lower.includes('zee5')) return 'zee5';
+  if (lower.includes('youtube')) return 'youtube';
+  if (lower.includes('hulu')) return 'hulu';
+  if (lower.includes('peacock')) return 'peacock';
+  if (lower.includes('paramount')) return 'paramount+';
+  if (lower.includes('crunchyroll')) return 'crunchyroll';
+  return lower;
+}
+
+function getDirectOttLink(platformName: string, title: string): string | null {
+  const encodedTitle = encodeURIComponent((title || '').trim());
+  if (!encodedTitle) return null;
+  const lowerName = platformName.toLowerCase();
+
+  // Prime's app-oriented universal domain. This has better odds of opening
+  // the installed Prime Video app on mobile than www.primevideo.com.
+  if (lowerName.includes('prime') || lowerName.includes('amazon')) {
+    return `https://app.primevideo.com/search?phrase=${encodedTitle}`;
+  }
+
+  return null;
+}
+
+type ProviderEntryAny = { provider_name?: string; logo_path?: string | null };
+type ProviderRegionAny = {
+  link?: string;
+  flatrate?: ProviderEntryAny[];
+  free?: ProviderEntryAny[];
+  ads?: ProviderEntryAny[];
+  rent?: ProviderEntryAny[];
+  buy?: ProviderEntryAny[];
+};
+
+export function tmdbWatchProvidersToOttLinks(
+  providers: TMDBWatchProviders | null,
+  title: string,
+  tmdbId?: number,
+  mediaType: 'movie' | 'tv' = 'movie',
+): OTTLink[] {
+  const results = (providers as unknown as { results?: Record<string, ProviderRegionAny> } | null)?.results;
+  if (!results) return [];
+
+  const regionLabels: Record<string, string> = { IN: 'India', US: 'USA' };
+  const byPlatform = new Map<string, { platform: string; logoPath?: string; url?: string; regions: Set<string> }>();
+
+  const fallbackUrl =
+    typeof tmdbId === 'number'
+      ? `https://www.themoviedb.org/${mediaType === 'tv' ? 'tv' : 'movie'}/${tmdbId}/watch`
+      : `https://www.themoviedb.org/search?query=${encodeURIComponent(title)}`;
+
+  for (const [region, label] of Object.entries(regionLabels)) {
+    const r = results[region];
+    if (!r) continue;
+    const list: ProviderEntryAny[] = [
+      ...(r.flatrate ?? []),
+      ...(r.free ?? []),
+      ...(r.ads ?? []),
+      ...(r.rent ?? []),
+      ...(r.buy ?? []),
+    ];
+    for (const p of list) {
+      const name = (p.provider_name ?? '').trim();
+      if (!name) continue;
+      const key = normalizeWatchProviderKey(name);
+      if (!key) continue;
+      const providerDeepLink = getDirectOttLink(name, title);
+      const prev =
+        byPlatform.get(key) ?? { platform: name, regions: new Set<string>(), url: providerDeepLink ?? r.link ?? fallbackUrl };
+      prev.regions.add(label);
+      if (!prev.logoPath && p.logo_path) prev.logoPath = p.logo_path;
+      if (providerDeepLink) {
+        prev.url = providerDeepLink;
+      } else if (!prev.url && r.link) {
+        prev.url = r.link;
+      }
+      // Prefer the "cleaner" display name if we see multiple variants.
+      if (prev.platform.length > name.length) prev.platform = name;
+      byPlatform.set(key, prev);
+    }
+  }
+
+  const links: OTTLink[] = [];
+  for (const [, meta] of byPlatform.entries()) {
+    links.push({
+      platform: meta.platform,
+      url: meta.url ?? fallbackUrl,
+      availableIn: Array.from(meta.regions).join(' & '),
+      logoPath: meta.logoPath,
+    });
+  }
+  return links;
 }
 
 // OTT only. Popular on streaming in USA + India (recent movies).

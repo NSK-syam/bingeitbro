@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { getRenderProfile } from '@/lib/render-profile';
 
-const CACHE_KEY = 'bib-movie-bg-posters-v2';
+const CACHE_KEY = 'bib-show-bg-posters-v2';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const QUERY_LIMIT = 7;
 const POSTERS_PER_QUERY = 6;
@@ -11,7 +11,7 @@ const MAX_POSTERS = 56;
 
 let inMemoryCache: { posters: string[]; ts: number } | null = null;
 
-export function MovieBackground() {
+export function ShowBackground() {
   const [posters, setPosters] = useState<string[]>([]);
   const [lightMode] = useState(() => {
     if (typeof window === 'undefined') return false;
@@ -50,30 +50,31 @@ export function MovieBackground() {
 
       try {
         const queries = [
-          `https://api.themoviedb.org/3/movie/popular?api_key=${apiKey}&language=en-US&region=US&page=1`,
-          `https://api.themoviedb.org/3/movie/top_rated?api_key=${apiKey}&language=en-US&region=US&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=hi&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=te&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=ta&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=ko&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=ja&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=es&sort_by=popularity.desc&page=1`,
+          `https://api.themoviedb.org/3/tv/popular?api_key=${apiKey}&language=en-US&page=1`,
+          `https://api.themoviedb.org/3/tv/top_rated?api_key=${apiKey}&language=en-US&page=1`,
+          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=hi&sort_by=popularity.desc&page=1`,
+          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=te&sort_by=popularity.desc&page=1`,
+          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=ta&sort_by=popularity.desc&page=1`,
+          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=ko&sort_by=popularity.desc&page=1`,
+          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=ja&sort_by=popularity.desc&page=1`,
+          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=es&sort_by=popularity.desc&page=1`,
         ];
 
+        const allPosters: string[] = [];
         const settled = await Promise.allSettled(
           queries.slice(0, QUERY_LIMIT).map((url) =>
             fetch(url, { signal: controller.signal }).then((res) => res.json())
           )
         );
 
-        const allPosters: string[] = [];
         for (const result of settled) {
           if (result.status !== 'fulfilled' || !Array.isArray(result.value?.results)) continue;
-          const moviePosters = result.value.results
-              .filter((m: { poster_path: string | null }) => m.poster_path)
-              .slice(0, POSTERS_PER_QUERY)
-              .map((m: { poster_path: string }) => m.poster_path);
-          allPosters.push(...moviePosters);
+          const list = result.value.results;
+          const posters = list
+            .filter((m: { poster_path: string | null }) => m.poster_path)
+            .slice(0, POSTERS_PER_QUERY)
+            .map((m: { poster_path: string }) => m.poster_path);
+          allPosters.push(...posters);
         }
 
         const deduped = Array.from(new Set(allPosters));
@@ -87,7 +88,7 @@ export function MovieBackground() {
         }
       } catch (error) {
         if (controller.signal.aborted) return;
-        console.error('Failed to fetch movie posters:', error);
+        console.error('Failed to fetch show posters:', error);
       }
     };
 
@@ -98,7 +99,7 @@ export function MovieBackground() {
     };
   }, [lightMode]);
 
-  if (posters.length === 0) {
+  if (posters.length === 0 || lightMode) {
     return (
       <div
         style={{
@@ -107,22 +108,7 @@ export function MovieBackground() {
           zIndex: 0,
           pointerEvents: 'none',
           background:
-            'radial-gradient(820px 500px at 20% 0%, rgba(245,158,11,0.1) 0%, rgba(0,0,0,0) 65%), linear-gradient(to bottom, rgba(10,10,12,0.58) 0%, rgba(10,10,12,0.8) 100%)',
-        }}
-      />
-    );
-  }
-
-  if (lightMode) {
-    return (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 0,
-          pointerEvents: 'none',
-          background:
-            'radial-gradient(780px 460px at 22% 0%, rgba(245,158,11,0.11) 0%, rgba(0,0,0,0) 64%), linear-gradient(to bottom, rgba(10,10,12,0.62) 0%, rgba(10,10,12,0.82) 100%)',
+            'radial-gradient(860px 520px at 82% 0%, rgba(59,130,246,0.1) 0%, rgba(0,0,0,0) 64%), linear-gradient(to bottom, rgba(10,10,12,0.6) 0%, rgba(10,10,12,0.82) 100%)',
         }}
       />
     );
@@ -133,14 +119,12 @@ export function MovieBackground() {
   return (
     <>
       <style jsx global>{`
-        @keyframes scrollPosters {
-          0% {
-            transform: translateY(0);
-          }
+        @keyframes scrollShowPosters {
+          0% { transform: translateY(0); }
           100% { transform: translateY(-50%); }
         }
-        .poster-scroll {
-          animation: scrollPosters 120s linear infinite;
+        .show-poster-scroll {
+          animation: scrollShowPosters 125s linear infinite;
           will-change: transform;
           transform: translateZ(0);
         }
@@ -157,18 +141,17 @@ export function MovieBackground() {
           pointerEvents: 'none',
         }}
       >
-        {/* Overlay */}
         <div
           style={{
             position: 'absolute',
             inset: 0,
-            background: 'linear-gradient(to bottom, rgba(10,10,12,0.5) 0%, rgba(10,10,12,0.65) 50%, rgba(10,10,12,0.8) 100%)',
+            background:
+              'linear-gradient(to bottom, rgba(10,10,12,0.5) 0%, rgba(10,10,12,0.66) 52%, rgba(10,10,12,0.82) 100%)',
             zIndex: 1,
           }}
         />
-        {/* Scrolling poster grid */}
         <div
-          className="poster-scroll"
+          className="show-poster-scroll"
           style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(8, 1fr)',
@@ -177,24 +160,14 @@ export function MovieBackground() {
           }}
         >
           {allPosters.map((poster, index) => (
-            <div
-              key={index}
-              style={{
-                aspectRatio: '2/3',
-                overflow: 'hidden',
-              }}
-            >
+            <div key={index} style={{ aspectRatio: '2/3', overflow: 'hidden' }}>
               <img
                 src={`https://image.tmdb.org/t/p/w185${poster}`}
                 alt=""
                 loading="lazy"
                 decoding="async"
                 fetchPriority="low"
-                style={{
-                  width: '100%',
-                  height: '100%',
-                  objectFit: 'cover',
-                }}
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             </div>
           ))}

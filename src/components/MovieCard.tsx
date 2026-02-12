@@ -6,9 +6,11 @@ import Link from 'next/link';
 import { useState } from 'react';
 import { WatchedButton } from './WatchedButton';
 import { ReactionBadges } from './ReactionBar';
-import { useWatched, useWatchlist, useNudges } from '@/hooks';
+import { useWatched, useNudges } from '@/hooks';
 import { useAuth } from './AuthProvider';
 import { SendToFriendModal } from './SendToFriendModal';
+import { WatchlistPlusButton } from './WatchlistPlusButton';
+import { normalizeWatchProviderKey } from '@/lib/tmdb';
 
 // Relative time helper
 function getRelativeTime(dateString: string): string {
@@ -34,9 +36,17 @@ function getRelativeTime(dateString: string): string {
 interface MovieCardProps {
   recommendation: Recommendation;
   index?: number;
+  country?: 'IN' | 'US';
 }
 
-export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
+function matchesCountry(availableIn: string | undefined, country: 'IN' | 'US'): boolean {
+  const v = (availableIn || '').toLowerCase().trim();
+  if (!v) return true;
+  if (country === 'IN') return v.includes('india');
+  return v.includes('usa') || v.includes('us');
+}
+
+export function MovieCard({ recommendation, index = 0, country }: MovieCardProps) {
   const { id, title, year, type, poster, genres, rating, recommendedBy, personalNote, ottLinks, addedOn, certification } = recommendation;
   const [imageError, setImageError] = useState(false);
   const [nudgeSent, setNudgeSent] = useState(false);
@@ -44,10 +54,8 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
   const { isWatched } = useWatched();
   const { user } = useAuth();
 
-  const { isInWatchlist, toggleWatchlist } = useWatchlist();
   const { sendNudge, hasNudged } = useNudges();
   const watched = isWatched(id);
-  const inWatchlist = isInWatchlist(id);
   const alreadyNudged = hasNudged(id) || nudgeSent;
 
   // Check if this is a friend's recommendation (not the user's own)
@@ -56,14 +64,6 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
   // Extract TMDB ID if this is a TMDB movie
   const tmdbId = id.startsWith('tmdb-') ? id.replace('tmdb-', '') : undefined;
   const recommendationId = !tmdbId ? id : undefined;
-
-  const handleWatchlistClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (user) {
-      toggleWatchlist(id);
-    }
-  };
 
   const handleNudgeClick = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -105,23 +105,31 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
     }
     return colors[Math.abs(hash) % colors.length];
   };
-  const uniqueOttLinks = (ottLinks || []).filter(
-    (link, index, arr) => arr.findIndex((l) => l.platform === link.platform) === index
-  );
-  const displayOttLinks = uniqueOttLinks.length > 0
-    ? uniqueOttLinks
-    : [{ platform: 'OTT', url: `/movie/${id}`, logoPath: '' }];
+  const uniqueOttLinks = (() => {
+    const byKey = new Map<string, (typeof ottLinks)[number]>();
+    for (const l of ottLinks || []) {
+      const key = normalizeWatchProviderKey(l.platform);
+      if (!key || byKey.has(key)) continue;
+      byKey.set(key, l);
+    }
+    return Array.from(byKey.values());
+  })();
+  const visibleOttLinks = country ? uniqueOttLinks.filter((l) => matchesCountry(l.availableIn, country)) : uniqueOttLinks;
+  const detailBase = type === 'series' ? '/show' : '/movie';
+  const displayOttLinks = visibleOttLinks.length > 0
+    ? visibleOttLinks
+    : [{ platform: 'OTT', url: `${detailBase}/${id}`, logoPath: '' }];
   const posterOttLinks = displayOttLinks.slice(0, 3);
   const getOttLogoUrl = (logoPath?: string) => (logoPath ? `https://image.tmdb.org/t/p/w92${logoPath}` : '');
   const openOttLink = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    window.location.href = `/movie/${id}`;
+    window.location.href = `${detailBase}/${id}`;
   };
 
   return (
     <Link
-      href={`/movie/${id}`}
+      href={`${detailBase}/${id}`}
       prefetch={false}
       className={`group block bg-[var(--bg-card)] rounded-xl overflow-hidden card-hover opacity-0 animate-fade-in-up stagger-${Math.min(index + 1, 6)} ${watched ? 'ring-2 ring-green-500/30' : ''}`}
     >
@@ -147,6 +155,11 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
         {/* Gradient overlay */}
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-card)] via-transparent to-transparent opacity-80" />
 
+        {/* Quick watchlist + button (top-left) */}
+        <div className="absolute top-3 left-3 z-10">
+          <WatchlistPlusButton movieId={id} title={title} poster={poster} />
+        </div>
+
         {/* Watched badge overlay */}
         {watched && (
           <div className="absolute inset-0 flex items-center justify-center bg-black/40">
@@ -160,7 +173,7 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
         )}
 
         {/* Type badge + 18+ badge */}
-        <div className="absolute top-3 left-3 flex flex-col gap-1">
+        <div className="absolute top-3 left-14 flex flex-col gap-1">
           <span className="px-2 py-1 text-xs font-medium bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md text-[var(--text-secondary)]">
             {typeLabels[type]}
           </span>
@@ -174,20 +187,6 @@ export function MovieCard({ recommendation, index = 0 }: MovieCardProps) {
         {/* Action buttons */}
         <div className="absolute top-3 right-3 flex flex-col gap-1">
           <WatchedButton movieId={id} size="sm" />
-          {user && (
-            <button
-              onClick={handleWatchlistClick}
-              className={`p-1.5 rounded-lg backdrop-blur-sm transition-all ${inWatchlist
-                ? 'bg-[var(--accent)] text-[var(--bg-primary)]'
-                : 'bg-[var(--bg-primary)]/70 text-[var(--text-secondary)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)]'
-                }`}
-              title={inWatchlist ? 'Remove from watchlist' : 'Add to watchlist'}
-            >
-              <svg className="w-4 h-4" fill={inWatchlist ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 5a2 2 0 012-2h10a2 2 0 012 2v16l-7-3.5L5 21V5z" />
-              </svg>
-            </button>
-          )}
         </div>
 
         {/* Rating badge */}

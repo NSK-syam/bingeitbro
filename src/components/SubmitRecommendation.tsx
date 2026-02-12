@@ -5,13 +5,19 @@ import { useAuth } from './AuthProvider';
 import { createClient } from '@/lib/supabase';
 import {
   searchMovies,
+  searchTV,
   getMovieDetails,
+  getTVDetails,
   getWatchProviders,
+  getTVWatchProviders,
   getImageUrl,
   isTMDBConfigured,
   TMDBMovie,
   TMDBMovieDetails,
+  TMDBTV,
+  TMDBTVDetails,
   formatRuntime,
+  formatEpisodeRuntime,
   getLanguageName,
 } from '@/lib/tmdb';
 
@@ -40,16 +46,17 @@ interface SubmitRecommendationProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  defaultType?: 'movie' | 'series';
 }
 
-export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecommendationProps) {
+export function SubmitRecommendation({ isOpen, onClose, onSuccess, defaultType = 'movie' }: SubmitRecommendationProps) {
   const { user } = useAuth();
   const [step, setStep] = useState(1);
 
   // Search state
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<TMDBMovie[]>([]);
-  const [selectedMovie, setSelectedMovie] = useState<TMDBMovieDetails | null>(null);
+  const [searchResults, setSearchResults] = useState<Array<TMDBMovie | TMDBTV>>([]);
+  const [selectedItem, setSelectedItem] = useState<TMDBMovieDetails | TMDBTVDetails | null>(null);
   const [isSearching, setIsSearching] = useState(false);
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
 
@@ -70,7 +77,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
       setStep(1);
       setSearchQuery('');
       setSearchResults([]);
-      setSelectedMovie(null);
+      setSelectedItem(null);
       setPersonalNote('');
       setUserRating(0);
       setMoods([]);
@@ -88,24 +95,29 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
 
     const timer = setTimeout(async () => {
       setIsSearching(true);
-      const results = await searchMovies(searchQuery);
-      setSearchResults(results?.results || []);
+      if (defaultType === 'series') {
+        const results = await searchTV(searchQuery);
+        setSearchResults(results?.results || []);
+      } else {
+        const results = await searchMovies(searchQuery);
+        setSearchResults(results?.results || []);
+      }
       setIsSearching(false);
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [searchQuery, tmdbConfigured]);
+  }, [searchQuery, tmdbConfigured, defaultType]);
 
-  const handleSelectMovie = useCallback(async (movie: TMDBMovie) => {
+  const handleSelectItem = useCallback(async (item: TMDBMovie | TMDBTV) => {
     setIsLoadingDetails(true);
     setSearchResults([]);
     setSearchQuery('');
 
-    const details = await getMovieDetails(movie.id);
-    setSelectedMovie(details);
+    const details = defaultType === 'series' ? await getTVDetails(item.id) : await getMovieDetails(item.id);
+    setSelectedItem(details);
 
     // Auto-fetch streaming links
-    const providers = await getWatchProviders(movie.id);
+    const providers = defaultType === 'series' ? await getTVWatchProviders(item.id) : await getWatchProviders(item.id);
     if (providers?.results?.IN) {
       const indiaProviders = providers.results.IN;
       const links: { platform: OTTPlatform; url: string }[] = [];
@@ -135,7 +147,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
 
     setIsLoadingDetails(false);
     setStep(2);
-  }, []);
+  }, [defaultType]);
 
   const handleMoodToggle = (mood: string) => {
     setMoods((prev) =>
@@ -144,7 +156,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
   };
 
   const handleSubmit = async () => {
-    if (!selectedMovie || !personalNote.trim() || !user) return;
+    if (!selectedItem || !personalNote.trim() || !user) return;
 
     setIsSubmitting(true);
     setError('');
@@ -152,23 +164,37 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
     try {
       const supabase = createClient();
 
+      const isSeries = defaultType === 'series';
+      const title = isSeries ? (selectedItem as TMDBTVDetails).name : (selectedItem as TMDBMovieDetails).title;
+      const originalTitle = isSeries ? (selectedItem as TMDBTVDetails).original_name : (selectedItem as TMDBMovieDetails).original_title;
+      const date = isSeries ? (selectedItem as TMDBTVDetails).first_air_date : (selectedItem as TMDBMovieDetails).release_date;
+      const year = date ? new Date(date).getFullYear() : new Date().getFullYear();
+      const runtime = isSeries
+        ? formatEpisodeRuntime((selectedItem as TMDBTVDetails).episode_run_time)
+        : formatRuntime((selectedItem as TMDBMovieDetails).runtime);
+      const genres = (selectedItem as TMDBMovieDetails | TMDBTVDetails).genres?.map((g) => g.name) || [];
+
       const recommendation = {
         user_id: user.id,
-        title: selectedMovie.title,
-        original_title: selectedMovie.original_title !== selectedMovie.title ? selectedMovie.original_title : null,
-        year: selectedMovie.release_date ? new Date(selectedMovie.release_date).getFullYear() : new Date().getFullYear(),
-        type: 'movie',
-        poster: getImageUrl(selectedMovie.poster_path),
-        backdrop: getImageUrl(selectedMovie.backdrop_path, 'original'),
-        genres: selectedMovie.genres?.map((g) => g.name) || [],
-        language: getLanguageName(selectedMovie.original_language),
-        duration: formatRuntime(selectedMovie.runtime),
-        rating: userRating > 0 ? userRating * 2 : (selectedMovie.vote_average ? Math.round(selectedMovie.vote_average * 10) / 10 : null),
+        title,
+        original_title: originalTitle !== title ? originalTitle : null,
+        year,
+        type: defaultType,
+        poster: getImageUrl((selectedItem as TMDBMovieDetails | TMDBTVDetails).poster_path),
+        backdrop: getImageUrl((selectedItem as TMDBMovieDetails | TMDBTVDetails).backdrop_path, 'original'),
+        genres,
+        language: getLanguageName((selectedItem as TMDBMovieDetails | TMDBTVDetails).original_language),
+        duration: runtime || null,
+        rating: userRating > 0
+          ? userRating * 2
+          : ((selectedItem as TMDBMovieDetails | TMDBTVDetails).vote_average
+            ? Math.round((selectedItem as TMDBMovieDetails | TMDBTVDetails).vote_average * 10) / 10
+            : null),
         personal_note: personalNote,
         mood: moods,
         watch_with: null,
         ott_links: ottLinks.filter((link) => link.url.trim()),
-        tmdb_id: selectedMovie.id,
+        tmdb_id: (selectedItem as TMDBMovieDetails | TMDBTVDetails).id,
       };
 
       const { error: insertError } = await supabase.from('recommendations').insert(recommendation);
@@ -211,7 +237,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
             Share a Recommendation
           </h2>
           <p className="text-sm text-[var(--text-muted)] mt-1">
-            Step {step} of 2: {step === 1 ? 'Find the movie' : 'Add your thoughts'}
+            Step {step} of 2: {step === 1 ? (defaultType === 'series' ? 'Find the show' : 'Find the movie') : 'Add your thoughts'}
           </p>
         </div>
 
@@ -221,7 +247,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
             <div className="relative">
               <input
                 type="text"
-                placeholder="Search for a movie..."
+                placeholder={defaultType === 'series' ? 'Search for a TV show...' : 'Search for a movie...'}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full px-4 py-3 pl-10 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
@@ -240,17 +266,17 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
             {/* Search Results */}
             {searchResults.length > 0 && (
               <div className="max-h-80 overflow-y-auto space-y-2">
-                {searchResults.map((movie) => (
+                {searchResults.map((item) => (
                   <button
-                    key={movie.id}
-                    onClick={() => handleSelectMovie(movie)}
+                    key={item.id}
+                    onClick={() => handleSelectItem(item)}
                     className="w-full flex items-center gap-4 p-3 bg-[var(--bg-secondary)] rounded-xl hover:bg-[var(--bg-card-hover)] transition-colors text-left"
                   >
                     <div className="w-12 h-18 flex-shrink-0 rounded overflow-hidden bg-[var(--bg-primary)]">
-                      {movie.poster_path ? (
+                      {item.poster_path ? (
                         <img
-                          src={getImageUrl(movie.poster_path)}
-                          alt={movie.title}
+                          src={getImageUrl(item.poster_path)}
+                          alt={'title' in item ? item.title : item.name}
                           className="w-full h-full object-cover"
                         />
                       ) : (
@@ -258,9 +284,14 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="font-medium text-[var(--text-primary)] truncate">{movie.title}</p>
+                      <p className="font-medium text-[var(--text-primary)] truncate">
+                        {'title' in item ? item.title : item.name}
+                      </p>
                       <p className="text-sm text-[var(--text-muted)]">
-                        {movie.release_date ? new Date(movie.release_date).getFullYear() : 'Unknown'} • {(movie.vote_average ?? 0).toFixed(1)} ★
+                        {'release_date' in item
+                          ? (item.release_date ? new Date(item.release_date).getFullYear() : 'Unknown')
+                          : (item.first_air_date ? new Date(item.first_air_date).getFullYear() : 'Unknown')}{' '}
+                        • {(item.vote_average ?? 0).toFixed(1)} ★
                       </p>
                     </div>
                   </button>
@@ -284,15 +315,15 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
         )}
 
         {/* Step 2: Details */}
-        {step === 2 && selectedMovie && (
+        {step === 2 && selectedItem && (
           <div className="space-y-6">
             {/* Selected Movie */}
             <div className="flex items-start gap-4 p-4 bg-[var(--bg-secondary)] rounded-xl">
               <div className="w-16 h-24 flex-shrink-0 rounded-lg overflow-hidden">
-                {selectedMovie.poster_path ? (
+                {(selectedItem as TMDBMovieDetails | TMDBTVDetails).poster_path ? (
                   <img
-                    src={getImageUrl(selectedMovie.poster_path)}
-                    alt={selectedMovie.title}
+                    src={getImageUrl((selectedItem as TMDBMovieDetails | TMDBTVDetails).poster_path)}
+                    alt={defaultType === 'series' ? (selectedItem as TMDBTVDetails).name : (selectedItem as TMDBMovieDetails).title}
                     className="w-full h-full object-cover"
                   />
                 ) : (
@@ -300,15 +331,20 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
                 )}
               </div>
               <div className="flex-1">
-                <h3 className="font-semibold text-[var(--text-primary)]">{selectedMovie.title}</h3>
+                <h3 className="font-semibold text-[var(--text-primary)]">
+                  {defaultType === 'series' ? (selectedItem as TMDBTVDetails).name : (selectedItem as TMDBMovieDetails).title}
+                </h3>
                 <p className="text-sm text-[var(--text-muted)]">
-                  {selectedMovie.release_date ? new Date(selectedMovie.release_date).getFullYear() : 'Unknown'} • {(selectedMovie.vote_average ?? 0).toFixed(1)} ★
+                  {defaultType === 'series'
+                    ? ((selectedItem as TMDBTVDetails).first_air_date ? new Date((selectedItem as TMDBTVDetails).first_air_date).getFullYear() : 'Unknown')
+                    : ((selectedItem as TMDBMovieDetails).release_date ? new Date((selectedItem as TMDBMovieDetails).release_date).getFullYear() : 'Unknown')}{' '}
+                  • {((selectedItem as TMDBMovieDetails | TMDBTVDetails).vote_average ?? 0).toFixed(1)} ★
                 </p>
                 <button
-                  onClick={() => { setStep(1); setSelectedMovie(null); setOttLinks([]); }}
+                  onClick={() => { setStep(1); setSelectedItem(null); setOttLinks([]); }}
                   className="text-sm text-[var(--accent)] hover:underline mt-1"
                 >
-                  Change movie
+                  {defaultType === 'series' ? 'Change show' : 'Change movie'}
                 </button>
               </div>
             </div>
@@ -321,7 +357,9 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess }: SubmitRecom
               <textarea
                 value={personalNote}
                 onChange={(e) => setPersonalNote(e.target.value)}
-                placeholder="Write your personal recommendation... What makes this movie special?"
+                placeholder={defaultType === 'series'
+                  ? 'Write your personal recommendation... What makes this show special?'
+                  : 'Write your personal recommendation... What makes this movie special?'}
                 rows={4}
                 className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50 resize-none"
                 required

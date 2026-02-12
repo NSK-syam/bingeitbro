@@ -1,82 +1,69 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, type CSSProperties } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef, type CSSProperties } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components';
 import { isSupabaseConfigured, DBUser, DBRecommendation } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase';
 import { fetchProfileUser, getSupabaseAccessToken, supabaseRestRequest } from '@/lib/supabase-rest';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
-import { searchMovies, getMovieDetails, getImageUrl, getLanguageName, formatRuntime } from '@/lib/tmdb';
+import { searchMovies, getMovieDetails, getWatchProviders, getImageUrl, getLanguageName, formatRuntime, tmdbWatchProvidersToOttLinks } from '@/lib/tmdb';
 import type { TMDBMovie } from '@/lib/tmdb';
 import { Recommendation, OTTLink } from '@/types';
-import { MovieCard } from '@/components';
+import { MovieCard, StarRating } from '@/components';
 import { useWatched, useWatchlist } from '@/hooks';
 
 interface ProfilePageClientProps {
   userId: string;
 }
 
-type StageTheme = {
-  id: string;
-  label: string;
-  accent: string;
-  accentHover: string;
-  accentSubtle: string;
-  beam: string;
-  beamSoft: string;
-  halo: string;
-  rig: string;
+type LightingMode = 'sun' | 'moon';
+type LightingState = { mode: LightingMode; intensity: number }; // intensity: 0..100
+
+const DEFAULT_LIGHTING: LightingState = { mode: 'sun', intensity: 90 };
+
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+
+const hexToRgb = (hex: string): [number, number, number] => {
+  const raw = hex.replace('#', '').trim();
+  const full = raw.length === 3 ? raw.split('').map((c) => c + c).join('') : raw;
+  const num = parseInt(full, 16);
+  return [(num >> 16) & 255, (num >> 8) & 255, num & 255];
 };
 
-const stageThemes: StageTheme[] = [
-  {
-    id: 'gold',
-    label: 'Gold',
-    accent: '#f59e0b',
-    accentHover: '#fbbf24',
-    accentSubtle: 'rgba(245, 158, 11, 0.12)',
-    beam: 'rgba(245, 158, 11, 0.55)',
-    beamSoft: 'rgba(245, 158, 11, 0.18)',
-    halo: 'rgba(245, 158, 11, 0.75)',
-    rig: 'rgba(245, 158, 11, 0.35)',
-  },
-  {
-    id: 'cyan',
-    label: 'Cyan',
-    accent: '#22d3ee',
-    accentHover: '#67e8f9',
-    accentSubtle: 'rgba(34, 211, 238, 0.12)',
-    beam: 'rgba(34, 211, 238, 0.5)',
-    beamSoft: 'rgba(34, 211, 238, 0.16)',
-    halo: 'rgba(34, 211, 238, 0.7)',
-    rig: 'rgba(34, 211, 238, 0.3)',
-  },
-  {
-    id: 'magenta',
-    label: 'Magenta',
-    accent: '#fb7185',
-    accentHover: '#fda4af',
-    accentSubtle: 'rgba(251, 113, 133, 0.12)',
-    beam: 'rgba(251, 113, 133, 0.5)',
-    beamSoft: 'rgba(251, 113, 133, 0.16)',
-    halo: 'rgba(251, 113, 133, 0.7)',
-    rig: 'rgba(251, 113, 133, 0.3)',
-  },
-  {
-    id: 'violet',
-    label: 'Violet',
-    accent: '#a855f7',
-    accentHover: '#c084fc',
-    accentSubtle: 'rgba(168, 85, 247, 0.12)',
-    beam: 'rgba(168, 85, 247, 0.5)',
-    beamSoft: 'rgba(168, 85, 247, 0.16)',
-    halo: 'rgba(168, 85, 247, 0.7)',
-    rig: 'rgba(168, 85, 247, 0.3)',
-  },
-];
+const mixHex = (a: string, b: string, t: number): string => {
+  const [ar, ag, ab] = hexToRgb(a);
+  const [br, bg, bb] = hexToRgb(b);
+  const lerp = (x: number, y: number) => Math.round(x + (y - x) * t);
+  const r = lerp(ar, br).toString(16).padStart(2, '0');
+  const g = lerp(ag, bg).toString(16).padStart(2, '0');
+  const bl = lerp(ab, bb).toString(16).padStart(2, '0');
+  return `#${r}${g}${bl}`;
+};
 
-const defaultStageThemeId = stageThemes[0]?.id ?? 'gold';
+const rgba = (hex: string, alpha: number) => {
+  const [r, g, b] = hexToRgb(hex);
+  return `rgba(${r},${g},${b},${alpha})`;
+};
+
+const parseLightingTheme = (raw: string | null | undefined): LightingState => {
+  const v = (raw ?? '').trim();
+  // New format: "sun:90" or "moon:60"
+  const match = v.match(/^(sun|moon)\s*:\s*(\d{1,3})$/i);
+  if (match) {
+    const mode = match[1].toLowerCase() as LightingMode;
+    const intensity = clamp(parseInt(match[2], 10), 0, 100);
+    return { mode, intensity };
+  }
+  // Back-compat: old stage light ids.
+  if (v === 'gold') return { mode: 'sun', intensity: 92 };
+  if (v === 'magenta') return { mode: 'sun', intensity: 55 };
+  if (v === 'cyan') return { mode: 'moon', intensity: 70 };
+  if (v === 'violet') return { mode: 'moon', intensity: 45 };
+  return DEFAULT_LIGHTING;
+};
+
+const serializeLightingTheme = (s: LightingState) => `${s.mode}:${clamp(Math.round(s.intensity), 0, 100)}`;
 
 export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const { user, loading: authLoading } = useAuth();
@@ -104,9 +91,17 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const [topSearchResults, setTopSearchResults] = useState<TMDBMovie[]>([]);
   const [topSearching, setTopSearching] = useState(false);
   const [topAddingFromSearch, setTopAddingFromSearch] = useState(false);
-  const [activeThemeId, setActiveThemeId] = useState(defaultStageThemeId);
+  const [lighting, setLighting] = useState<LightingState>(DEFAULT_LIGHTING);
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeError, setThemeError] = useState('');
+  const themeSaveTimerRef = useRef<number | null>(null);
+
+  const [top10RatingsSupported, setTop10RatingsSupported] = useState(true);
+  const [top10RatingsLoading, setTop10RatingsLoading] = useState(false);
+  const [top10RatingsError, setTop10RatingsError] = useState('');
+  const [top10RatingsVersion, setTop10RatingsVersion] = useState(0);
+  const [top10RatingsSaving, setTop10RatingsSaving] = useState<Record<string, boolean>>({});
+  const [top10RatingsByLanguage, setTop10RatingsByLanguage] = useState<Record<string, { avg: number; count: number; mine: number }>>({});
 
   const accessToken = getSupabaseAccessToken();
 
@@ -246,7 +241,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             name,
             username: user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user',
             avatar: '🎬',
-            theme: defaultStageThemeId,
+            theme: serializeLightingTheme(DEFAULT_LIGHTING),
             created_at: new Date().toISOString(),
           } as DBUser;
         }
@@ -399,7 +394,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             'User',
           username: user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user',
           avatar: '🎬',
-          theme: defaultStageThemeId,
+          theme: serializeLightingTheme(DEFAULT_LIGHTING),
           created_at: new Date().toISOString(),
         }
       : null;
@@ -407,63 +402,216 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const displayUser = profileUser ?? fallbackProfileUser;
   const isOwnProfile = Boolean(user && displayUser && user.id === displayUser.id);
 
-  const activeTheme = useMemo(
-    () => stageThemes.find((theme) => theme.id === activeThemeId) ?? stageThemes[0],
-    [activeThemeId],
+  // Load Top 10 ratings (per language) for this profile.
+  useEffect(() => {
+    if (!top10RatingsSupported) return;
+    if (!resolvedDisplayUserId || !isSupabaseConfigured()) return;
+
+    let cancelled = false;
+    setTop10RatingsLoading(true);
+    setTop10RatingsError('');
+
+    void (async () => {
+      try {
+        const params = new URLSearchParams({
+          select: 'language,rating,rater_id',
+          profile_user_id: `eq.${resolvedDisplayUserId}`,
+        });
+        const rows = await supabaseRestRequest<Array<{ language: string; rating: number; rater_id: string }>>(
+          `top_10_ratings?${params.toString()}`,
+          { method: 'GET', timeoutMs: 15000 },
+          accessToken,
+        );
+        if (cancelled) return;
+
+        const bucket = new Map<string, { sum: number; count: number; mine: number }>();
+        const list = Array.isArray(rows) ? rows : [];
+        for (const r of list) {
+          const lang = (r.language || 'Unknown').trim() || 'Unknown';
+          const rating = typeof r.rating === 'number' ? r.rating : 0;
+          if (rating < 1 || rating > 5) continue;
+          const b = bucket.get(lang) ?? { sum: 0, count: 0, mine: 0 };
+          b.sum += rating;
+          b.count += 1;
+          if (user?.id && r.rater_id === user.id) b.mine = rating;
+          bucket.set(lang, b);
+        }
+
+        const next: Record<string, { avg: number; count: number; mine: number }> = {};
+        // Ensure we at least have entries for languages visible in Top 10.
+        const langsInTop10 = new Set(groupedTopPicks.map((g) => (g.language || 'Unknown').trim() || 'Unknown'));
+        for (const lang of langsInTop10) {
+          const b = bucket.get(lang) ?? { sum: 0, count: 0, mine: 0 };
+          next[lang] = {
+            avg: b.count > 0 ? b.sum / b.count : 0,
+            count: b.count,
+            mine: b.mine,
+          };
+        }
+        setTop10RatingsByLanguage(next);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        // If the table isn't created yet, hide ratings UI (still safe to deploy).
+        if (/top_10_ratings|does not exist|schema cache/i.test(msg)) {
+          setTop10RatingsSupported(false);
+        } else {
+          setTop10RatingsError(msg || 'Unable to load ratings');
+        }
+      } finally {
+        if (!cancelled) setTop10RatingsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [resolvedDisplayUserId, accessToken, user?.id, groupedTopPicks, top10RatingsVersion, top10RatingsSupported]);
+
+  const rateTop10Language = useCallback(
+    async (language: string, rating: number) => {
+      if (!user?.id || !resolvedDisplayUserId) return;
+      if (user.id === resolvedDisplayUserId) return;
+      if (!top10RatingsSupported) return;
+
+      const langKey = (language || 'Unknown').trim() || 'Unknown';
+      setTop10RatingsSaving((prev) => ({ ...prev, [langKey]: true }));
+      setTop10RatingsError('');
+
+      try {
+        const params = new URLSearchParams({ on_conflict: 'profile_user_id,rater_id,language' });
+        await supabaseRestRequest(
+          `top_10_ratings?${params.toString()}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates,return=minimal',
+            },
+            body: JSON.stringify({
+              profile_user_id: resolvedDisplayUserId,
+              rater_id: user.id,
+              language: langKey,
+              rating,
+            }),
+            timeoutMs: 15000,
+          },
+          accessToken,
+        );
+        setTop10RatingsVersion((v) => v + 1);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (/top_10_ratings|does not exist|schema cache/i.test(msg)) {
+          setTop10RatingsSupported(false);
+        } else {
+          setTop10RatingsError(msg || 'Unable to save rating');
+        }
+      } finally {
+        setTop10RatingsSaving((prev) => ({ ...prev, [langKey]: false }));
+      }
+    },
+    [user?.id, resolvedDisplayUserId, accessToken, top10RatingsSupported],
   );
 
-  const themeStyle = useMemo(
-    () =>
-      ({
-        '--accent': activeTheme.accent,
-        '--accent-hover': activeTheme.accentHover,
-        '--accent-subtle': activeTheme.accentSubtle,
-        '--stage-spot': activeTheme.beam,
-        '--stage-spot-soft': activeTheme.beamSoft,
-        '--stage-halo': activeTheme.halo,
-        '--stage-rig': activeTheme.rig,
-      } as CSSProperties),
-    [activeTheme],
-  );
-
+  // Keep local lighting state in sync with the persisted theme string.
   useEffect(() => {
     if (!displayUser) return;
-    const themeFromUser =
-      displayUser.theme && stageThemes.some((theme) => theme.id === displayUser.theme)
-        ? displayUser.theme
-        : defaultStageThemeId;
-    setActiveThemeId(themeFromUser);
+    setLighting(parseLightingTheme(displayUser.theme));
   }, [displayUser?.id, displayUser?.theme]);
 
-  const handleThemeSelect = useCallback(
-    async (themeId: string) => {
+  const saveLightingTheme = useCallback(
+    async (next: LightingState) => {
       if (!user || !resolvedDisplayUserId || user.id !== resolvedDisplayUserId) return;
-      if (themeId === activeThemeId) return;
-      const previousTheme = activeThemeId;
-      setActiveThemeId(themeId);
       setThemeSaving(true);
       setThemeError('');
+      const theme = serializeLightingTheme(next);
       try {
         await supabaseRestRequest(
           `users?id=eq.${user.id}`,
           {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
-            body: JSON.stringify({ theme: themeId }),
+            body: JSON.stringify({ theme }),
           },
           accessToken,
         );
-        setProfileUser((prev) => (prev ? { ...prev, theme: themeId } : prev));
+        setProfileUser((prev) => (prev ? { ...prev, theme } : prev));
       } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to save theme.';
+        const message = err instanceof Error ? err.message : 'Failed to save lighting.';
         setThemeError(message);
-        setActiveThemeId(previousTheme);
       } finally {
         setThemeSaving(false);
       }
     },
-    [user, resolvedDisplayUserId, activeThemeId, accessToken],
+    [user, resolvedDisplayUserId, accessToken],
   );
+
+  const queueSaveLightingTheme = useCallback(
+    (next: LightingState) => {
+      setLighting(next);
+      if (!isOwnProfile) return;
+      if (themeSaveTimerRef.current) window.clearTimeout(themeSaveTimerRef.current);
+      themeSaveTimerRef.current = window.setTimeout(() => {
+        themeSaveTimerRef.current = null;
+        void saveLightingTheme(next);
+      }, 450);
+    },
+    [isOwnProfile, saveLightingTheme],
+  );
+
+  useEffect(() => {
+    return () => {
+      if (themeSaveTimerRef.current) window.clearTimeout(themeSaveTimerRef.current);
+    };
+  }, []);
+
+  const themeStyle = useMemo(() => {
+    const t = clamp(lighting.intensity, 0, 100) / 100;
+
+    if (lighting.mode === 'sun') {
+      const accent = mixHex('#fb7185', '#fbbf24', t);
+      const accentHover = mixHex(accent, '#ffffff', 0.12);
+      const cool = mixHex('#38bdf8', '#60a5fa', 0.35 + t * 0.4);
+      const warm2 = mixHex('#f97316', '#fbbf24', 0.25 + t * 0.75);
+
+      return {
+        '--accent': accent,
+        '--accent-hover': accentHover,
+        '--accent-subtle': rgba(accent, 0.12),
+        '--stage-spot': rgba(accent, 0.42 + t * 0.28),
+        '--stage-spot-soft': rgba(warm2, 0.12 + t * 0.14),
+        '--stage-halo': rgba(accent, 0.45 + t * 0.25),
+        '--stage-rig': rgba(accent, 0.18 + t * 0.18),
+        '--fx-a': rgba(accent, 0.22 + t * 0.10),
+        '--fx-b': rgba(cool, 0.16 + t * 0.08),
+        '--fx-c': rgba('#a78bfa', 0.10 + t * 0.06),
+        '--fx-d': rgba('#22c55e', 0.08 + t * 0.04),
+        '--fx-stars-opacity': '0',
+        '--fx-sunflare-opacity': String(0.08 + t * 0.22),
+      } as CSSProperties;
+    }
+
+    // moon
+    const accent = mixHex('#60a5fa', '#e5e7eb', t);
+    const accentHover = mixHex(accent, '#ffffff', 0.08);
+    const violet = mixHex('#7c3aed', '#a78bfa', 0.35 + t * 0.45);
+    const teal = mixHex('#22d3ee', '#38bdf8', 0.25 + t * 0.55);
+
+    return {
+      '--accent': accent,
+      '--accent-hover': accentHover,
+      '--accent-subtle': rgba(accent, 0.11),
+      '--stage-spot': rgba(accent, 0.18 + t * 0.28),
+      '--stage-spot-soft': rgba(teal, 0.10 + t * 0.14),
+      '--stage-halo': rgba(accent, 0.22 + t * 0.26),
+      '--stage-rig': rgba(accent, 0.12 + t * 0.12),
+      '--fx-a': rgba(violet, 0.14 + t * 0.10),
+      '--fx-b': rgba(teal, 0.12 + t * 0.08),
+      '--fx-c': rgba(accent, 0.10 + t * 0.10),
+      '--fx-d': rgba('#fb7185', 0.06 + t * 0.05),
+      '--fx-stars-opacity': String(0.12 + t * 0.22),
+      '--fx-sunflare-opacity': '0',
+    } as CSSProperties;
+  }, [lighting.intensity, lighting.mode]);
 
   useEffect(() => {
     const fetchTopPicks = async () => {
@@ -492,6 +640,75 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
     };
     fetchTopPicks();
   }, [resolvedDisplayUserId, accessToken]);
+
+  // Backfill OTT logos for Top 10 picks that were added from TMDB with empty ott_links.
+  // This is safe to run client-side because we only fetch TMDB providers for the small Top 10 set.
+  useEffect(() => {
+    if (!isSupabaseConfigured() || topPicks.length === 0) return;
+    if (!accessToken) return;
+
+    let cancelled = false;
+    const ensureOttLinks = async () => {
+      try {
+        const recIds = Array.from(new Set(topPicks.map((p) => p.recommendation_id).filter(Boolean)));
+        if (recIds.length === 0) return;
+
+        const params = new URLSearchParams({
+          select: 'id,user_id,tmdb_id,title,ott_links',
+          id: `in.(${recIds.join(',')})`,
+        });
+        const rows = await supabaseRestRequest<Array<{ id: string; user_id: string; tmdb_id: number | null; title: string; ott_links: unknown }>>(
+          `recommendations?${params.toString()}`,
+          { method: 'GET', timeoutMs: 15000 },
+          accessToken,
+        );
+        if (cancelled) return;
+
+        const candidates = (Array.isArray(rows) ? rows : []).filter((r) => {
+          const links = Array.isArray(r.ott_links) ? r.ott_links : [];
+          return Boolean(r.tmdb_id) && links.length === 0;
+        });
+        if (candidates.length === 0) return;
+
+        for (const row of candidates) {
+          if (cancelled) return;
+          const providers = await getWatchProviders(row.tmdb_id as number);
+          const links = tmdbWatchProvidersToOttLinks(providers, row.title, row.tmdb_id as number);
+          if (!links || links.length === 0) continue;
+
+          // Update local state so logos show immediately on this page.
+          setRecommendations((prev) =>
+            prev.map((rec) => (rec.id === row.id ? { ...rec, ottLinks: links } : rec)),
+          );
+
+          // Persist for the owner only (so other viewers don't trigger writes).
+          if (user && row.user_id === user.id) {
+            try {
+              await supabaseRestRequest(
+                `recommendations?id=eq.${row.id}`,
+                {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+                  body: JSON.stringify({ ott_links: links }),
+                  timeoutMs: 15000,
+                },
+                accessToken,
+              );
+            } catch {
+              // ignore persistence errors; UI already updated
+            }
+          }
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    void ensureOttLinks();
+    return () => {
+      cancelled = true;
+    };
+  }, [topPicks, accessToken, user?.id]);
 
   const refetchRecommendations = useCallback(async () => {
     if (!profileUser || !accessToken) return;
@@ -558,6 +775,8 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
     try {
       const details = await getMovieDetails(movie.id);
       if (!details) throw new Error('Could not load movie details');
+      const providers = await getWatchProviders(details.id);
+      const ottLinks = tmdbWatchProvidersToOttLinks(providers, details.title, details.id);
       const supabase = createClient();
       const recommendation = {
         user_id: user.id,
@@ -574,7 +793,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
         personal_note: 'Added to Top 10',
         mood: [],
         watch_with: null,
-        ott_links: [],
+        ott_links: ottLinks,
         tmdb_id: details.id,
       };
       const { data: inserted, error } = await supabase.from('recommendations').insert(recommendation).select('id').single();
@@ -805,29 +1024,6 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)] relative overflow-hidden" style={themeStyle}>
-      <div className="pointer-events-none absolute inset-0">
-        <div
-          className="absolute inset-0 opacity-80"
-          style={{
-            background:
-              'radial-gradient(2000px 1400px at 50% -8%, var(--stage-spot) 0%, rgba(10,10,12,0) 90%)',
-          }}
-        />
-        <div
-          className="absolute inset-0 opacity-70"
-          style={{
-            background:
-              'radial-gradient(1800px 1200px at 50% -4%, var(--stage-spot-soft) 0%, rgba(10,10,12,0) 92%)',
-          }}
-        />
-        <div className="absolute inset-0 bg-[radial-gradient(1200px_circle_at_20%_10%,rgba(255,203,74,0.22),rgba(10,10,12,0)_60%),radial-gradient(900px_circle_at_80%_0%,rgba(0,170,255,0.18),rgba(10,10,12,0)_55%),radial-gradient(700px_circle_at_70%_80%,rgba(255,90,140,0.16),rgba(10,10,12,0)_60%)]" />
-        <div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(255,255,255,0.04)_0,rgba(255,255,255,0.04)_2px,transparent_2px,transparent_14px)] opacity-30" />
-        <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(0,0,0,0)_0%,rgba(0,0,0,0.35)_45%,rgba(0,0,0,0.7)_100%)]" />
-        <div className="absolute inset-0 opacity-[0.15] bg-[radial-gradient(circle_at_50%_50%,rgba(255,255,255,0.15),rgba(0,0,0,0)_55%)]" />
-        <div className="absolute inset-y-0 left-6 w-4 bg-[repeating-linear-gradient(180deg,rgba(255,255,255,0.06)_0,rgba(255,255,255,0.06)_6px,transparent_6px,transparent_18px)] rounded-full blur-[1px] opacity-60" />
-        <div className="absolute inset-y-0 right-6 w-4 bg-[repeating-linear-gradient(180deg,rgba(255,255,255,0.06)_0,rgba(255,255,255,0.06)_6px,transparent_6px,transparent_18px)] rounded-full blur-[1px] opacity-60" />
-        <div className="absolute -top-16 left-1/2 h-48 w-48 -translate-x-1/2 rounded-full bg-[radial-gradient(circle_at_center,rgba(255,214,102,0.5),rgba(255,214,102,0))] blur-3xl" />
-      </div>
       <header className="sticky top-0 z-50 bg-[var(--bg-primary)]/80 backdrop-blur-xl border-b border-white/5">
         <div className="max-w-4xl mx-auto px-4 py-4">
           <Link href="/" className="text-[var(--accent)] hover:underline flex items-center gap-2">
@@ -838,60 +1034,6 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
           </Link>
         </div>
       </header>
-
-      <section className="relative z-40">
-        <div className="absolute inset-x-0 top-3 h-2 bg-[linear-gradient(90deg,transparent,var(--stage-rig),transparent)] opacity-70" />
-        <div className="max-w-4xl mx-auto px-4 pt-5 pb-8">
-          <div className="flex flex-wrap items-start justify-center gap-6">
-            {stageThemes.map((theme) => {
-              const isActive = theme.id === activeThemeId;
-              return (
-                <div key={theme.id} className="group relative flex flex-col items-center">
-                  <span
-                    className={`absolute left-1/2 top-10 h-[520px] w-[360px] -translate-x-1/2 transition-opacity duration-300 pointer-events-none ${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-70'}`}
-                    style={{
-                      background: `linear-gradient(180deg, ${theme.beam} 0%, ${theme.beamSoft} 78%, rgba(0,0,0,0) 100%)`,
-                      clipPath: 'polygon(50% 0%, 0 100%, 100% 100%)',
-                    }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => handleThemeSelect(theme.id)}
-                    aria-pressed={isActive}
-                    disabled={!isOwnProfile || themeSaving}
-                    aria-disabled={!isOwnProfile || themeSaving}
-                    className={`relative flex h-14 w-14 items-center justify-center rounded-full border border-white/20 bg-[#0b0b0f] shadow-lg transition-all duration-300 focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)]/60 disabled:cursor-not-allowed disabled:opacity-60 ${isActive ? 'scale-105 ring-2 ring-[var(--accent)]/70 shadow-[0_0_30px_var(--stage-halo)]' : 'hover:scale-105'}`}
-                    title={`${theme.label} light`}
-                  >
-                    <span
-                      className="absolute inset-[6px] rounded-full"
-                      style={{
-                        background: `radial-gradient(circle at 50% 45%, ${theme.halo} 0%, ${theme.beam} 35%, rgba(0,0,0,0.85) 70%)`,
-                      }}
-                    />
-                    <span className="absolute -left-2 top-1/2 h-6 w-2 -translate-y-1/2 rounded-sm bg-[#1b1b22]" />
-                    <span className="absolute -right-2 top-1/2 h-6 w-2 -translate-y-1/2 rounded-sm bg-[#1b1b22]" />
-                    <span className="absolute -top-3 left-1/2 h-2 w-10 -translate-x-1/2 rounded bg-[#20202a]" />
-                    <span className="absolute -bottom-3 left-1/2 h-3 w-4 -translate-x-1/2 rounded-b bg-[#16161d]" />
-                  </button>
-                  <span className={`mt-2 text-[10px] uppercase tracking-[0.28em] ${isActive ? 'text-[var(--accent)]' : 'text-[var(--text-muted)]'}`}>
-                    {theme.label}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-          <p className="mt-3 text-center text-xs text-[var(--text-muted)]">
-            {isOwnProfile ? 'Tap a stage light to set your profile theme.' : 'Stage theme set by the profile owner.'}
-          </p>
-          {isOwnProfile && themeSaving && (
-            <p className="mt-2 text-center text-[11px] text-[var(--text-muted)]">Saving theme…</p>
-          )}
-          {isOwnProfile && themeError && (
-            <p className="mt-2 text-center text-[11px] text-red-400">{themeError}</p>
-          )}
-        </div>
-      </section>
 
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="bg-[var(--bg-card)] rounded-2xl p-8 border border-white/10 mb-8">
@@ -986,6 +1128,29 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                   </option>
                 ))}
               </select>
+              {top10RatingsSupported && topLanguage !== 'All' && (
+                <div className="flex items-center gap-2">
+                  {top10RatingsLoading ? (
+                    <span className="text-xs text-[var(--text-muted)]">Loading ratings…</span>
+                  ) : (
+                    <span className="text-xs text-[var(--text-muted)]">
+                      {(() => {
+                        const stats = top10RatingsByLanguage[topLanguage];
+                        if (!stats || stats.count === 0) return 'No ratings yet';
+                        return `${stats.avg.toFixed(1)} (${stats.count})`;
+                      })()}
+                    </span>
+                  )}
+                  {user && !isOwnProfile && (
+                    <StarRating
+                      value={(top10RatingsByLanguage[topLanguage]?.mine ?? 0) || 0}
+                      onChange={(v) => void rateTop10Language(topLanguage, v)}
+                      disabled={Boolean(top10RatingsSaving[topLanguage])}
+                      size="sm"
+                    />
+                  )}
+                </div>
+              )}
               {isOwnProfile && (
                 <button
                   onClick={() => {
@@ -1005,6 +1170,9 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
               )}
             </div>
           </div>
+          {top10RatingsSupported && top10RatingsError && (
+            <p className="text-xs text-red-400 mb-4">{top10RatingsError}</p>
+          )}
 
           {topLoading ? (
             <div className="text-center py-10 text-[var(--text-muted)]">
@@ -1024,9 +1192,38 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                       <h3 className="text-sm font-semibold text-[var(--text-primary)]">
                         {group.language.toUpperCase()}
                       </h3>
-                      <span className="text-xs text-[var(--text-muted)]">
-                        {group.picks.length} picks
-                      </span>
+                      <div className="flex items-center gap-3">
+                        <span className="text-xs text-[var(--text-muted)]">
+                          {group.picks.length} picks
+                        </span>
+                        {top10RatingsSupported && (
+                          <div className="flex items-center gap-2">
+                            {top10RatingsLoading ? (
+                              <span className="text-xs text-[var(--text-muted)]">…</span>
+                            ) : (
+                              <span className="text-xs text-[var(--text-muted)]">
+                                {(() => {
+                                  const key = (group.language || 'Unknown').trim() || 'Unknown';
+                                  const stats = top10RatingsByLanguage[key];
+                                  if (!stats || stats.count === 0) return 'No ratings';
+                                  return `${stats.avg.toFixed(1)} (${stats.count})`;
+                                })()}
+                              </span>
+                            )}
+                            {user && !isOwnProfile && (
+                              <StarRating
+                                value={(() => {
+                                  const key = (group.language || 'Unknown').trim() || 'Unknown';
+                                  return (top10RatingsByLanguage[key]?.mine ?? 0) || 0;
+                                })()}
+                                onChange={(v) => void rateTop10Language(group.language, v)}
+                                disabled={Boolean(top10RatingsSaving[(group.language || 'Unknown').trim() || 'Unknown'])}
+                                size="sm"
+                              />
+                            )}
+                          </div>
+                        )}
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4">
                       {group.picks.map((pick) => {

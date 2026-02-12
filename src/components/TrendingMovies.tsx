@@ -1,11 +1,12 @@
 'use client';
 
 import { useEffect, useState, useMemo, useRef } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { SendToFriendModal } from './SendToFriendModal';
 import { useAuth } from './AuthProvider';
-import { getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, resolveOttProvider, type TMDBWatchProviders } from '@/lib/tmdb';
+import { getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, normalizeWatchProviderKey, resolveOttProvider, type TMDBWatchProviders } from '@/lib/tmdb';
+import { WatchlistPlusButton } from './WatchlistPlusButton';
 
 interface TrendingMovie {
   id: number;
@@ -26,7 +27,7 @@ const CACHE_TTL_MS = 5 * 60 * 1000;
 const trendingCache = new Map<string, { movies: TrendingMovie[]; upcoming: Record<string, TrendingMovie[]>; ts: number }>();
 const PROVIDER_CACHE_TTL_MS = 60 * 60 * 1000;
 export type ProviderLogoItem = { url: string; name: string };
-const providerCache = new Map<number, { logos: ProviderLogoItem[]; link?: string; hasOtt: boolean; ts: number }>();
+const providerCache = new Map<string, { logos: ProviderLogoItem[]; link?: string; hasOtt: boolean; ts: number }>();
 const TMDB_LOGO_BASE = 'https://image.tmdb.org/t/p/w45';
 
 type ProviderEntry = { provider_id?: number; provider_name?: string; logo_path?: string | null };
@@ -53,41 +54,35 @@ const collectStreamingProviders = (regionData?: ProviderRegion) => [
   ...(regionData?.ads ?? []),
 ];
 
-const normalizeProviderKey = (name: string) => {
-  const lower = name.toLowerCase();
-  if (lower.includes('netflix')) return 'netflix';
-  if (lower.includes('prime')) return 'prime video';
-  if (lower.includes('amazon video')) return 'prime video';
-  if (lower.includes('disney') || lower.includes('hotstar')) return 'jiohotstar';
-  if (lower.includes('apple')) return 'apple tv';
-  if (lower.includes('aha')) return 'aha';
-  if (lower.includes('sonyliv')) return 'sonyliv';
-  if (lower.includes('zee5')) return 'zee5';
-  if (lower.includes('youtube')) return 'youtube';
-  if (lower.includes('hulu')) return 'hulu';
-  if (lower.includes('peacock')) return 'peacock';
-  if (lower.includes('paramount')) return 'paramount+';
-  return lower.replace(/\s+with\s+ads/g, '').replace(/\s+/g, ' ').trim();
+const normalizeProviderKey = (name: string) => normalizeWatchProviderKey(name);
+
+const dedupeLogos = (items: ProviderLogoItem[]) => {
+  const out: ProviderLogoItem[] = [];
+  const seen = new Set<string>();
+  for (const it of items) {
+    const key = normalizeProviderKey(it.name) || it.url || it.name;
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(it);
+  }
+  return out;
 };
 
-const extractProviderMeta = (providers?: TMDBWatchProviders | null): { logos: ProviderLogoItem[]; link?: string; hasOtt: boolean } => {
+const extractProviderMeta = (
+  providers: TMDBWatchProviders | null | undefined,
+  country: 'IN' | 'US',
+): { logos: ProviderLogoItem[]; link?: string; hasOtt: boolean } => {
   if (!providers?.results) return { logos: [], hasOtt: false };
-  const inRegion = providers.results?.IN as ProviderRegion | undefined;
-  const usRegion = providers.results?.US as ProviderRegion | undefined;
-  const inProviders = collectProviders(inRegion);
-  const usProviders = collectProviders(usRegion);
-  const allProviders = [...inProviders, ...usProviders];
-  const link = inRegion?.link ?? usRegion?.link;
+  const region = (country === 'IN' ? providers.results?.IN : providers.results?.US) as ProviderRegion | undefined;
+  const allProviders = collectProviders(region);
+  const link = region?.link;
   // Include streaming (flatrate/free/ads) and rent/buy so more movies get at least one OTT logo
   const streamingProviders = [
-    ...collectStreamingProviders(inRegion),
-    ...collectStreamingProviders(usRegion),
+    ...collectStreamingProviders(region),
   ];
   const rentBuyProviders = [
-    ...(inRegion?.rent ?? []),
-    ...(inRegion?.buy ?? []),
-    ...(usRegion?.rent ?? []),
-    ...(usRegion?.buy ?? []),
+    ...(region?.rent ?? []),
+    ...(region?.buy ?? []),
   ];
   const providersForLogos = [...streamingProviders, ...rentBuyProviders];
 
@@ -105,7 +100,7 @@ const extractProviderMeta = (providers?: TMDBWatchProviders | null): { logos: Pr
     }
   }
 
-  return { logos, link, hasOtt: allProviders.length > 0 };
+  return { logos: dedupeLogos(logos), link, hasOtt: allProviders.length > 0 };
 };
 
 const LANGUAGES = [
@@ -122,11 +117,13 @@ const LANGUAGES = [
 ];
 interface TrendingMoviesProps {
   searchQuery?: string;
+  country?: 'IN' | 'US';
 }
 
-export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
+export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMoviesProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const pathname = usePathname();
   const { user } = useAuth();
 
   const [movies, setMovies] = useState<TrendingMovie[]>([]);
@@ -139,6 +136,12 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
   const [filterOpen, setFilterOpen] = useState(false);
   const [expandedDecade, setExpandedDecade] = useState<number | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    // Country affects watch providers; reset derived states so UI updates immediately.
+    setProviderLogos({});
+    setStreamingStatus({});
+  }, [country]);
 
   // Filter params from URL
   const selectedLang = searchParams.get('lang') || '';
@@ -157,7 +160,10 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
     if (updates.year !== undefined) (updates.year ? params.set('year', updates.year) : params.delete('year'));
     if (updates.sort !== undefined) (updates.sort ? params.set('sort', updates.sort) : params.delete('sort'));
     if (updates.ott !== undefined) (updates.ott ? params.set('ott', updates.ott) : params.delete('ott'));
-    router.push(`/?${params.toString()}`, { scroll: false });
+    // Keep filters on the current page (pushing to "/" drops them due to home redirects/default hub).
+    const qs = params.toString();
+    const base = pathname && pathname.startsWith('/') ? pathname : '/movies';
+    router.push(qs ? `${base}?${qs}` : base, { scroll: false });
   };
 
   const currentYear = new Date().getFullYear();
@@ -437,19 +443,19 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
     (async () => {
       const next: Record<number, 'ott' | 'soon'> = {};
       for (const movie of movies.slice(0, limit)) {
-        const cached = providerCache.get(movie.id);
+        const cacheKey = `${country}:${movie.id}`;
+        const cached = providerCache.get(cacheKey);
         if (cached && Date.now() - cached.ts < PROVIDER_CACHE_TTL_MS) {
           next[movie.id] = cached.hasOtt ? 'ott' : 'soon';
           continue;
         }
         try {
           const providers = await getWatchProviders(movie.id);
-          const hasOtt =
-            (providers?.results?.IN?.flatrate?.length ?? 0) > 0 ||
-            (providers?.results?.US?.flatrate?.length ?? 0) > 0;
+          const region = country === 'IN' ? providers?.results?.IN : providers?.results?.US;
+          const hasOtt = (region?.flatrate?.length ?? 0) > 0;
           next[movie.id] = hasOtt ? 'ott' : 'soon';
-          const { logos, link, hasOtt: metaHasOtt } = extractProviderMeta(providers);
-          providerCache.set(movie.id, { logos, link, hasOtt: metaHasOtt, ts: Date.now() });
+          const { logos, link, hasOtt: metaHasOtt } = extractProviderMeta(providers, country);
+          providerCache.set(cacheKey, { logos, link, hasOtt: metaHasOtt, ts: Date.now() });
           setProviderLogos((prev) => (prev[movie.id] ? prev : { ...prev, [movie.id]: { logos, link } }));
         } catch {
           next[movie.id] = 'soon';
@@ -459,7 +465,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
       if (!controller.signal.aborted) setStreamingStatus((prev) => ({ ...prev, ...next }));
     })();
     return () => controller.abort();
-  }, [searchQuery, movies]);
+  }, [searchQuery, movies, country]);
 
   useEffect(() => {
     if (loading || movies.length === 0) return;
@@ -470,7 +476,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
     const hydrateFromCache = () => {
       const fromCache: Record<number, { logos: ProviderLogoItem[]; link?: string }> = {};
       for (const id of targets) {
-        const cached = providerCache.get(id);
+        const cached = providerCache.get(`${country}:${id}`);
         if (cached && Date.now() - cached.ts < PROVIDER_CACHE_TTL_MS && cached.logos.length > 0) {
           fromCache[id] = { logos: cached.logos, link: cached.link };
         }
@@ -483,7 +489,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
     hydrateFromCache();
 
     const queue = targets.filter((id) => {
-      const cached = providerCache.get(id);
+      const cached = providerCache.get(`${country}:${id}`);
       return !(cached && Date.now() - cached.ts < PROVIDER_CACHE_TTL_MS);
     });
 
@@ -497,11 +503,11 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
           try {
             const providers = await getWatchProviders(id);
             if (cancelled) return;
-            const { logos, link, hasOtt } = extractProviderMeta(providers);
-            providerCache.set(id, { logos, link, hasOtt, ts: Date.now() });
+            const { logos, link, hasOtt } = extractProviderMeta(providers, country);
+            providerCache.set(`${country}:${id}`, { logos, link, hasOtt, ts: Date.now() });
             setProviderLogos((prev) => (prev[id] ? prev : { ...prev, [id]: { logos, link } }));
           } catch {
-            providerCache.set(id, { logos: [], hasOtt: false, ts: Date.now() });
+            providerCache.set(`${country}:${id}`, { logos: [], hasOtt: false, ts: Date.now() });
             setProviderLogos((prev) => (prev[id] ? prev : { ...prev, [id]: { logos: [] } }));
           }
         }
@@ -514,7 +520,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
     return () => {
       cancelled = true;
     };
-  }, [movies, loading, searchQuery]);
+  }, [movies, loading, searchQuery, country]);
 
   const handleLanguageClick = (code: string) => {
     updateFilters({ lang: selectedLang === code ? '' : code });
@@ -656,7 +662,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
               >
                 All
               </button>
-              {OTT_PROVIDERS.map((p) => (
+              {OTT_PROVIDERS.filter((p) => Boolean(p.ids[country])).map((p) => (
                 <button
                   key={p.key}
                   onClick={() => updateFilters({ ott: activeOttKey === p.key ? '' : p.key })}
@@ -740,8 +746,17 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
 
                           <div className="absolute inset-0 bg-gradient-to-t from-purple-900/90 via-transparent to-transparent" />
 
+                          {/* Quick watchlist + */}
+                          <div className="absolute top-2 left-2 z-10">
+                            <WatchlistPlusButton
+                              movieId={`tmdb-${movie.id}`}
+                              title={movie.title}
+                              poster={movie.poster_path ? `https://image.tmdb.org/t/p/w300${movie.poster_path}` : ''}
+                            />
+                          </div>
+
                           {/* Coming Soon Badge */}
-                          <div className="absolute top-2 left-2 right-2">
+                          <div className="absolute top-2 left-12 right-2">
                             <span className="px-2 py-0.5 text-[10px] font-bold bg-purple-500 rounded text-white">
                               STREAMING SOON
                             </span>
@@ -833,6 +848,15 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
 
                   <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-card)] via-transparent to-transparent opacity-80" />
 
+                  {/* Quick watchlist + */}
+                  <div className="absolute top-3 left-3 z-10">
+                    <WatchlistPlusButton
+                      movieId={`tmdb-${movie.id}`}
+                      title={movie.title}
+                      poster={movie.poster_path ? `https://image.tmdb.org/t/p/w300${movie.poster_path}` : ''}
+                    />
+                  </div>
+
                   {movie.vote_average > 0 && (
                     <div className="absolute top-3 right-3">
                       <span className="flex items-center gap-1 px-2 py-1 text-xs font-bold bg-[var(--accent)]/90 backdrop-blur-sm rounded-md text-[var(--bg-primary)]">
@@ -846,7 +870,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
 
                   <div className="absolute bottom-12 right-3 flex items-center gap-1">
                     {providerLogos[movie.id]?.logos?.length > 0 ? (
-                      providerLogos[movie.id].logos.slice(0, 3).map((item, idx) => {
+                      dedupeLogos(providerLogos[movie.id].logos).slice(0, 3).map((item, idx) => {
                         const watchLink = providerLogos[movie.id].link ?? `https://www.themoviedb.org/movie/${movie.id}/watch`;
                         const content = (
                           <div
@@ -874,7 +898,7 @@ export function TrendingMovies({ searchQuery = '' }: TrendingMoviesProps) {
                     ) : null}
                   </div>
 
-                  <div className="absolute top-3 left-3 flex flex-col gap-1">
+                  <div className="absolute top-3 left-14 flex flex-col gap-1">
                     <span className="px-2 py-1 text-xs font-medium bg-[var(--bg-primary)]/80 backdrop-blur-sm rounded-md text-[var(--text-secondary)]">
                       {langInfo.name}
                     </span>

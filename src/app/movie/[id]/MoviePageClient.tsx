@@ -9,6 +9,7 @@ import { WatchedButton } from '@/components/WatchedButton';
 import { WatchlistButton } from '@/components/WatchlistButton';
 import { useWatched } from '@/hooks';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { TrailerSection } from '@/components';
 
 function PosterImage({ src, alt, title }: { src: string; alt: string; title: string }) {
   const [error, setError] = useState(false);
@@ -107,6 +108,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
   const [error, setError] = useState(false);
   const [regionNote, setRegionNote] = useState('');
   const [availability, setAvailability] = useState({ hasIndia: false, hasUSA: false });
+  const [tmdbTrailerId, setTmdbTrailerId] = useState<number | null>(null);
 
   useEffect(() => {
     if (resolvedId === 'fallback') return;
@@ -172,7 +174,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
             const encodedTitle = encodeURIComponent(movieTitle);
             const lowerName = platformName.toLowerCase();
             if (lowerName.includes('netflix')) return `https://www.netflix.com/search?q=${encodedTitle}`;
-            if (lowerName.includes('prime') || lowerName.includes('amazon')) return `https://www.primevideo.com/search/ref=atv_nb_sr?phrase=${encodedTitle}`;
+            if (lowerName.includes('prime') || lowerName.includes('amazon')) return `https://app.primevideo.com/search?phrase=${encodedTitle}`;
             if (lowerName.includes('hotstar') || lowerName.includes('disney')) return `https://www.hotstar.com/in/search?q=${encodedTitle}`;
             if (lowerName.includes('aha')) return `https://www.aha.video/search?q=${encodedTitle}`;
             if (lowerName.includes('youtube')) return `https://www.youtube.com/results?search_query=${encodedTitle}+full+movie`;
@@ -259,11 +261,12 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           if (hasIndia && hasUSA) {
             setRegionNote('Available in India & USA');
           } else if (hasIndia && !hasUSA) {
-            setRegionNote('TMDB shows availability in India only (US not listed)');
+            setRegionNote('Available in India');
           } else if (!hasIndia && hasUSA) {
-            setRegionNote('TMDB shows availability in USA only (India not listed)');
+            setRegionNote('Available in USA');
           } else {
-            setRegionNote('TMDB does not list streaming in India or USA');
+            // Avoid showing a scary/incorrect banner. We'll show the JustWatch fallback below instead.
+            setRegionNote('');
           }
 
           const mappedRecommendation: Recommendation = {
@@ -288,6 +291,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           };
 
           setMovie(mappedRecommendation);
+          setTmdbTrailerId(Number(tmdbId));
           return;
         }
 
@@ -333,6 +337,10 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
         };
 
         setMovie(mappedRecommendation);
+        // Trailer: only if this recommendation is linked to TMDB.
+        const rawTmdb = (rec as any)?.tmdb_id;
+        const num = typeof rawTmdb === 'number' ? rawTmdb : Number(String(rawTmdb || ''));
+        setTmdbTrailerId(Number.isFinite(num) && num > 0 ? num : null);
       } catch (err) {
         console.error('Error fetching movie:', err);
         setError(true);
@@ -427,6 +435,17 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
   );
   const posterOttLinks = uniqueOttLinks.slice(0, 4);
   const getOttLogoUrl = (logoPath?: string) => (logoPath ? `https://image.tmdb.org/t/p/w92${logoPath}` : '');
+  const getPreferredOttUrl = (link: OTTLink) => {
+    const platform = (link.platform || '').toLowerCase();
+    const titleQuery = encodeURIComponent(title || '');
+    if (platform.includes('prime') || platform.includes('amazon')) {
+      if (link.url?.includes('primevideo.com')) {
+        return link.url.replace('https://www.primevideo.com', 'https://app.primevideo.com');
+      }
+      if (titleQuery) return `https://app.primevideo.com/search?phrase=${titleQuery}`;
+    }
+    return link.url;
+  };
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
@@ -455,81 +474,81 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
         )}
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 -mt-32 sm:-mt-40 relative z-10">
-        <div className="grid gap-8 lg:grid-cols-[260px_minmax(0,1fr)]">
-          <div className="flex-shrink-0 w-48 sm:w-64 mx-auto sm:mx-0">
-            <div className={`relative aspect-[2/3] rounded-xl overflow-hidden shadow-2xl shadow-black/50 ${watched ? 'ring-4 ring-green-500/50' : ''}`}>
-              <PosterImage src={poster} alt={`${title} poster`} title={title} />
-              {posterOttLinks.length > 0 && (
-                <div className="absolute bottom-3 right-3 flex items-center -space-x-2">
-                  {posterOttLinks.map((link) => {
-                    const logoUrl = getOttLogoUrl(link.logoPath);
-                    return (
-                      <div
-                        key={link.platform}
-                        title={link.platform}
-                        className="w-8 h-8 rounded-full bg-[var(--bg-primary)]/80 border border-white/10 flex items-center justify-center overflow-hidden"
-                      >
-                        {logoUrl ? (
-                          <img src={logoUrl} alt={link.platform} className="w-6 h-6 object-contain" />
-                        ) : (
-                          <span className="text-[10px] font-bold text-white">
-                            {link.platform.charAt(0)}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            <div className="mt-4 flex justify-center gap-2">
-              <WatchedButton movieId={resolvedId} size="lg" showLabel />
-              <WatchlistButton movieId={resolvedId} title={title} poster={poster} size="lg" showLabel />
-            </div>
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-32 sm:-mt-40 relative z-10">
+        <div className="text-center sm:text-left">
+          <div className="mb-4">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[var(--text-primary)]">{title}</h1>
+            {originalTitle && <p className="text-lg text-[var(--text-muted)] mt-1">{originalTitle}</p>}
           </div>
 
-          <div className="text-center sm:text-left">
-            <div className="mb-4">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[var(--text-primary)]">{title}</h1>
-              {originalTitle && <p className="text-lg text-[var(--text-muted)] mt-1">{originalTitle}</p>}
-            </div>
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm text-[var(--text-secondary)] mb-6">
+            <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{year}</span>
+            <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{typeLabels[type]}</span>
+            {duration && <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{duration}</span>}
+            <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{language}</span>
+            {rating && (
+              <span className="flex items-center gap-1 px-2 py-1 bg-[var(--accent)] rounded text-[var(--bg-primary)] font-bold">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+                {rating.toFixed(1)}
+              </span>
+            )}
+            {certification && ['NC-17', 'X', '18+'].some(c => certification.toUpperCase() === c) && (
+              <span className="px-2 py-1 bg-red-600 rounded text-white font-bold">18+</span>
+            )}
+          </div>
 
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm text-[var(--text-secondary)] mb-6">
-              <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{year}</span>
-              <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{typeLabels[type]}</span>
-              {duration && <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{duration}</span>}
-              <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{language}</span>
-              {rating && (
-                <span className="flex items-center gap-1 px-2 py-1 bg-[var(--accent)] rounded text-[var(--bg-primary)] font-bold">
-                  <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                    <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
-                  </svg>
-                  {rating.toFixed(1)}
-                </span>
-              )}
-              {certification && ['NC-17', 'X', '18+'].some(c => certification.toUpperCase() === c) && (
-                <span className="px-2 py-1 bg-red-600 rounded text-white font-bold">18+</span>
-              )}
-            </div>
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-6">
+            {genres.map((genre) => (
+              <span key={genre} className="px-3 py-1 text-sm bg-[var(--bg-card)] border border-white/10 rounded-full text-[var(--text-secondary)]">
+                {genre}
+              </span>
+            ))}
+          </div>
 
+          {mood && mood.length > 0 && (
             <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-6">
-              {genres.map((genre) => (
-                <span key={genre} className="px-3 py-1 text-sm bg-[var(--bg-card)] border border-white/10 rounded-full text-[var(--text-secondary)]">
-                  {genre}
-                </span>
+              {mood.map((m) => (
+                <span key={m} className="mood-tag px-3 py-1 text-sm rounded-full">{m}</span>
               ))}
             </div>
+          )}
 
-            {mood && mood.length > 0 && (
-              <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-6">
-                {mood.map((m) => (
-                  <span key={m} className="mood-tag px-3 py-1 text-sm rounded-full">{m}</span>
-                ))}
+          <div className="mt-6 grid gap-6 lg:grid-cols-[220px_minmax(0,1.8fr)_minmax(0,0.8fr)] items-start">
+            <div>
+              <div className={`relative aspect-[2/3] rounded-xl overflow-hidden shadow-2xl shadow-black/50 ${watched ? 'ring-4 ring-green-500/50' : ''}`}>
+                <PosterImage src={poster} alt={`${title} poster`} title={title} />
+                {posterOttLinks.length > 0 && (
+                  <div className="absolute bottom-3 right-3 flex items-center -space-x-2">
+                    {posterOttLinks.map((link) => {
+                      const logoUrl = getOttLogoUrl(link.logoPath);
+                      return (
+                        <div
+                          key={link.platform}
+                          title={link.platform}
+                          className="w-8 h-8 rounded-full bg-[var(--bg-primary)]/80 border border-white/10 flex items-center justify-center overflow-hidden"
+                        >
+                          {logoUrl ? (
+                            <img src={logoUrl} alt={link.platform} className="w-6 h-6 object-contain" />
+                          ) : (
+                            <span className="text-[10px] font-bold text-white">
+                              {link.platform.charAt(0)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-            )}
+              <div className="mt-4 flex justify-center gap-2">
+                <WatchedButton movieId={resolvedId} size="lg" showLabel />
+                <WatchlistButton movieId={resolvedId} title={title} poster={poster} size="lg" showLabel />
+              </div>
+            </div>
 
-            <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] items-start">
+            <div className="flex flex-col gap-6">
               <div className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-7 border border-white/5">
                 <div className="flex items-center gap-3 mb-4">
                   <span className="text-3xl">{recommendedBy.avatar}</span>
@@ -552,87 +571,91 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
                 )}
               </div>
 
-              <div className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-7 border border-white/5">
-                <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Where to watch</h2>
-                {regionNote && (
-                  <div className={`mb-4 px-4 py-2 rounded-lg text-sm ${
-                    regionNote.includes('not streaming in India') ? 'bg-orange-500/10 border border-orange-500/30 text-orange-400' :
-                    regionNote.includes('not streaming in USA') ? 'bg-blue-500/10 border border-blue-500/30 text-blue-400' :
-                    'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
-                  }`}>
-                    {regionNote}
+              {tmdbTrailerId ? (
+                <TrailerSection tmdbId={tmdbTrailerId} mediaType="movie" title={title} />
+              ) : null}
+            </div>
+
+            <div className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-7 border border-white/5">
+              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Where to watch</h2>
+              {regionNote && (
+                <div className={`mb-4 px-4 py-2 rounded-lg text-sm ${
+                  regionNote.includes('not streaming in India') ? 'bg-orange-500/10 border border-orange-500/30 text-orange-400' :
+                  regionNote.includes('not streaming in USA') ? 'bg-blue-500/10 border border-blue-500/30 text-blue-400' :
+                  'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
+                }`}>
+                  {regionNote}
+                </div>
+              )}
+              {showUsCheck && (
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-4 py-3">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--text-primary)]">US availability not listed by TMDB</p>
+                    <p className="text-xs text-[var(--text-muted)]">Double‑check on JustWatch to confirm streaming in the US.</p>
                   </div>
-                )}
-                {showUsCheck && (
-                  <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-4 py-3">
-                    <div>
-                      <p className="text-sm font-medium text-[var(--text-primary)]">US availability not listed by TMDB</p>
-                      <p className="text-xs text-[var(--text-muted)]">Double‑check on JustWatch to confirm streaming in the US.</p>
-                    </div>
-                    <a
-                      href={usSearchUrl}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[var(--bg-primary)] shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-lg"
-                    >
-                      Check US availability
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h6m0 0v6m0-6L7 17" />
-                      </svg>
-                    </a>
-                  </div>
-                )}
-                {ottLinks && ottLinks.length > 0 ? (
-                  <div className="grid gap-3">
-                    {ottLinks.map((link, index) => {
-                      const logoUrl = getOttLogoUrl(link.logoPath);
-                      return (
-                        <a
-                          key={`${link.platform}-${index}`}
-                          href={link.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-xl hover:bg-[var(--bg-card-hover)] transition-colors group"
-                        >
-                          <div className="flex items-center gap-3">
-                            {logoUrl ? (
-                              <span className="w-10 h-10 rounded-lg bg-[var(--bg-primary)]/60 border border-white/10 flex items-center justify-center overflow-hidden">
-                                <img src={logoUrl} alt={link.platform} className="w-7 h-7 object-contain" />
-                              </span>
-                            ) : (
-                              <span className={`${platformClasses[link.platform] || 'platform-other'} w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm`}>
-                                {link.platform.charAt(0)}
-                              </span>
-                            )}
-                            <div>
-                              <p className="font-medium text-[var(--text-primary)]">{link.platform}</p>
-                              {link.availableIn && <p className="text-xs text-[var(--text-muted)]">{link.availableIn}</p>}
-                            </div>
+                  <a
+                    href={usSearchUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[var(--bg-primary)] shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-lg"
+                  >
+                    Check US availability
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h6m0 0v6m0-6L7 17" />
+                    </svg>
+                  </a>
+                </div>
+              )}
+              {ottLinks && ottLinks.length > 0 ? (
+                <div className="grid gap-3">
+                  {ottLinks.map((link, index) => {
+                    const logoUrl = getOttLogoUrl(link.logoPath);
+                    return (
+                      <a
+                        key={`${link.platform}-${index}`}
+                        href={getPreferredOttUrl(link)}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-xl hover:bg-[var(--bg-card-hover)] transition-colors group"
+                      >
+                        <div className="flex items-center gap-3">
+                          {logoUrl ? (
+                            <span className="w-10 h-10 rounded-lg bg-[var(--bg-primary)]/60 border border-white/10 flex items-center justify-center overflow-hidden">
+                              <img src={logoUrl} alt={link.platform} className="w-7 h-7 object-contain" />
+                            </span>
+                          ) : (
+                            <span className={`${platformClasses[link.platform] || 'platform-other'} w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm`}>
+                              {link.platform.charAt(0)}
+                            </span>
+                          )}
+                          <div>
+                            <p className="font-medium text-[var(--text-primary)]">{link.platform}</p>
+                            {link.availableIn && <p className="text-xs text-[var(--text-muted)]">{link.availableIn}</p>}
                           </div>
-                          <svg className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                          </svg>
-                        </a>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <div className="text-center py-6">
-                    <p className="text-[var(--text-muted)]">No streaming info available for India/USA.</p>
-                    <a
-                      href={`https://www.justwatch.com/in/search?q=${encodeURIComponent(title)}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-[var(--bg-secondary)] rounded-lg text-[var(--accent)] hover:bg-[var(--bg-card-hover)] transition-colors"
-                    >
-                      Search on JustWatch
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                      </svg>
-                    </a>
-                  </div>
-                )}
-              </div>
+                        </div>
+                        <svg className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                        </svg>
+                      </a>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-6">
+                  <p className="text-[var(--text-muted)]">No streaming info available for India/USA.</p>
+                  <a
+                    href={`https://www.justwatch.com/in/search?q=${encodeURIComponent(title)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-[var(--bg-secondary)] rounded-lg text-[var(--accent)] hover:bg-[var(--bg-card-hover)] transition-colors"
+                  >
+                    Search on JustWatch
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
+              )}
             </div>
           </div>
         </div>

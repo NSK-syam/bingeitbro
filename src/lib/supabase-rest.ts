@@ -679,7 +679,12 @@ export async function sendFriendRecommendations(
 
       if (response.ok) {
         const payload = (typeof data === 'object' && data !== null ? data : {}) as Partial<SendFriendRecommendationsResult>;
-        const sent = typeof payload.sent === 'number' ? payload.sent : rows.length;
+        // Never assume success. If the API doesn't return a numeric `sent`, treat it as an error so
+        // the UI doesn't show a success toast when inserts didn't happen.
+        if (typeof payload.sent !== 'number') {
+          throw new Error('Unexpected response from server. Please try again.');
+        }
+        const sent = payload.sent;
         const sentRecipientIds = Array.isArray(payload.sentRecipientIds)
           ? payload.sentRecipientIds.filter((id): id is string => typeof id === 'string')
           : [];
