@@ -18,6 +18,7 @@ import { Recommendation, Recommender, OTTLink } from '@/types';
 import { useWatched, useNudges, useWatchlist, useCountry } from '@/hooks';
 import { createClient } from '@/lib/supabase';
 import { fetchFriendsList, getFriendRecommendationsUnreadCount, getRecentFriendRecommendations } from '@/lib/supabase-rest';
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 import data from '@/data/recommendations.json';
 
 const SubmitRecommendation = dynamic(
@@ -136,14 +137,14 @@ export default function MoviesHome() {
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const dayKey = getLocalDayKey();
-    const storedDay = window.localStorage.getItem('cinema-chudu-hero-day');
-    let visitCount = Number(window.localStorage.getItem('cinema-chudu-hero-visit') || '0');
+    const storedDay = safeLocalStorageGet('cinema-chudu-hero-day');
+    let visitCount = Number(safeLocalStorageGet('cinema-chudu-hero-visit') || '0');
     if (storedDay !== dayKey) {
       visitCount = 0;
-      window.localStorage.setItem('cinema-chudu-hero-day', dayKey);
+      safeLocalStorageSet('cinema-chudu-hero-day', dayKey);
     }
     visitCount += 1;
-    window.localStorage.setItem('cinema-chudu-hero-visit', String(visitCount));
+    safeLocalStorageSet('cinema-chudu-hero-visit', String(visitCount));
     const dayIndex = getLocalDayIndex();
     setVisitIndex((dayIndex + visitCount) % HERO_LINES.length);
   }, []);
@@ -311,10 +312,10 @@ export default function MoviesHome() {
         const recent = await getRecentFriendRecommendations(user.id, 5);
         if (canceled || recent.length === 0) return;
 
-        const last = window.localStorage.getItem(storageKey);
+        const last = safeLocalStorageGet(storageKey);
         if (!last) {
           // First load: set baseline so opening the app doesn't pop a toast.
-          window.localStorage.setItem(storageKey, new Date().toISOString());
+          safeLocalStorageSet(storageKey, new Date().toISOString());
           return;
         }
 
@@ -328,7 +329,7 @@ export default function MoviesHome() {
           movieTitle: latest.movie_title || 'a movie',
           count: newOnes.length,
         });
-        window.localStorage.setItem(storageKey, latest.created_at);
+        safeLocalStorageSet(storageKey, latest.created_at);
         getFriendRecommendationsUnreadCount(user.id).then(setFriendRecommendationsCount);
       } catch {
         // ignore

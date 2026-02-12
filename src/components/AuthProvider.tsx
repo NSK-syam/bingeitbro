@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { safeLocalStorageGet, safeLocalStorageKeys, safeLocalStorageRemove, safeLocalStorageSet, safeSessionStorageKeys, safeSessionStorageRemove } from '@/lib/safe-storage';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
@@ -158,8 +159,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const m = String(now.getMonth() + 1).padStart(2, '0');
       const d = String(now.getDate()).padStart(2, '0');
       const key = `bib-bday-popup:${user.id}:${y}-${m}-${d}`;
-      if (window.localStorage.getItem(key)) return;
-      window.localStorage.setItem(key, '1');
+      if (safeLocalStorageGet(key)) return;
+      safeLocalStorageSet(key, '1');
       setBirthdayOpen(true);
     };
 
@@ -299,16 +300,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // 2. Clear localStorage (backup)
-    Object.keys(localStorage).forEach(key => {
+    safeLocalStorageKeys().forEach(key => {
       if (key.startsWith('sb-') || key.includes('supabase')) {
-        localStorage.removeItem(key);
+        safeLocalStorageRemove(key);
       }
     });
 
     // 3. Clear sessionStorage (backup for legacy)
-    Object.keys(sessionStorage).forEach(key => {
+    safeSessionStorageKeys().forEach(key => {
       if (key.startsWith('sb-') || key.includes('supabase') || key === 'cinema-chudu-auth') {
-        sessionStorage.removeItem(key);
+        safeSessionStorageRemove(key);
       }
     });
 

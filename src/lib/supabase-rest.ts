@@ -4,6 +4,7 @@
  */
 
 import type { DBUser } from './supabase';
+import { safeLocalStorageGet } from './safe-storage';
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
@@ -18,7 +19,7 @@ const supabaseProjectRef = (() => {
 
 export function getSupabaseAccessToken(): string | null {
   if (typeof window === 'undefined' || !supabaseProjectRef) return null;
-  const raw = window.localStorage.getItem(`sb-${supabaseProjectRef}-auth-token`);
+  const raw = safeLocalStorageGet(`sb-${supabaseProjectRef}-auth-token`);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);

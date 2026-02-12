@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { getNewReleasesOnStreaming, getImageUrl, getGenreNames, NewRelease, isTMDBConfigured } from '@/lib/tmdb';
 import Link from 'next/link';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 
 const STORAGE_KEY = 'bingeitbro-last-releases-shown';
 
@@ -48,7 +49,7 @@ export function TodayReleasesModal({ manualOpen, onClose }: TodayReleasesModalPr
 
   // Auto-open once per day
   useEffect(() => {
-    const lastShown = localStorage.getItem(STORAGE_KEY);
+    const lastShown = safeLocalStorageGet(STORAGE_KEY);
     const today = new Date().toDateString();
 
     if (lastShown === today) return;
@@ -57,7 +58,7 @@ export function TodayReleasesModal({ manualOpen, onClose }: TodayReleasesModalPr
     // Small delay to let the page load first
     const timer = setTimeout(() => {
       setIsOpen(true);
-      localStorage.setItem(STORAGE_KEY, today);
+      safeLocalStorageSet(STORAGE_KEY, today);
     }, 1500);
 
     return () => clearTimeout(timer);

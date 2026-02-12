@@ -4,12 +4,12 @@ import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthModal, BibSplash, Header, MovieBackground, useAuth } from '@/components';
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 
 type Hub = 'movies' | 'shows' | 'songs';
 
 function readDefaultHub(): Hub | null {
-  if (typeof window === 'undefined') return null;
-  const raw = (window.localStorage.getItem('bib-default-hub') || '').trim();
+  const raw = (safeLocalStorageGet('bib-default-hub') || '').trim();
   if (raw === 'movies' || raw === 'shows' || raw === 'songs') return raw;
   return null;
 }
@@ -30,7 +30,7 @@ export default function HomeGate() {
     if (!user) return;
     const hubToOpen = defaultHub ?? 'movies';
     if (!defaultHub) {
-      window.localStorage.setItem('bib-default-hub', hubToOpen);
+      safeLocalStorageSet('bib-default-hub', hubToOpen);
     }
     router.replace(`/${hubToOpen}`);
   }, [mounted, loading, user, defaultHub, router]);

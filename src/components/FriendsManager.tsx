@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthProvider';
 import { isSupabaseConfigured } from '@/lib/supabase';
+import { safeLocalStorageGet } from '@/lib/safe-storage';
 
 interface UserPreview {
   id: string;
@@ -40,7 +41,7 @@ const supabaseProjectRef = (() => {
 
 const getAccessToken = () => {
   if (typeof window === 'undefined' || !supabaseProjectRef) return null;
-  const raw = window.localStorage.getItem(`sb-${supabaseProjectRef}-auth-token`);
+  const raw = safeLocalStorageGet(`sb-${supabaseProjectRef}-auth-token`);
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw);

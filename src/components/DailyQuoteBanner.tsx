@@ -3,6 +3,7 @@
 import Image from 'next/image';
 import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { MOVIE_QUOTES } from '@/data/movie-quotes';
+import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 
 const STORAGE_KEY_PREFIX = 'bingeitbro-daily-quote';
 const POPUP_DELAY_MS = 800;
@@ -51,12 +52,12 @@ export function DailyQuoteBanner({ userId }: DailyQuoteBannerProps) {
 
     const today = getTodayKey();
     const storageKey = getStorageKey(userId, today);
-    const alreadyShown = localStorage.getItem(storageKey);
+    const alreadyShown = safeLocalStorageGet(storageKey);
     if (alreadyShown) return undefined;
 
     const openTimer = window.setTimeout(() => {
       setState('showing');
-      localStorage.setItem(storageKey, '1');
+      safeLocalStorageSet(storageKey, '1');
       const settleTimer = window.setTimeout(() => setState('visible'), 70);
       closeTimerRef.current = settleTimer;
     }, POPUP_DELAY_MS);
@@ -100,7 +101,7 @@ export function DailyQuoteBanner({ userId }: DailyQuoteBannerProps) {
     if (typeof window === 'undefined') return;
     if (!userId) return;
     const today = getTodayKey();
-    localStorage.setItem(getStorageKey(userId, today), '1');
+    safeLocalStorageSet(getStorageKey(userId, today), '1');
   };
 
   const handleDismiss = (variant: DismissVariant = 'normal') => {

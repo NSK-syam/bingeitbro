@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { safeLocalStorageSet } from '@/lib/safe-storage';
 
 type HubKey = 'movies' | 'shows' | 'songs';
 type Placement = 'top' | 'center';
@@ -47,9 +48,7 @@ export function HubTabs({
               key={hub.key}
               href={hub.href}
               onClick={() => {
-                if (typeof window !== 'undefined') {
-                  window.localStorage.setItem('bib-default-hub', hub.key);
-                }
+                safeLocalStorageSet('bib-default-hub', hub.key);
               }}
               className={`rounded-full font-medium transition-colors ${
                 isActive
