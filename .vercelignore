@@ -10,3 +10,7 @@ coverage
 docs
 public/share
 .vercel
+open-next.config.ts
+wrangler.jsonc
+.open-next
+.wrangler
