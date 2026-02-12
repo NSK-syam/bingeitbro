@@ -7,6 +7,9 @@
     "nodejs_compat",
     "global_fetch_strictly_public"
   ],
+  "build": {
+    "command": "npm run cf:build"
+  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"
