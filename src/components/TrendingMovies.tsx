@@ -215,9 +215,6 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
       setError('');
 
       try {
-        const hasActiveFilters = Boolean(
-          searchQuery.trim() || selectedLang || selectedGenre || selectedYear || selectedOtt
-        );
         const cacheKey = [
           country,
           searchQuery.trim(),
@@ -228,11 +225,10 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
           sortParam,
         ].join('|');
         const cached = trendingCache.get(cacheKey);
-        const canUseCachedEmpty = hasActiveFilters;
         if (
           cached &&
           Date.now() - cached.ts < CACHE_TTL_MS &&
-          (cached.movies.length > 0 || canUseCachedEmpty)
+          cached.movies.length > 0
         ) {
           setMovies(cached.movies);
           setComingSoonByLang(cached.upcoming);
