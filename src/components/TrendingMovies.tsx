@@ -396,8 +396,6 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
 
           // Ensure no movie appears in both Released and Coming Soon (dedupe by id)
           const releasedIds = new Set(allMovies.map(m => m.id));
-          const upcomingIds = new Set(allUpcoming.map(m => m.id));
-          allMovies = allMovies.filter(m => !upcomingIds.has(m.id));
           allUpcoming = allUpcoming.filter(m => !releasedIds.has(m.id));
 
           const hasAnyFilters = Boolean(selectedLang || selectedGenre || selectedYear || selectedOtt);
