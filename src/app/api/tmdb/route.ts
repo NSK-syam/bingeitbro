@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const TMDB_HOST = 'api.themoviedb.org';
 const SERVER_TMDB_API_KEY = (process.env.TMDB_API_KEY ?? process.env.NEXT_PUBLIC_TMDB_API_KEY ?? '').trim();
+const TMDB_REVALIDATE_SECONDS = 300;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -55,18 +56,21 @@ export async function GET(request: NextRequest) {
       headers: {
         Accept: 'application/json',
       },
-      cache: 'no-store',
+      next: { revalidate: TMDB_REVALIDATE_SECONDS },
     });
 
     const body = await upstream.text();
+    const isSuccess = upstream.ok;
     return new NextResponse(body, {
       status: upstream.status,
       headers: {
         'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
-        // Avoid route-level cache key issues across query variations.
-        // Correctness is prioritized over cache hit rate here.
-        'Cache-Control': 'no-store',
-        'CDN-Cache-Control': 'no-store',
+        'Cache-Control': isSuccess
+          ? `public, max-age=0, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`
+          : 'no-store',
+        'CDN-Cache-Control': isSuccess
+          ? `public, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`
+          : 'no-store',
       },
     });
   } catch {
