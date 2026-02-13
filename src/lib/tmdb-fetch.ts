@@ -9,10 +9,37 @@ function isTmdbV3Url(url: string): boolean {
   }
 }
 
+function hashForPath(input: string): string {
+  // FNV-1a 32-bit hash, compact base36 key for route path segment.
+  let hash = 0x811c9dc5;
+  for (let i = 0; i < input.length; i += 1) {
+    hash ^= input.charCodeAt(i);
+    hash = Math.imul(hash, 0x01000193);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function encodeBase64Url(input: string): string {
+  const btoaFn = globalThis.btoa;
+  if (typeof btoaFn === 'function') {
+    return btoaFn(input).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  const maybeBuffer = (globalThis as unknown as { Buffer?: { from: (value: string, encoding: string) => { toString: (encoding: string) => string } } }).Buffer;
+  if (maybeBuffer) {
+    return maybeBuffer.from(input, 'utf8').toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+  }
+
+  throw new Error('No base64 encoder available');
+}
+
 function getProxyUrl(url: string): string {
-  // `pv` busts stale edge cache entries that may have been created
-  // before server-side key override and cache policy fixes.
-  return `/api/tmdb?url=${encodeURIComponent(url)}&pv=2`;
+  // Include a stable path key because some edge setups can cache route
+  // handlers by pathname more aggressively than expected.
+  const pathKey = hashForPath(url);
+  const encoded = encodeBase64Url(url);
+  // `pv` busts legacy edge entries after proxy behavior changes.
+  return `/api/tmdb/${pathKey}?u=${encoded}&pv=4`;
 }
 
 export async function fetchTmdbWithProxy(url: string, init?: RequestInit): Promise<Response> {
