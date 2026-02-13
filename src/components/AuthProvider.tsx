@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useState, useRef, ReactNode } fro
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { safeLocalStorageGet, safeLocalStorageKeys, safeLocalStorageRemove, safeLocalStorageSet, safeSessionStorageKeys, safeSessionStorageRemove } from '@/lib/safe-storage';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
+import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
 import type { User, Session } from '@supabase/supabase-js';
@@ -255,6 +256,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
+    if (typeof window !== 'undefined' && isLikelyInAppBrowser(window.navigator.userAgent || '')) {
+      return {
+        error: new Error(
+          'Google sign-in is blocked in in-app browsers. Open Binge it bro in Safari or Chrome, then try Google sign-in again.',
+        ),
+      };
+    }
 
     const supabase = createClient();
     const siteUrl = typeof window !== 'undefined'
