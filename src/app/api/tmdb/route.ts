@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const TMDB_HOST = 'api.themoviedb.org';
 const TMDB_REVALIDATE_SECONDS = 300;
+const SERVER_TMDB_API_KEY = (process.env.TMDB_API_KEY ?? process.env.NEXT_PUBLIC_TMDB_API_KEY ?? '').trim();
 
 export const runtime = 'nodejs';
 export const preferredRegion = ['bom1', 'sin1', 'iad1'];
@@ -29,8 +30,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Invalid TMDB URL' }, { status: 400 });
   }
 
+  const upstreamUrl = new URL(tmdbUrl.toString());
+  if (SERVER_TMDB_API_KEY) {
+    // Always use server-side key so stale client bundles / key mismatches
+    // cannot break movie loading in specific regions/countries.
+    upstreamUrl.searchParams.set('api_key', SERVER_TMDB_API_KEY);
+  }
+
   try {
-    const upstream = await fetch(tmdbUrl.toString(), {
+    const upstream = await fetch(upstreamUrl.toString(), {
       headers: {
         Accept: 'application/json',
       },
