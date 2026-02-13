@@ -131,54 +131,42 @@ export function MovieBackground() {
 
   const minPool = posters.length < 20 ? [...posters, ...posters, ...posters] : posters;
   const posterPool = [...minPool, ...minPool];
-  const rows: string[][] = [];
-  const wallRowCount = 5;
-  const postersPerRow = 16;
+  const columns: string[][] = [];
+  const wallColumnCount = 9;
+  const postersPerColumn = 12;
 
-  for (let rowIndex = 0; rowIndex < wallRowCount; rowIndex += 1) {
-    const start = (rowIndex * 3) % minPool.length;
-    const rowItems: string[] = [];
-    for (let i = 0; i < postersPerRow; i += 1) {
-      rowItems.push(posterPool[(start + i) % posterPool.length]);
+  for (let columnIndex = 0; columnIndex < wallColumnCount; columnIndex += 1) {
+    const start = (columnIndex * 5) % minPool.length;
+    const columnItems: string[] = [];
+    for (let i = 0; i < postersPerColumn; i += 1) {
+      columnItems.push(posterPool[(start + i) % posterPool.length]);
     }
-    rows.push([...rowItems, ...rowItems]);
+    columns.push([...columnItems, ...columnItems]);
   }
 
   return (
     <>
       <style jsx global>{`
-        @keyframes posterWallLeft {
+        @keyframes posterWallTopToBottom {
           0% {
-            transform: translate3d(0, 0, 0);
-          }
-          100% {
-            transform: translate3d(-50%, 0, 0);
-          }
-        }
-
-        @keyframes posterWallRight {
-          0% {
-            transform: translate3d(-50%, 0, 0);
+            transform: translate3d(0, -50%, 0);
           }
           100% {
             transform: translate3d(0, 0, 0);
           }
         }
 
-        .poster-wall-track {
+        .poster-wall-column-track {
           display: flex;
+          flex-direction: column;
           gap: 6px;
-          width: max-content;
+          width: 100%;
           will-change: transform;
           transform: translateZ(0);
         }
 
-        .poster-wall-left {
-          animation: posterWallLeft 36s steps(12, end) infinite;
-        }
-
-        .poster-wall-right {
-          animation: posterWallRight 36s steps(12, end) infinite;
+        .poster-wall-top-to-bottom {
+          animation: posterWallTopToBottom 36s steps(12, end) infinite;
         }
       `}</style>
       <div
@@ -203,7 +191,7 @@ export function MovieBackground() {
             zIndex: 1,
           }}
         />
-        {/* Sideways poster wall */}
+        {/* Vertical poster wall */}
         <div
           style={{
             position: 'absolute',
@@ -211,29 +199,34 @@ export function MovieBackground() {
             zIndex: 0,
             opacity: 0.6,
             display: 'flex',
-            flexDirection: 'column',
             justifyContent: 'center',
+            alignItems: 'stretch',
             gap: '6px',
+            padding: '0 6px',
+            height: 'calc(100% + 60px)',
           }}
         >
-          {rows.map((rowPosters, rowIndex) => (
+          {columns.map((columnPosters, columnIndex) => (
             <div
-              key={`wall-row-${rowIndex}`}
+              key={`wall-column-${columnIndex}`}
               style={{
+                width: 'clamp(72px, 8vw, 124px)',
+                height: '100%',
                 overflow: 'hidden',
+                borderRadius: '6px',
               }}
             >
               <div
-                className={`poster-wall-track ${rowIndex % 2 === 0 ? 'poster-wall-left' : 'poster-wall-right'}`}
+                className="poster-wall-column-track poster-wall-top-to-bottom"
                 style={{
-                  animationDelay: `-${rowIndex * 1.5}s`,
+                  animationDelay: `-${columnIndex * 1.5}s`,
                 }}
               >
-                {rowPosters.map((poster, index) => (
+                {columnPosters.map((poster, index) => (
                   <div
-                    key={`wall-poster-${rowIndex}-${index}`}
+                    key={`wall-poster-${columnIndex}-${index}`}
                     style={{
-                      width: 'clamp(72px, 8vw, 124px)',
+                      width: '100%',
                       aspectRatio: '2/3',
                       borderRadius: '6px',
                       overflow: 'hidden',

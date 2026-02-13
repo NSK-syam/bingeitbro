@@ -117,54 +117,42 @@ export function ShowBackground() {
 
   const minPool = posters.length < 20 ? [...posters, ...posters, ...posters] : posters;
   const posterPool = [...minPool, ...minPool];
-  const rows: string[][] = [];
-  const wallRowCount = 5;
-  const postersPerRow = 16;
+  const columns: string[][] = [];
+  const wallColumnCount = 9;
+  const postersPerColumn = 12;
 
-  for (let rowIndex = 0; rowIndex < wallRowCount; rowIndex += 1) {
-    const start = (rowIndex * 3) % minPool.length;
-    const rowItems: string[] = [];
-    for (let i = 0; i < postersPerRow; i += 1) {
-      rowItems.push(posterPool[(start + i) % posterPool.length]);
+  for (let columnIndex = 0; columnIndex < wallColumnCount; columnIndex += 1) {
+    const start = (columnIndex * 5) % minPool.length;
+    const columnItems: string[] = [];
+    for (let i = 0; i < postersPerColumn; i += 1) {
+      columnItems.push(posterPool[(start + i) % posterPool.length]);
     }
-    rows.push([...rowItems, ...rowItems]);
+    columns.push([...columnItems, ...columnItems]);
   }
 
   return (
     <>
       <style jsx global>{`
-        @keyframes showPosterWallLeft {
+        @keyframes showPosterWallTopToBottom {
           0% {
-            transform: translate3d(0, 0, 0);
-          }
-          100% {
-            transform: translate3d(-50%, 0, 0);
-          }
-        }
-
-        @keyframes showPosterWallRight {
-          0% {
-            transform: translate3d(-50%, 0, 0);
+            transform: translate3d(0, -50%, 0);
           }
           100% {
             transform: translate3d(0, 0, 0);
           }
         }
 
-        .show-poster-wall-track {
+        .show-poster-wall-column-track {
           display: flex;
+          flex-direction: column;
           gap: 6px;
-          width: max-content;
+          width: 100%;
           will-change: transform;
           transform: translateZ(0);
         }
 
-        .show-poster-wall-left {
-          animation: showPosterWallLeft 36s steps(12, end) infinite;
-        }
-
-        .show-poster-wall-right {
-          animation: showPosterWallRight 36s steps(12, end) infinite;
+        .show-poster-wall-top-to-bottom {
+          animation: showPosterWallTopToBottom 36s steps(12, end) infinite;
         }
       `}</style>
       <div
@@ -195,29 +183,34 @@ export function ShowBackground() {
             zIndex: 0,
             opacity: 0.58,
             display: 'flex',
-            flexDirection: 'column',
             justifyContent: 'center',
+            alignItems: 'stretch',
             gap: '6px',
+            padding: '0 6px',
+            height: 'calc(100% + 60px)',
           }}
         >
-          {rows.map((rowPosters, rowIndex) => (
+          {columns.map((columnPosters, columnIndex) => (
             <div
-              key={`show-wall-row-${rowIndex}`}
+              key={`show-wall-column-${columnIndex}`}
               style={{
+                width: 'clamp(72px, 8vw, 124px)',
+                height: '100%',
                 overflow: 'hidden',
+                borderRadius: '6px',
               }}
             >
               <div
-                className={`show-poster-wall-track ${rowIndex % 2 === 0 ? 'show-poster-wall-left' : 'show-poster-wall-right'}`}
+                className="show-poster-wall-column-track show-poster-wall-top-to-bottom"
                 style={{
-                  animationDelay: `-${rowIndex * 1.5}s`,
+                  animationDelay: `-${columnIndex * 1.5}s`,
                 }}
               >
-                {rowPosters.map((poster, index) => (
+                {columnPosters.map((poster, index) => (
                   <div
-                    key={`show-wall-poster-${rowIndex}-${index}`}
+                    key={`show-wall-poster-${columnIndex}-${index}`}
                     style={{
-                      width: 'clamp(72px, 8vw, 124px)',
+                      width: '100%',
                       aspectRatio: '2/3',
                       borderRadius: '6px',
                       overflow: 'hidden',
