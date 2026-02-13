@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef } from 'react';
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import { SendToFriendModal } from './SendToFriendModal';
@@ -156,7 +156,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
   const resolvedOttProvider = useMemo(() => resolveOttProvider(selectedOtt), [selectedOtt]);
   const activeOttKey = resolvedOttProvider?.key ?? selectedOtt;
 
-  const updateFilters = (updates: { lang?: string; genre?: string; year?: string; sort?: string; ott?: string }) => {
+  const updateFilters = useCallback((updates: { lang?: string; genre?: string; year?: string; sort?: string; ott?: string }) => {
     const params = new URLSearchParams(searchParams.toString());
     if (updates.lang !== undefined) (updates.lang ? params.set('lang', updates.lang) : params.delete('lang'));
     if (updates.genre !== undefined) (updates.genre ? params.set('genre', updates.genre) : params.delete('genre'));
@@ -167,7 +167,22 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
     const qs = params.toString();
     const base = pathname && pathname.startsWith('/') ? pathname : '/movies';
     router.push(qs ? `${base}?${qs}` : base, { scroll: false });
-  };
+  }, [searchParams, pathname, router]);
+
+  useEffect(() => {
+    if (!selectedOtt) return;
+    const selectedProvider = resolveOttProvider(selectedOtt);
+    if (!selectedProvider) return;
+    const availableInCountry = country === 'US'
+      ? Boolean(selectedProvider.ids.US)
+      : Boolean(selectedProvider.ids.IN);
+
+    // If user switches country and current OTT is unavailable there,
+    // clear the OTT filter so results do not disappear unexpectedly.
+    if (!availableInCountry) {
+      updateFilters({ ott: '' });
+    }
+  }, [country, selectedOtt, updateFilters]);
 
   const currentYear = new Date().getFullYear();
   const MIN_YEAR = 1980;
@@ -200,7 +215,11 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
       setError('');
 
       try {
+        const hasActiveFilters = Boolean(
+          searchQuery.trim() || selectedLang || selectedGenre || selectedYear || selectedOtt
+        );
         const cacheKey = [
+          country,
           searchQuery.trim(),
           selectedLang,
           selectedGenre,
@@ -209,7 +228,12 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
           sortParam,
         ].join('|');
         const cached = trendingCache.get(cacheKey);
-        if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+        const canUseCachedEmpty = hasActiveFilters;
+        if (
+          cached &&
+          Date.now() - cached.ts < CACHE_TTL_MS &&
+          (cached.movies.length > 0 || canUseCachedEmpty)
+        ) {
           setMovies(cached.movies);
           setComingSoonByLang(cached.upcoming);
           setLoading(false);
@@ -421,7 +445,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
     loadMovies();
 
     return () => controller.abort();
-  }, [selectedLang, selectedGenre, selectedYear, selectedOtt, sortParam, searchQuery]);
+  }, [country, selectedLang, selectedGenre, selectedYear, selectedOtt, sortParam, searchQuery]);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -1096,6 +1120,18 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
           <p className="text-[var(--text-secondary)] max-w-sm mx-auto">
             Try a different language, OTT platform, or year — or clear filters to see more.
           </p>
+          {(selectedLang || selectedGenre || selectedYear || selectedOtt || searchQuery.trim()) && (
+            <button
+              type="button"
+              onClick={() => {
+                setExpandedDecade(null);
+                updateFilters({ lang: '', genre: '', year: '', ott: '', sort: 'date' });
+              }}
+              className="mt-4 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[var(--accent)] text-[var(--bg-primary)] font-semibold hover:bg-[var(--accent-hover)] transition-all"
+            >
+              Clear filters
+            </button>
+          )}
         </div>
       )}
 
