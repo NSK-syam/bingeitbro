@@ -5,7 +5,6 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
-import { enablePushNotifications } from '@/lib/push';
 
 interface HeaderProps {
   searchMode?: 'movie' | 'tv' | 'off';
@@ -45,8 +44,6 @@ export function Header({
   const [loadingSuggestions, setLoadingSuggestions] = useState(false);
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const [pushStatus, setPushStatus] = useState<'unsupported' | 'default' | 'granted' | 'denied'>('default');
-  const [pushLoading, setPushLoading] = useState(false);
-  const [pushError, setPushError] = useState('');
   const searchRef = useRef<HTMLDivElement>(null);
   const { user, signOut, isConfigured } = useAuth();
 
@@ -188,21 +185,6 @@ export function Header({
   };
 
   const userName = user?.user_metadata?.name || user?.email?.split('@')[0] || 'User';
-
-  const handleEnablePush = async () => {
-    if (!user) return;
-    setPushError('');
-    setPushLoading(true);
-    try {
-      await enablePushNotifications(user.id);
-      setPushStatus('granted');
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unable to enable notifications';
-      setPushError(message);
-    } finally {
-      setPushLoading(false);
-    }
-  };
 
   return (
     <header className="sticky top-0 z-50 bg-[var(--bg-primary)]/80 backdrop-blur-xl border-b border-white/5">
@@ -388,19 +370,9 @@ export function Header({
                           Notifications blocked
                         </div>
                       ) : (
-                        <button
-                          type="button"
-                          onClick={handleEnablePush}
-                          disabled={pushLoading}
-                          className="w-full px-4 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 cursor-pointer disabled:opacity-50"
-                        >
+                        <div className="px-4 py-2 text-sm text-[var(--text-muted)] flex items-center gap-2">
                           <span className="text-lg">🔔</span>
-                          {pushLoading ? 'Enabling notifications...' : 'Enable notifications'}
-                        </button>
-                      )}
-                      {pushError && (
-                        <div className="px-4 pb-2 text-xs text-red-400">
-                          {pushError}
+                          Notifications disabled
                         </div>
                       )}
                       <button
