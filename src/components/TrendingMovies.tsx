@@ -121,6 +121,30 @@ interface TrendingMoviesProps {
   country?: 'IN' | 'US';
 }
 
+function applyClientFilters(
+  list: TrendingMovie[],
+  filters: { lang: string; genre: string; year: string }
+): TrendingMovie[] {
+  let out = list;
+
+  if (filters.lang) {
+    out = out.filter((movie) => movie.original_language === filters.lang);
+  }
+
+  if (filters.genre) {
+    const genreId = Number(filters.genre);
+    if (!Number.isNaN(genreId)) {
+      out = out.filter((movie) => Array.isArray(movie.genre_ids) && movie.genre_ids.includes(genreId));
+    }
+  }
+
+  if (filters.year) {
+    out = out.filter((movie) => (movie.release_date || '').startsWith(filters.year));
+  }
+
+  return out;
+}
+
 export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMoviesProps) {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -264,7 +288,11 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
           };
           const sortFn = sortByMap[sortParam] || sortByMap.date;
           searchResults.sort(sortFn);
-          allMovies = searchResults;
+          allMovies = applyClientFilters(searchResults, {
+            lang: selectedLang,
+            genre: selectedGenre,
+            year: selectedYear,
+          });
 
           upcomingByLang = {};
           setComingSoonByLang(upcomingByLang);
@@ -421,6 +449,12 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
               allMovies = fallbackMovies;
             }
           }
+
+          allMovies = applyClientFilters(allMovies, {
+            lang: selectedLang,
+            genre: selectedGenre,
+            year: selectedYear,
+          });
 
           // Group upcoming movies by language
           upcomingByLang = {};
