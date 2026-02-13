@@ -171,6 +171,8 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
   const [providerLogos, setProviderLogos] = useState<Record<number, { logos: ProviderLogoItem[]; link?: string }>>({});
   const [filterOpen, setFilterOpen] = useState(false);
   const [expandedDecade, setExpandedDecade] = useState<number | null>(null);
+  const [heroIndex, setHeroIndex] = useState(0);
+  const [pauseHeroAutoSlide, setPauseHeroAutoSlide] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
 
   const [sendModal, setSendModal] = useState<{
@@ -314,6 +316,29 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
   );
 
   const visible = useMemo(() => items.slice(0, 48), [items]);
+  const topHeroShows = useMemo(() => items.slice(0, 5), [items]);
+  const showHeroCarousel = !searchQuery.trim() && topHeroShows.length > 0;
+  const activeHeroIndex = topHeroShows.length > 0 ? heroIndex % topHeroShows.length : 0;
+
+  useEffect(() => {
+    if (!showHeroCarousel || pauseHeroAutoSlide || topHeroShows.length < 2) return;
+
+    const intervalId = window.setInterval(() => {
+      setHeroIndex((prev) => (prev + 1) % topHeroShows.length);
+    }, 3000);
+
+    return () => window.clearInterval(intervalId);
+  }, [showHeroCarousel, pauseHeroAutoSlide, topHeroShows.length]);
+
+  const goToPrevHero = () => {
+    if (topHeroShows.length < 2) return;
+    setHeroIndex((prev) => (prev - 1 + topHeroShows.length) % topHeroShows.length);
+  };
+
+  const goToNextHero = () => {
+    if (topHeroShows.length < 2) return;
+    setHeroIndex((prev) => (prev + 1) % topHeroShows.length);
+  };
 
   useEffect(() => {
     // Country affects watch providers; reset derived state for a clean switch.
@@ -598,6 +623,126 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
           </div>
         )}
       </div>
+
+      {showHeroCarousel && (
+        <section
+          className="relative mb-8 overflow-hidden rounded-3xl border border-white/10 bg-[var(--bg-secondary)]/40 shadow-[0_18px_60px_rgba(0,0,0,0.45)]"
+          aria-label="Top 5 latest and trending shows"
+          onMouseEnter={() => setPauseHeroAutoSlide(true)}
+          onMouseLeave={() => setPauseHeroAutoSlide(false)}
+        >
+          <div
+            className="flex transition-transform duration-700 ease-out"
+            style={{ transform: `translateX(-${activeHeroIndex * 100}%)` }}
+          >
+            {topHeroShows.map((show) => {
+              const heroImage = show.backdrop_path
+                ? getImageUrl(show.backdrop_path, 'original')
+                : getImageUrl(show.poster_path, 'w780');
+              const firstAirYear = show.first_air_date?.split('-')[0] || 'TBA';
+              const langLabel = getLanguageName(show.original_language);
+              const poster = getImageUrl(show.poster_path);
+
+              return (
+                <article key={`show-hero-${show.id}`} className="relative min-w-full h-[52vw] min-h-[280px] max-h-[540px]">
+                  {heroImage ? (
+                    <img
+                      src={heroImage}
+                      alt={show.name}
+                      className="absolute inset-0 h-full w-full object-cover"
+                    />
+                  ) : (
+                    <div className="absolute inset-0 bg-[var(--bg-card)]" />
+                  )}
+
+                  <div className="absolute inset-0 bg-[radial-gradient(circle_at_76%_30%,rgba(30,64,175,0.25),transparent_42%),linear-gradient(90deg,rgba(2,6,23,0.96)_0%,rgba(2,6,23,0.75)_38%,rgba(2,6,23,0.2)_78%,rgba(2,6,23,0.6)_100%)]" />
+
+                  <div className="relative z-10 h-full flex items-end sm:items-center px-5 sm:px-10 pb-7 sm:pb-0">
+                    <div className="max-w-2xl">
+                      <div className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-black/35 px-3 py-1 text-[11px] uppercase tracking-[0.2em] text-white/85 mb-3">
+                        <span>Top 5</span>
+                        <span className="opacity-60">•</span>
+                        <span>Latest + Trending</span>
+                      </div>
+
+                      <h2 className="text-3xl sm:text-5xl font-black text-white leading-tight drop-shadow-[0_10px_22px_rgba(0,0,0,0.45)]">
+                        {show.name}
+                      </h2>
+
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
+                        <span className="px-2.5 py-1 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] font-semibold">
+                          {show.vote_average > 0 ? `★ ${show.vote_average.toFixed(1)}` : 'Unrated'}
+                        </span>
+                        <span className="px-2.5 py-1 rounded-full bg-white/15 text-white">{firstAirYear}</span>
+                        <span className="px-2.5 py-1 rounded-full bg-white/15 text-white">{langLabel}</span>
+                      </div>
+
+                      <p className="mt-3 text-sm sm:text-lg text-white/90 max-w-xl line-clamp-3">
+                        {show.overview || 'No synopsis available yet.'}
+                      </p>
+
+                      <div className="mt-4 flex items-center gap-3">
+                        <Link
+                          href={`/show/tmdbtv-${show.id}`}
+                          className="inline-flex items-center gap-2 rounded-xl bg-white/92 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-white"
+                        >
+                          More details
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                          </svg>
+                        </Link>
+                        <div className="rounded-full bg-black/35 border border-white/20 p-1">
+                          <WatchlistPlusButton
+                            movieId={`tmdbtv-${show.id}`}
+                            title={show.name}
+                            poster={poster}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+
+          {topHeroShows.length > 1 && (
+            <>
+              <button
+                type="button"
+                onClick={goToPrevHero}
+                className="absolute left-4 top-1/2 -translate-y-1/2 z-20 h-12 w-12 rounded-full border border-white/25 bg-black/35 text-white hover:bg-black/55"
+                aria-label="Previous show"
+              >
+                <svg className="mx-auto h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={goToNextHero}
+                className="absolute right-4 top-1/2 -translate-y-1/2 z-20 h-12 w-12 rounded-full border border-white/25 bg-black/35 text-white hover:bg-black/55"
+                aria-label="Next show"
+              >
+                <svg className="mx-auto h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 flex items-center gap-2">
+                {topHeroShows.map((show, index) => (
+                  <button
+                    key={`show-hero-dot-${show.id}`}
+                    type="button"
+                    onClick={() => setHeroIndex(index)}
+                    className={`h-2.5 rounded-full transition-all ${activeHeroIndex === index ? 'w-8 bg-[var(--accent)]' : 'w-2.5 bg-white/55 hover:bg-white/75'}`}
+                    aria-label={`Go to slide ${index + 1}`}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </section>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {visible.map((show, idx) => {

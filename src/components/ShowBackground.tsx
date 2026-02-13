@@ -115,19 +115,56 @@ export function ShowBackground() {
     );
   }
 
-  const allPosters = [...posters, ...posters];
+  const minPool = posters.length < 20 ? [...posters, ...posters, ...posters] : posters;
+  const posterPool = [...minPool, ...minPool];
+  const rows: string[][] = [];
+  const wallRowCount = 5;
+  const postersPerRow = 16;
+
+  for (let rowIndex = 0; rowIndex < wallRowCount; rowIndex += 1) {
+    const start = (rowIndex * 3) % minPool.length;
+    const rowItems: string[] = [];
+    for (let i = 0; i < postersPerRow; i += 1) {
+      rowItems.push(posterPool[(start + i) % posterPool.length]);
+    }
+    rows.push([...rowItems, ...rowItems]);
+  }
 
   return (
     <>
       <style jsx global>{`
-        @keyframes scrollShowPosters {
-          0% { transform: translateY(0); }
-          100% { transform: translateY(-50%); }
+        @keyframes showPosterWallLeft {
+          0% {
+            transform: translate3d(0, 0, 0);
+          }
+          100% {
+            transform: translate3d(-50%, 0, 0);
+          }
         }
-        .show-poster-scroll {
-          animation: scrollShowPosters 125s linear infinite;
+
+        @keyframes showPosterWallRight {
+          0% {
+            transform: translate3d(-50%, 0, 0);
+          }
+          100% {
+            transform: translate3d(0, 0, 0);
+          }
+        }
+
+        .show-poster-wall-track {
+          display: flex;
+          gap: 6px;
+          width: max-content;
           will-change: transform;
           transform: translateZ(0);
+        }
+
+        .show-poster-wall-left {
+          animation: showPosterWallLeft 36s steps(12, end) infinite;
+        }
+
+        .show-poster-wall-right {
+          animation: showPosterWallRight 36s steps(12, end) infinite;
         }
       `}</style>
       <div
@@ -147,29 +184,57 @@ export function ShowBackground() {
             position: 'absolute',
             inset: 0,
             background:
-              'linear-gradient(to bottom, rgba(10,10,12,0.5) 0%, rgba(10,10,12,0.66) 52%, rgba(10,10,12,0.82) 100%)',
+              'radial-gradient(920px 480px at 80% 0%, rgba(59,130,246,0.16) 0%, rgba(10,10,12,0) 70%), linear-gradient(to bottom, rgba(10,10,12,0.44) 0%, rgba(10,10,12,0.66) 52%, rgba(10,10,12,0.82) 100%)',
             zIndex: 1,
           }}
         />
         <div
-          className="show-poster-scroll"
           style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(8, 1fr)',
-            gap: '3px',
-            opacity: 0.42,
+            position: 'absolute',
+            inset: '-30px 0',
+            zIndex: 0,
+            opacity: 0.58,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'center',
+            gap: '6px',
           }}
         >
-          {allPosters.map((poster, index) => (
-            <div key={index} style={{ aspectRatio: '2/3', overflow: 'hidden' }}>
-              <img
-                src={`https://image.tmdb.org/t/p/w185${poster}`}
-                alt=""
-                loading="lazy"
-                decoding="async"
-                fetchPriority="low"
-                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-              />
+          {rows.map((rowPosters, rowIndex) => (
+            <div
+              key={`show-wall-row-${rowIndex}`}
+              style={{
+                overflow: 'hidden',
+              }}
+            >
+              <div
+                className={`show-poster-wall-track ${rowIndex % 2 === 0 ? 'show-poster-wall-left' : 'show-poster-wall-right'}`}
+                style={{
+                  animationDelay: `-${rowIndex * 1.5}s`,
+                }}
+              >
+                {rowPosters.map((poster, index) => (
+                  <div
+                    key={`show-wall-poster-${rowIndex}-${index}`}
+                    style={{
+                      width: 'clamp(72px, 8vw, 124px)',
+                      aspectRatio: '2/3',
+                      borderRadius: '6px',
+                      overflow: 'hidden',
+                      boxShadow: '0 10px 26px rgba(0,0,0,0.36)',
+                    }}
+                  >
+                    <img
+                      src={`https://image.tmdb.org/t/p/w185${poster}`}
+                      alt=""
+                      loading="lazy"
+                      decoding="async"
+                      fetchPriority="low"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                  </div>
+                ))}
+              </div>
             </div>
           ))}
         </div>
