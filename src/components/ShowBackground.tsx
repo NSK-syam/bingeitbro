@@ -115,44 +115,19 @@ export function ShowBackground() {
     );
   }
 
-  const minPool = posters.length < 20 ? [...posters, ...posters, ...posters] : posters;
-  const posterPool = [...minPool, ...minPool];
-  const columns: string[][] = [];
-  const wallColumnCount = 9;
-  const postersPerColumn = 12;
-
-  for (let columnIndex = 0; columnIndex < wallColumnCount; columnIndex += 1) {
-    const start = (columnIndex * 5) % minPool.length;
-    const columnItems: string[] = [];
-    for (let i = 0; i < postersPerColumn; i += 1) {
-      columnItems.push(posterPool[(start + i) % posterPool.length]);
-    }
-    columns.push([...columnItems, ...columnItems]);
-  }
+  const all = posters.length > 0 ? [...posters, ...posters] : [];
 
   return (
     <>
       <style jsx global>{`
-        @keyframes showPosterWallTopToBottom {
-          0% {
-            transform: translate3d(0, -50%, 0);
-          }
-          100% {
-            transform: translate3d(0, 0, 0);
-          }
+        @keyframes scrollShowPosters {
+          0% { transform: translateY(0); }
+          100% { transform: translateY(-50%); }
         }
-
-        .show-poster-wall-column-track {
-          display: flex;
-          flex-direction: column;
-          gap: 6px;
-          width: 100%;
+        .show-poster-scroll {
+          animation: scrollShowPosters 125s linear infinite;
           will-change: transform;
           transform: translateZ(0);
-        }
-
-        .show-poster-wall-top-to-bottom {
-          animation: showPosterWallTopToBottom 36s steps(12, end) infinite;
         }
       `}</style>
       <div
@@ -177,57 +152,24 @@ export function ShowBackground() {
           }}
         />
         <div
+          className="show-poster-scroll"
           style={{
-            position: 'absolute',
-            inset: '-30px 0',
-            zIndex: 0,
-            opacity: 0.58,
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'stretch',
-            gap: '6px',
-            padding: '0 6px',
-            height: 'calc(100% + 60px)',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(8, 1fr)',
+            gap: '3px',
+            opacity: 0.42,
           }}
         >
-          {columns.map((columnPosters, columnIndex) => (
-            <div
-              key={`show-wall-column-${columnIndex}`}
-              style={{
-                width: 'clamp(72px, 8vw, 124px)',
-                height: '100%',
-                overflow: 'hidden',
-                borderRadius: '6px',
-              }}
-            >
-              <div
-                className="show-poster-wall-column-track show-poster-wall-top-to-bottom"
-                style={{
-                  animationDelay: `-${columnIndex * 1.5}s`,
-                }}
-              >
-                {columnPosters.map((poster, index) => (
-                  <div
-                    key={`show-wall-poster-${columnIndex}-${index}`}
-                    style={{
-                      width: '100%',
-                      aspectRatio: '2/3',
-                      borderRadius: '6px',
-                      overflow: 'hidden',
-                      boxShadow: '0 10px 26px rgba(0,0,0,0.36)',
-                    }}
-                  >
-                    <img
-                      src={`https://image.tmdb.org/t/p/w185${poster}`}
-                      alt=""
-                      loading="lazy"
-                      decoding="async"
-                      fetchPriority="low"
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                    />
-                  </div>
-                ))}
-              </div>
+          {all.map((poster, index) => (
+            <div key={index} style={{ aspectRatio: '2/3', overflow: 'hidden' }}>
+              <img
+                src={`https://image.tmdb.org/t/p/w185${poster}`}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                fetchPriority="low"
+                style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              />
             </div>
           ))}
         </div>
