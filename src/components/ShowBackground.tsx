@@ -22,7 +22,7 @@ export function ShowBackground() {
   useEffect(() => {
     if (lightMode) return undefined;
 
-    if (inMemoryCache && Date.now() - inMemoryCache.ts < CACHE_TTL_MS) {
+    if (inMemoryCache && Date.now() - inMemoryCache.ts < CACHE_TTL_MS && inMemoryCache.posters.length > 0) {
       const cached = inMemoryCache.posters;
       const timer = window.setTimeout(() => setPosters(cached), 0);
       return () => window.clearTimeout(timer);
@@ -32,7 +32,12 @@ export function ShowBackground() {
       const raw = window.sessionStorage.getItem(CACHE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as { posters?: string[]; ts?: number };
-        if (Array.isArray(parsed.posters) && typeof parsed.ts === 'number' && Date.now() - parsed.ts < CACHE_TTL_MS) {
+        if (
+          Array.isArray(parsed.posters) &&
+          parsed.posters.length > 0 &&
+          typeof parsed.ts === 'number' &&
+          Date.now() - parsed.ts < CACHE_TTL_MS
+        ) {
           inMemoryCache = { posters: parsed.posters, ts: parsed.ts };
           const cached = parsed.posters;
           const timer = window.setTimeout(() => setPosters(cached), 0);

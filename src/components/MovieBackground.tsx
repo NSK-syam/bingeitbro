@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import { getRenderProfile } from '@/lib/render-profile';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
-const CACHE_KEY = 'bib-movie-bg-posters-v2';
+const CACHE_KEY = 'bib-movie-bg-posters-v3';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const QUERY_LIMIT = 7;
 const POSTERS_PER_QUERY = 6;
@@ -22,7 +22,7 @@ export function MovieBackground() {
   useEffect(() => {
     if (lightMode) return undefined;
 
-    if (inMemoryCache && Date.now() - inMemoryCache.ts < CACHE_TTL_MS) {
+    if (inMemoryCache && Date.now() - inMemoryCache.ts < CACHE_TTL_MS && inMemoryCache.posters.length > 0) {
       const cached = inMemoryCache.posters;
       const timer = window.setTimeout(() => setPosters(cached), 0);
       return () => window.clearTimeout(timer);
@@ -32,7 +32,12 @@ export function MovieBackground() {
       const raw = window.sessionStorage.getItem(CACHE_KEY);
       if (raw) {
         const parsed = JSON.parse(raw) as { posters?: string[]; ts?: number };
-        if (Array.isArray(parsed.posters) && typeof parsed.ts === 'number' && Date.now() - parsed.ts < CACHE_TTL_MS) {
+        if (
+          Array.isArray(parsed.posters) &&
+          parsed.posters.length > 0 &&
+          typeof parsed.ts === 'number' &&
+          Date.now() - parsed.ts < CACHE_TTL_MS
+        ) {
           inMemoryCache = { posters: parsed.posters, ts: parsed.ts };
           const cached = parsed.posters;
           const timer = window.setTimeout(() => setPosters(cached), 0);
