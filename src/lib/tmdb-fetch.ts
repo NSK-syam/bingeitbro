@@ -10,7 +10,9 @@ function isTmdbV3Url(url: string): boolean {
 }
 
 function getProxyUrl(url: string): string {
-  return `/api/tmdb?url=${encodeURIComponent(url)}`;
+  // `pv` busts stale edge cache entries that may have been created
+  // before server-side key override and cache policy fixes.
+  return `/api/tmdb?url=${encodeURIComponent(url)}&pv=2`;
 }
 
 export async function fetchTmdbWithProxy(url: string, init?: RequestInit): Promise<Response> {

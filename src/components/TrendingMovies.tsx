@@ -404,6 +404,30 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
           allMovies = allMovies.filter(m => !upcomingIds.has(m.id));
           allUpcoming = allUpcoming.filter(m => !releasedIds.has(m.id));
 
+          const hasAnyFilters = Boolean(selectedLang || selectedGenre || selectedYear || selectedOtt);
+          if (allMovies.length === 0 && !hasAnyFilters) {
+            // Safety fallback: if discover+OTT returns empty due transient upstream/caching
+            // conditions, show a stable popular list so the page still works.
+            const fallbackUrl =
+              `https://api.themoviedb.org/3/discover/movie` +
+              `?api_key=${apiKey}` +
+              `&sort_by=popularity.desc` +
+              `&primary_release_date.lte=${today}` +
+              `&vote_count.gte=50` +
+              `&include_adult=false` +
+              `&watch_region=${country}` +
+              `&page=1`;
+
+            const fallbackResponse = await fetchTmdbWithProxy(fallbackUrl, { signal: controller.signal });
+            const fallbackData = await fallbackResponse.json();
+            const fallbackMovies = (fallbackData.results || []).filter(
+              (movie: TrendingMovie) => movie.poster_path && typeof movie.vote_average === 'number' && movie.vote_average > 0
+            );
+            if (fallbackMovies.length > 0) {
+              allMovies = fallbackMovies;
+            }
+          }
+
           // Group upcoming movies by language
           upcomingByLang = {};
           for (const movie of allUpcoming) {

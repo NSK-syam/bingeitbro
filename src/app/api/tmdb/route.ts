@@ -46,13 +46,18 @@ export async function GET(request: NextRequest) {
     });
 
     const body = await upstream.text();
+    const isSuccess = upstream.ok;
     return new NextResponse(body, {
       status: upstream.status,
       headers: {
         'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
-        // Cache at CDN/edge to keep India latency low and reduce TMDB round-trips.
-        'Cache-Control': `public, max-age=0, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`,
-        'CDN-Cache-Control': `public, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`,
+        // Cache successful responses; never cache upstream failures.
+        'Cache-Control': isSuccess
+          ? `public, max-age=0, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`
+          : 'no-store',
+        'CDN-Cache-Control': isSuccess
+          ? `public, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`
+          : 'no-store',
       },
     });
   } catch {
