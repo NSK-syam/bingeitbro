@@ -44,6 +44,12 @@ export async function POST(req: Request) {
     process.env.SUPABASE_PROJECT_URL ||
     ''
   ).trim();
+  const anonKey =
+    (
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+      process.env.SUPABASE_ANON_KEY ||
+      ''
+    ).trim();
   const serviceRole =
     (
       process.env.SUPABASE_SERVICE_ROLE_KEY ||
@@ -52,10 +58,12 @@ export async function POST(req: Request) {
       ''
     ).trim();
 
-  if (!url || !serviceRole) {
+  if (!url || (!serviceRole && !anonKey)) {
     const missing: string[] = [];
     if (!url) missing.push('NEXT_PUBLIC_SUPABASE_URL (or SUPABASE_URL)');
-    if (!serviceRole) missing.push('SUPABASE_SERVICE_ROLE_KEY');
+    if (!serviceRole && !anonKey) {
+      missing.push('SUPABASE_SERVICE_ROLE_KEY or NEXT_PUBLIC_SUPABASE_ANON_KEY');
+    }
     return NextResponse.json(
       { error: `Server is missing ${missing.join(' and ')}.` },
       { status: 500 },
@@ -88,12 +96,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Invalid birthdate.' }, { status: 400 });
   }
 
-  const admin = createClient(url, serviceRole, {
+  const lookupClient = createClient(url, serviceRole || anonKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
 
   // Username check
-  const { data: existingUsername, error: usernameErr } = await admin
+  const { data: existingUsername, error: usernameErr } = await lookupClient
     .from('users')
     .select('id')
     .eq('username', username)
@@ -106,7 +114,7 @@ export async function POST(req: Request) {
   }
 
   // Email check (profiles table)
-  const { data: existingEmail, error: emailErr } = await admin
+  const { data: existingEmail, error: emailErr } = await lookupClient
     .from('users')
     .select('id')
     .eq('email', email)
@@ -118,12 +126,58 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'An account with this email already exists.' }, { status: 409 });
   }
 
-  // Create auth user with email_confirm=true (no email confirmation flow)
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+  const profilePayload = {
+    email,
+    name,
+    username,
+    avatar: getRandomMovieAvatar(),
+    birthdate: birthdate || null,
+  };
+
+  if (serviceRole) {
+    const admin = createClient(url, serviceRole, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+
+    // Create auth user with email_confirm=true (no email confirmation flow)
+    const { data: created, error: createErr } = await admin.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name, username },
+    });
+
+    if (createErr || !created?.user?.id) {
+      const message = createErr?.message || 'Unable to create user.';
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+
+    const userId = created.user.id;
+    const { error: insertErr } = await admin.from('users').insert({
+      id: userId,
+      ...profilePayload,
+    });
+
+    if (insertErr) {
+      // Roll back auth user to avoid orphaned auth accounts.
+      await admin.auth.admin.deleteUser(userId);
+      return NextResponse.json({ error: 'Unable to create user profile.' }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true }, { status: 200 });
+  }
+
+  // Fallback path when service-role key is unavailable:
+  // Use anon signup and insert profile with the returned access token.
+  const anon = createClient(url, anonKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data: created, error: createErr } = await anon.auth.signUp({
     email,
     password,
-    email_confirm: true,
-    user_metadata: { name, username },
+    options: {
+      data: { name, username, birthdate: birthdate || null },
+    },
   });
 
   if (createErr || !created?.user?.id) {
@@ -132,19 +186,29 @@ export async function POST(req: Request) {
   }
 
   const userId = created.user.id;
+  const accessToken = created.session?.access_token;
+  if (!accessToken) {
+    // Session can be null when email confirmation is required.
+    return NextResponse.json(
+      { ok: true, needsEmailConfirmation: true },
+      { status: 200 },
+    );
+  }
 
-  const { error: insertErr } = await admin.from('users').insert({
+  const authed = createClient(url, anonKey, {
+    global: {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error: insertErr } = await authed.from('users').insert({
     id: userId,
-    email,
-    name,
-    username,
-    avatar: getRandomMovieAvatar(),
-    birthdate: birthdate || null,
+    ...profilePayload,
   });
 
   if (insertErr) {
-    // Roll back auth user to avoid orphaned auth accounts.
-    await admin.auth.admin.deleteUser(userId);
     return NextResponse.json({ error: 'Unable to create user profile.' }, { status: 500 });
   }
 

@@ -238,9 +238,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           birthdate: birthdate || null,
         }),
       });
-      const payload = (await resp.json()) as { ok?: boolean; error?: string };
+      const payload = (await resp.json()) as { ok?: boolean; error?: string; needsEmailConfirmation?: boolean };
       if (!resp.ok || !payload?.ok) {
         return { error: new Error(payload?.error || 'Signup failed.') };
+      }
+      if (payload.needsEmailConfirmation) {
+        return {
+          error: new Error(
+            'Account created. Please verify your email, then sign in.',
+          ),
+        };
       }
 
       const supabase = createClient();
