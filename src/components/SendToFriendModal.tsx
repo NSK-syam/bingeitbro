@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthProvider';
 import { fetchFriendsList, sendFriendRecommendations, getAlreadyRecommendedRecipientIds, type FriendForSelect } from '@/lib/supabase-rest';
 import { notifyFriendRecommendationEmails } from '@/lib/notifications';
+import { getResolvedTimeZone, parseLocalDateTimeInput } from '@/lib/local-datetime';
 
 interface SendToFriendModalProps {
     isOpen: boolean;
@@ -39,6 +40,9 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
     const [friendsLoadError, setFriendsLoadError] = useState('');
     const [success, setSuccess] = useState(false);
     const [alreadySentTo, setAlreadySentTo] = useState<Set<string>>(new Set());
+    const [scheduleReminder, setScheduleReminder] = useState(false);
+    const [remindAtInput, setRemindAtInput] = useState('');
+    const userTimeZone = getResolvedTimeZone();
 
     const [searchQuery, setSearchQuery] = useState('');
 
@@ -107,6 +111,27 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
         setStatusMessage('');
 
         try {
+            const remindAtIso = (() => {
+                if (!scheduleReminder) return null;
+                const raw = remindAtInput.trim();
+                if (!raw) return '';
+                const parsed = parseLocalDateTimeInput(raw);
+                if (!parsed) return '';
+                if (Number.isNaN(parsed.getTime())) return '';
+                return parsed.toISOString();
+            })();
+
+            if (scheduleReminder) {
+                if (!remindAtIso) {
+                    setError('Pick a valid date and time for the reminder.');
+                    return;
+                }
+                if (new Date(remindAtIso).getTime() < Date.now() - 60_000) {
+                    setError('Reminder time must be in the future.');
+                    return;
+                }
+            }
+
             const recipientList = Array.from(selectedFriends);
             const alreadySent = await getAlreadyRecommendedRecipientIds(user!.id, recipientList, {
                 tmdbId: tmdbId != null ? Number(tmdbId) : null,
@@ -139,6 +164,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 movie_poster: safePoster,
                 movie_year: movieYear ?? null,
                 personal_message: safeMessage,
+                remind_at: remindAtIso,
             }));
 
             const result = await sendFriendRecommendations(recommendations);
@@ -187,6 +213,8 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
 
             if (alreadyCount > 0 || notAllowedCount > 0) {
                 setStatusMessage(messageParts.join(' '));
+            } else if (scheduleReminder && remindAtIso) {
+                setStatusMessage(`Reminder scheduled for ${new Date(remindAtIso).toLocaleString()}.`);
             }
             setSuccess(true);
             setTimeout(() => {
@@ -194,6 +222,8 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 setSelectedFriends(new Set());
                 setPersonalMessage('');
                 setSearchQuery('');
+                setScheduleReminder(false);
+                setRemindAtInput('');
                 setSuccess(false);
                 setError('');
                 setStatusMessage('');
@@ -216,6 +246,8 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
             setSelectedFriends(new Set());
             setPersonalMessage('');
             setSearchQuery('');
+            setScheduleReminder(false);
+            setRemindAtInput('');
             setError('');
             setSuccess(false);
             setStatusMessage('');
@@ -287,6 +319,39 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                     rows={3}
                                     maxLength={500}
                                 />
+                            </div>
+
+                            <div className="mb-6 rounded-xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
+                                <label className="inline-flex items-center gap-2 text-sm font-medium text-[var(--text-primary)]">
+                                    <input
+                                        type="checkbox"
+                                        checked={scheduleReminder}
+                                        onChange={(e) => {
+                                            setScheduleReminder(e.target.checked);
+                                            if (!e.target.checked) setRemindAtInput('');
+                                        }}
+                                        disabled={isSending}
+                                        className="h-4 w-4 rounded border-white/20 bg-transparent text-[var(--accent)] focus:ring-[var(--accent)]"
+                                    />
+                                    Schedule reminder for selected friends
+                                </label>
+                                <p className="mt-1 text-xs text-[var(--text-muted)]">
+                                    They&apos;ll get a reminder notification and email at this time.
+                                </p>
+                                {scheduleReminder && (
+                                    <div className="mt-3">
+                                        <input
+                                            type="datetime-local"
+                                            name="friendRecommendationRemindAt"
+                                            id="friendRecommendationRemindAt"
+                                            value={remindAtInput}
+                                            onChange={(e) => setRemindAtInput(e.target.value)}
+                                            disabled={isSending}
+                                            className="w-full rounded-lg border border-white/10 bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--accent)]/60 focus:outline-none disabled:opacity-50"
+                                        />
+                                        <p className="mt-2 text-xs text-[var(--text-muted)]">Your timezone: {userTimeZone}</p>
+                                    </div>
+                                )}
                             </div>
 
                             {/* Friends List with Search */}

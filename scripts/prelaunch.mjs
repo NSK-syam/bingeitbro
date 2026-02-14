@@ -247,7 +247,7 @@ function runChecks() {
   const required = ['NEXT_PUBLIC_SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_ANON_KEY', 'NEXT_PUBLIC_TMDB_API_KEY'];
   const missingRequired = required.filter((k) => !env[k]);
   const serviceRolePresent = Boolean(env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_SERVICE_KEY || env.SUPABASE_SERVICE_ROLE || env.SERVICE_ROLE_KEY);
-  const optionalMissing = ['UNOSEND_API_KEY', 'UNOSEND_FROM'].filter((k) => !env[k]);
+  const optionalMissing = ['UNOSEND_API_KEY', 'UNOSEND_FROM', 'WATCH_REMINDER_CRON_SECRET'].filter((k) => !env[k]);
 
   if (missingRequired.length > 0 || !serviceRolePresent) {
     const missing = [...missingRequired, ...(serviceRolePresent ? [] : ['SUPABASE_SERVICE_ROLE_KEY (or equivalent)'])];

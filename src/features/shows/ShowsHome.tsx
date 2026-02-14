@@ -7,6 +7,7 @@ import { BibSplash } from '@/components/BibSplash';
 import { CountryToggle } from '@/components/CountryToggle';
 import { Header } from '@/components/Header';
 import { HubTabs } from '@/components/HubTabs';
+import { MovieCalendarSpotlightPopup } from '@/components/MovieCalendarSpotlightPopup';
 import { ShowBackground } from '@/components/ShowBackground';
 import { useAuth } from '@/components/AuthProvider';
 import { useCountry } from '@/hooks';
@@ -69,6 +70,7 @@ export default function ShowsHome() {
         onSuccess={onSuccess}
         defaultType="series"
       />
+      {user && <MovieCalendarSpotlightPopup userId={user.id} mediaType="tv" />}
 
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-16">
         {!user ? (
@@ -81,7 +83,7 @@ export default function ShowsHome() {
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Shows</p>
               <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-[var(--text-primary)]">{hero}</h1>
               <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                Trending across languages, plus your friends' picks. Add a show to your profile or send it directly to a friend.
+                Trending across languages, plus your friends&apos; picks. Add a show to your profile or send it directly to a friend.
               </p>
             </div>
 

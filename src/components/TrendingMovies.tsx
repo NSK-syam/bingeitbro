@@ -711,7 +711,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
               >
                 All
               </button>
-              {GENRE_LIST.slice(0, 12).map((g) => (
+              {GENRE_LIST.map((g) => (
                 <button
                   key={g.id}
                   onClick={() => updateFilters({ genre: selectedGenre === String(g.id) ? '' : String(g.id) })}
@@ -764,15 +764,34 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
               >
                 All
               </button>
-              {OTT_PROVIDERS.filter((p) => Boolean(p.ids[country])).map((p) => (
-                <button
-                  key={p.key}
-                  onClick={() => updateFilters({ ott: activeOttKey === p.key ? '' : p.key })}
-                  className={`px-3 py-1.5 text-sm rounded-full transition-all ${activeOttKey === p.key ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium' : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'}`}
-                >
-                  {p.name}
-                </button>
-              ))}
+              {OTT_PROVIDERS.map((p) => {
+                const availableInCountry = Boolean(p.ids[country]);
+                const availabilityHint = !availableInCountry
+                  ? (p.ids.IN ? 'IN only' : p.ids.US ? 'US only' : '')
+                  : '';
+
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => {
+                      if (!availableInCountry) return;
+                      updateFilters({ ott: activeOttKey === p.key ? '' : p.key });
+                    }}
+                    disabled={!availableInCountry}
+                    title={!availableInCountry ? `Available in ${availabilityHint.replace(' only', '')}` : undefined}
+                    className={`px-3 py-1.5 text-sm rounded-full transition-all inline-flex items-center gap-1.5 ${
+                      !availableInCountry
+                        ? 'bg-[var(--bg-card)]/60 text-[var(--text-muted)]/55 border border-white/10 cursor-not-allowed'
+                        : activeOttKey === p.key
+                          ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
+                          : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
+                    }`}
+                  >
+                    <span>{p.name}</span>
+                    {availabilityHint && <span className="text-[10px] uppercase tracking-wide">{availabilityHint}</span>}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">

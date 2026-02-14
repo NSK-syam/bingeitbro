@@ -24,6 +24,7 @@ interface FriendRecommendation {
     isRead: boolean;
     isWatched?: boolean;
     watchedAt?: string | null;
+    remindAt?: string | null;
     createdAt: string;
     movieId: string;
     isTmdb: boolean;
@@ -39,6 +40,7 @@ interface SentRecommendation {
     isRead: boolean;
     isWatched?: boolean;
     watchedAt?: string | null;
+    remindAt?: string | null;
     createdAt: string;
     movieId: string;
     isTmdb: boolean;
@@ -99,6 +101,7 @@ export function FriendRecommendationsModal({
                 isRead: rec.is_read,
                 isWatched: rec.is_watched ?? false,
                 watchedAt: rec.watched_at ?? null,
+                remindAt: rec.remind_at ?? null,
                 createdAt: rec.created_at,
                 movieId: String(rec.tmdb_id ?? rec.recommendation_id ?? ''),
                 isTmdb: !!rec.tmdb_id,
@@ -146,6 +149,7 @@ export function FriendRecommendationsModal({
                 isRead: rec.is_read,
                 isWatched: rec.is_watched ?? false,
                 watchedAt: rec.watched_at ?? null,
+                remindAt: rec.remind_at ?? null,
                 createdAt: rec.created_at,
                 movieId: String(rec.tmdb_id ?? rec.recommendation_id ?? ''),
                 isTmdb: !!rec.tmdb_id,
@@ -556,6 +560,16 @@ export function FriendRecommendationsModal({
                                                         {rec.isWatched && rec.watchedAt && (
                                                             <p className="text-xs text-green-300 mt-3">
                                                                 Watched on {new Date(rec.watchedAt).toLocaleDateString('en-US', {
+                                                                    month: 'short',
+                                                                    day: 'numeric',
+                                                                    hour: 'numeric',
+                                                                    minute: '2-digit',
+                                                                })}
+                                                            </p>
+                                                        )}
+                                                        {!rec.isWatched && rec.remindAt && (
+                                                            <p className="text-xs text-amber-300 mt-3">
+                                                                Reminder scheduled for {new Date(rec.remindAt).toLocaleDateString('en-US', {
                                                                     month: 'short',
                                                                     day: 'numeric',
                                                                     hour: 'numeric',

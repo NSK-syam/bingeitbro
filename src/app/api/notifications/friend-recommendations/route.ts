@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import { buildBibEmailTemplate } from '@/lib/email-template';
 
 export const runtime = 'nodejs';
 
@@ -55,15 +56,6 @@ function getBearerToken(request: Request): string | null {
   const [scheme, token] = header.split(' ');
   if (!scheme || scheme.toLowerCase() !== 'bearer' || !token) return null;
   return token.trim();
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 const unosendBaseUrl = 'https://www.unosend.co/api/v1';
@@ -193,10 +185,6 @@ export async function POST(request: Request) {
 
     const movieLabel = rec.movie_year ? `${rec.movie_title} (${rec.movie_year})` : rec.movie_title;
     const message = rec.personal_message?.trim();
-    const safeMessage = message ? escapeHtml(message) : '';
-    const safeMovie = escapeHtml(movieLabel);
-    const safeSender = escapeHtml(senderName);
-    const safeRecipient = escapeHtml(recipient.name || 'there');
     const link = `${siteUrl}/?view=friends`;
 
     const subject = `${senderName} sent you a movie recommendation`;
@@ -209,15 +197,20 @@ export async function POST(request: Request) {
       `View it: ${link}`,
     ].filter(Boolean);
 
-    const html = `
-      <div style="font-family:Arial,sans-serif;line-height:1.5;color:#111">
-        <p>Hi ${safeRecipient},</p>
-        <p><strong>${safeSender}</strong> sent you a recommendation:</p>
-        <p style="font-size:16px;"><strong>${safeMovie}</strong></p>
-        ${safeMessage ? `<p style="margin-top:12px;">Message: “${safeMessage}”</p>` : ''}
-        <p style="margin-top:16px;"><a href="${link}" style="color:#2563eb">View it on Binge it bro</a></p>
-      </div>
-    `;
+    const html = buildBibEmailTemplate({
+      siteUrl,
+      preheader: `${senderName} recommended ${movieLabel}`,
+      recipientName: recipient.name || 'there',
+      title: `${senderName} sent you a recommendation`,
+      intro: 'Your friend thinks this one is worth your time.',
+      spotlightLabel: 'Movie Pick',
+      spotlightValue: movieLabel,
+      messageLabel: message ? 'Personal Note' : undefined,
+      messageValue: message || undefined,
+      ctaLabel: 'View on Binge it bro',
+      ctaUrl: link,
+      footerNote: 'If you did not expect this, you can ignore this email.',
+    });
 
     return [
       {
@@ -227,11 +220,6 @@ export async function POST(request: Request) {
         html,
         text: textParts.join('\n'),
         ...(unosendReplyTo ? { reply_to: unosendReplyTo } : {}),
-        tags: {
-          email_type: 'friend_recommendation',
-          sender_id: sender.id,
-          recipient_id: recipient.id,
-        },
       },
     ];
   });
@@ -249,9 +237,29 @@ export async function POST(request: Request) {
   }
 
   const batchResult = await unosendRequest('/emails/batch', emails);
-  if (!batchResult.ok) {
-    return NextResponse.json({ error: batchResult.message }, { status: 500 });
+  if (batchResult.ok) {
+    return NextResponse.json({ sent: emails.length, skipped: filtered.length - emails.length }, { status: 200 });
   }
 
-  return NextResponse.json({ sent: emails.length, skipped: filtered.length - emails.length }, { status: 200 });
+  let sent = 0;
+  const failedDetails: string[] = [];
+  failedDetails.push(`batch:${batchResult.message}`);
+  for (const email of emails) {
+    const single = await unosendRequest('/emails', email);
+    if (single.ok) {
+      sent += 1;
+    } else {
+      failedDetails.push(`single:${single.message}`);
+    }
+  }
+
+  return NextResponse.json(
+    {
+      sent,
+      skipped: filtered.length - sent,
+      failed: emails.length - sent,
+      failedDetails: failedDetails.slice(0, 10),
+    },
+    { status: sent > 0 ? 200 : 500 },
+  );
 }

@@ -10,6 +10,20 @@ type YoutubeTrailerItem = {
   source: 'youtube-search';
 };
 
+const YT_CACHE_SECONDS = 6 * 60 * 60;
+
+function jsonWithCache(payload: unknown, init?: { status?: number }) {
+  return NextResponse.json(payload, {
+    status: init?.status,
+    headers: {
+      'Cache-Control': `public, max-age=0, s-maxage=${YT_CACHE_SECONDS}, stale-while-revalidate=86400`,
+      'CDN-Cache-Control': `public, s-maxage=${YT_CACHE_SECONDS}, stale-while-revalidate=86400`,
+      'Surrogate-Control': `max-age=${YT_CACHE_SECONDS}, stale-while-revalidate=86400`,
+      Vary: 'Accept-Encoding',
+    },
+  });
+}
+
 function readBalancedJsonObject(input: string, startIndex: number): string | null {
   let depth = 0;
   let inString = false;
@@ -165,7 +179,7 @@ export async function GET(request: NextRequest) {
   const q = request.nextUrl.searchParams.get('q')?.trim();
 
   if (!q) {
-    return NextResponse.json({ error: 'Missing q query parameter', items: [] }, { status: 400 });
+    return jsonWithCache({ error: 'Missing q query parameter', items: [] }, { status: 400 });
   }
 
   const searchUrl = `https://www.youtube.com/results?search_query=${encodeURIComponent(q)}`;
@@ -181,19 +195,19 @@ export async function GET(request: NextRequest) {
     });
 
     if (!response.ok) {
-      return NextResponse.json({ items: [] });
+      return jsonWithCache({ items: [] });
     }
 
     const html = await response.text();
     const initialData = extractInitialData(html);
 
     if (!initialData) {
-      return NextResponse.json({ items: [] });
+      return jsonWithCache({ items: [] });
     }
 
     const items = extractVideoRenderers(initialData).slice(0, 8);
-    return NextResponse.json({ items });
+    return jsonWithCache({ items });
   } catch {
-    return NextResponse.json({ items: [] });
+    return jsonWithCache({ items: [] });
   }
 }

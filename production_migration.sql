@@ -465,6 +465,130 @@ DO $$ BEGIN
 END $$;
 
 -- ============================================================================
+-- AI BUDGET GUARD (Gemini What-to-Watch)
+-- ============================================================================
+
+CREATE TABLE IF NOT EXISTS ai_budget_guard (
+  scope TEXT PRIMARY KEY,
+  spent_usd NUMERIC(12,6) NOT NULL DEFAULT 0,
+  hard_limit_usd NUMERIC(12,2) NOT NULL DEFAULT 5,
+  updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+);
+
+INSERT INTO ai_budget_guard (scope, spent_usd, hard_limit_usd)
+VALUES ('what_to_watch_gemini', 0, 5)
+ON CONFLICT (scope) DO NOTHING;
+
+ALTER TABLE ai_budget_guard ENABLE ROW LEVEL SECURITY;
+GRANT SELECT, INSERT, UPDATE ON TABLE ai_budget_guard TO service_role;
+
+CREATE OR REPLACE FUNCTION ai_budget_status(
+  p_scope TEXT,
+  p_default_limit NUMERIC DEFAULT 5
+)
+RETURNS TABLE(
+  spent_usd NUMERIC,
+  limit_usd NUMERIC,
+  remaining_usd NUMERIC,
+  blocked BOOLEAN
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_spent NUMERIC;
+  v_limit NUMERIC;
+BEGIN
+  INSERT INTO ai_budget_guard(scope, hard_limit_usd)
+  VALUES (p_scope, p_default_limit)
+  ON CONFLICT (scope) DO NOTHING;
+
+  SELECT g.spent_usd, g.hard_limit_usd
+  INTO v_spent, v_limit
+  FROM ai_budget_guard g
+  WHERE g.scope = p_scope;
+
+  IF v_limit IS NULL THEN
+    v_limit := p_default_limit;
+  END IF;
+  IF v_spent IS NULL THEN
+    v_spent := 0;
+  END IF;
+
+  RETURN QUERY
+  SELECT
+    v_spent,
+    v_limit,
+    GREATEST(v_limit - v_spent, 0),
+    (v_spent >= v_limit);
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION consume_ai_budget(
+  p_scope TEXT,
+  p_amount NUMERIC,
+  p_default_limit NUMERIC DEFAULT 5
+)
+RETURNS TABLE(
+  allowed BOOLEAN,
+  spent_usd NUMERIC,
+  limit_usd NUMERIC,
+  remaining_usd NUMERIC
+)
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_spent NUMERIC;
+  v_limit NUMERIC;
+  v_next NUMERIC;
+BEGIN
+  IF p_amount IS NULL OR p_amount < 0 THEN
+    p_amount := 0;
+  END IF;
+
+  INSERT INTO ai_budget_guard(scope, hard_limit_usd)
+  VALUES (p_scope, p_default_limit)
+  ON CONFLICT (scope) DO NOTHING;
+
+  SELECT g.spent_usd, g.hard_limit_usd
+  INTO v_spent, v_limit
+  FROM ai_budget_guard g
+  WHERE g.scope = p_scope
+  FOR UPDATE;
+
+  IF v_limit IS NULL THEN
+    v_limit := p_default_limit;
+  END IF;
+  IF v_spent IS NULL THEN
+    v_spent := 0;
+  END IF;
+
+  v_next := v_spent + p_amount;
+
+  IF v_next > v_limit THEN
+    RETURN QUERY
+    SELECT FALSE, v_spent, v_limit, GREATEST(v_limit - v_spent, 0);
+    RETURN;
+  END IF;
+
+  UPDATE ai_budget_guard
+  SET spent_usd = v_next, updated_at = NOW()
+  WHERE scope = p_scope;
+
+  RETURN QUERY
+  SELECT TRUE, v_next, v_limit, GREATEST(v_limit - v_next, 0);
+END;
+$$;
+
+REVOKE ALL ON FUNCTION ai_budget_status(TEXT, NUMERIC) FROM PUBLIC;
+REVOKE ALL ON FUNCTION consume_ai_budget(TEXT, NUMERIC, NUMERIC) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION ai_budget_status(TEXT, NUMERIC) TO service_role;
+GRANT EXECUTE ON FUNCTION consume_ai_budget(TEXT, NUMERIC, NUMERIC) TO service_role;
+
+-- ============================================================================
 -- MIGRATION COMPLETE!
 -- ============================================================================
 -- You can now:

@@ -30,10 +30,14 @@ type RecRow = {
   movie_poster: string;
   movie_year: number | null;
   personal_message: string;
+  remind_at: string | null;
 };
 
 /** Payload sent to Supabase (tmdb_id as string to match TEXT column). */
-type InsertRow = Omit<RecRow, 'tmdb_id'> & { tmdb_id: string | null };
+type InsertRow = Omit<RecRow, 'tmdb_id' | 'remind_at'> & {
+  tmdb_id: string | null;
+  remind_at?: string;
+};
 
 export async function POST(request: Request) {
   try {
@@ -86,6 +90,15 @@ export async function POST(request: Request) {
       movie_poster: poster.startsWith('https://image.tmdb.org/') ? poster : '',
       movie_year: typeof r.movie_year === 'number' ? r.movie_year : null,
       personal_message: String(r.personal_message ?? '').trim().slice(0, 200),
+      remind_at: (() => {
+        const raw = String(r.remind_at ?? '').trim();
+        if (!raw) return null;
+        const parsed = new Date(raw);
+        if (Number.isNaN(parsed.getTime())) return null;
+        // Allow minor clock skew while still blocking stale reminder timestamps.
+        if (parsed.getTime() < Date.now() - 60_000) return null;
+        return parsed.toISOString();
+      })(),
     });
   }
 
@@ -143,9 +156,18 @@ export async function POST(request: Request) {
 
   const tryInsert = async (row: RecRow): Promise<{ ok: boolean; code: string; message: string }> => {
     const insertBody: InsertRow = {
-      ...row,
+      sender_id: row.sender_id,
+      recipient_id: row.recipient_id,
+      recommendation_id: row.recommendation_id,
       tmdb_id: row.tmdb_id != null ? String(row.tmdb_id) : null,
+      movie_title: row.movie_title,
+      movie_poster: row.movie_poster,
+      movie_year: row.movie_year,
+      personal_message: row.personal_message,
     };
+    if (row.remind_at) {
+      insertBody.remind_at = row.remind_at;
+    }
     const insertRes = await fetch(`${supabaseUrl}/rest/v1/friend_recommendations`, {
       method: 'POST',
       headers,
@@ -191,6 +213,8 @@ export async function POST(request: Request) {
       const userMessage =
         lastCode === 'XX000' || /out of memory/i.test(lastMessage)
           ? 'Server is busy. Please try again in a moment.'
+          : row.remind_at && /remind_at|schema cache|column/i.test(lastMessage)
+            ? 'Reminder columns are missing in Supabase. Run supabase-friend-recommendation-reminders.sql and try again.'
           : lastMessage;
       return NextResponse.json({ message: userMessage, code: lastCode }, { status: 500 });
     }

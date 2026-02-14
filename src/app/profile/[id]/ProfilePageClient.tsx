@@ -17,6 +17,14 @@ interface ProfilePageClientProps {
   userId: string;
 }
 
+interface WatchedMovieItem {
+  id: string;
+  title: string;
+  year?: number;
+  poster?: string;
+  watchedAt?: string;
+}
+
 type LightingMode = 'sun' | 'moon';
 type LightingState = { mode: LightingMode; intensity: number }; // intensity: 0..100
 
@@ -67,7 +75,7 @@ const serializeLightingTheme = (s: LightingState) => `${s.mode}:${clamp(Math.rou
 
 export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const { user, loading: authLoading } = useAuth();
-  const { getWatchedCount } = useWatched();
+  const { watchedState } = useWatched();
   const { getWatchlistCount } = useWatchlist();
 
   const [resolvedUserId, setResolvedUserId] = useState(userId);
@@ -95,6 +103,10 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeError, setThemeError] = useState('');
   const themeSaveTimerRef = useRef<number | null>(null);
+  const [showWatchedModal, setShowWatchedModal] = useState(false);
+  const [watchedItems, setWatchedItems] = useState<WatchedMovieItem[]>([]);
+  const [watchedLoading, setWatchedLoading] = useState(false);
+  const [watchedError, setWatchedError] = useState('');
 
   const [top10RatingsSupported, setTop10RatingsSupported] = useState(true);
   const [top10RatingsLoading, setTop10RatingsLoading] = useState(false);
@@ -401,6 +413,42 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
   const displayUser = profileUser ?? fallbackProfileUser;
   const isOwnProfile = Boolean(user && displayUser && user.id === displayUser.id);
+  const watchedEntries = useMemo(() => {
+    return Object.entries(watchedState)
+      .filter(([, value]) => value?.watched)
+      .map(([id, value]) => ({
+        id,
+        watchedAt: value?.watchedAt,
+      }))
+      .sort((a, b) => {
+        const at = a.watchedAt ? new Date(a.watchedAt).getTime() : 0;
+        const bt = b.watchedAt ? new Date(b.watchedAt).getTime() : 0;
+        return bt - at;
+      });
+  }, [watchedState]);
+
+  const watchedStats = useMemo(() => {
+    const now = new Date();
+    const thisYear = now.getFullYear();
+    const thisMonth = now.getMonth();
+
+    let month = 0;
+    let year = 0;
+    for (const entry of watchedEntries) {
+      if (!entry.watchedAt) continue;
+      const watchedDate = new Date(entry.watchedAt);
+      if (watchedDate.getFullYear() === thisYear) {
+        year += 1;
+        if (watchedDate.getMonth() === thisMonth) month += 1;
+      }
+    }
+
+    return {
+      total: watchedEntries.length,
+      month,
+      year,
+    };
+  }, [watchedEntries]);
 
   // Load Top 10 ratings (per language) for this profile.
   useEffect(() => {
@@ -755,6 +803,129 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   }, [profileUser, accessToken]);
 
   useEffect(() => {
+    if (!showWatchedModal || !isOwnProfile) return;
+
+    let cancelled = false;
+
+    const loadWatchedItems = async () => {
+      setWatchedLoading(true);
+      setWatchedError('');
+
+      try {
+        const itemsById = new Map<string, WatchedMovieItem>();
+        const watchedAtById = new Map(watchedEntries.map((entry) => [entry.id, entry.watchedAt]));
+
+        const recommendationIds: string[] = [];
+        const tmdbIds: number[] = [];
+
+        for (const entry of watchedEntries) {
+          const match = entry.id.match(/^tmdb-(\d+)$/);
+          if (match) {
+            tmdbIds.push(Number(match[1]));
+          } else {
+            recommendationIds.push(entry.id);
+          }
+        }
+
+        for (const recId of recommendationIds) {
+          const rec = recommendationsById.get(recId);
+          if (!rec) continue;
+          itemsById.set(recId, {
+            id: recId,
+            title: rec.title,
+            year: rec.year,
+            poster: rec.poster,
+            watchedAt: watchedAtById.get(recId),
+          });
+        }
+
+        if (recommendationIds.length > 0 && isSupabaseConfigured()) {
+          const chunkSize = 40;
+          for (let i = 0; i < recommendationIds.length; i += chunkSize) {
+            if (cancelled) return;
+            const chunk = recommendationIds.slice(i, i + chunkSize);
+            const params = new URLSearchParams({
+              select: 'id,title,year,poster',
+              id: `in.(${chunk.join(',')})`,
+            });
+            const rows = await supabaseRestRequest<Array<{ id: string; title: string; year: number | null; poster: string | null }>>(
+              `recommendations?${params.toString()}`,
+              { method: 'GET', timeoutMs: 15000 },
+              accessToken,
+            );
+            for (const row of Array.isArray(rows) ? rows : []) {
+              itemsById.set(row.id, {
+                id: row.id,
+                title: row.title,
+                year: row.year ?? undefined,
+                poster: row.poster ?? undefined,
+                watchedAt: watchedAtById.get(row.id),
+              });
+            }
+          }
+        }
+
+        if (tmdbIds.length > 0) {
+          const chunkSize = 6;
+          for (let i = 0; i < tmdbIds.length; i += chunkSize) {
+            if (cancelled) return;
+            const chunk = tmdbIds.slice(i, i + chunkSize);
+            const results = await Promise.allSettled(chunk.map((tmdbId) => getMovieDetails(tmdbId)));
+            chunk.forEach((tmdbId, index) => {
+              const key = `tmdb-${tmdbId}`;
+              const result = results[index];
+              if (result?.status === 'fulfilled' && result.value) {
+                const details = result.value;
+                itemsById.set(key, {
+                  id: key,
+                  title: details.title,
+                  year: details.release_date ? new Date(details.release_date).getFullYear() : undefined,
+                  poster: details.poster_path ? getImageUrl(details.poster_path) : undefined,
+                  watchedAt: watchedAtById.get(key),
+                });
+              } else {
+                itemsById.set(key, {
+                  id: key,
+                  title: `Movie ${tmdbId}`,
+                  watchedAt: watchedAtById.get(key),
+                });
+              }
+            });
+          }
+        }
+
+        const ordered = watchedEntries.map((entry) => {
+          return (
+            itemsById.get(entry.id) || {
+              id: entry.id,
+              title: entry.id,
+              watchedAt: entry.watchedAt,
+            }
+          );
+        });
+
+        if (!cancelled) {
+          setWatchedItems(ordered);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          const message = err instanceof Error ? err.message : 'Failed to load watched movies';
+          setWatchedError(message);
+          setWatchedItems([]);
+        }
+      } finally {
+        if (!cancelled) setWatchedLoading(false);
+      }
+    };
+
+    void loadWatchedItems();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [showWatchedModal, isOwnProfile, watchedEntries, recommendationsById, accessToken]);
+
+  useEffect(() => {
     if (!topSearchOpen || !topSearchQuery.trim()) {
       setTopSearchResults([]);
       return;
@@ -1046,9 +1217,21 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
               <div className="flex flex-wrap gap-4 mt-2 justify-center sm:justify-start">
                 {isOwnProfile && (
                   <>
-                    <p className="text-[var(--text-muted)]">
-                      <span className="text-[var(--accent)]">{getWatchedCount()}</span> watched
-                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setShowWatchedModal(true)}
+                      className="text-left rounded-xl px-3 py-2 bg-[var(--bg-secondary)] border border-white/10 hover:border-[var(--accent)]/40 transition-colors"
+                      title="View watched movies"
+                    >
+                      <p className="text-[var(--text-muted)] text-sm">
+                        <span className="text-[var(--accent)]">{watchedStats.total}</span> watched ·{' '}
+                        <span className="text-[var(--accent)]">{watchedStats.month}</span> this month ·{' '}
+                        <span className="text-[var(--accent)]">{watchedStats.year}</span> this year
+                      </p>
+                      <p className="text-[11px] text-[var(--text-muted)]/80 mt-0.5">
+                        Tap to view watched movies
+                      </p>
+                    </button>
                     <p className="text-[var(--text-muted)]">
                       <span className="text-[var(--accent)]">{getWatchlistCount()}</span> in watchlist
                     </p>
@@ -1452,6 +1635,78 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
         {/* Recommendations grid removed per request */}
       </main>
+
+      {showWatchedModal && (
+        <>
+          <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40" onClick={() => setShowWatchedModal(false)} />
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="w-full max-w-3xl max-h-[85vh] bg-[var(--bg-card)] rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
+              <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Watched</p>
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                    {watchedStats.total} movies · {watchedStats.month} this month · {watchedStats.year} this year
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setShowWatchedModal(false)}
+                  className="w-8 h-8 rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-5 overflow-y-auto max-h-[calc(85vh-88px)]">
+                {watchedLoading ? (
+                  <div className="py-16 text-center text-[var(--text-muted)]">
+                    <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin mx-auto" />
+                    <p className="mt-3">Loading watched movies…</p>
+                  </div>
+                ) : watchedError ? (
+                  <div className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+                    {watchedError}
+                  </div>
+                ) : watchedItems.length === 0 ? (
+                  <div className="py-14 text-center text-[var(--text-muted)]">
+                    <div className="text-3xl mb-2">🎬</div>
+                    <p>No watched movies yet.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {watchedItems.map((item) => (
+                      <Link
+                        key={item.id}
+                        href={`/movie/${item.id}`}
+                        className="group rounded-xl overflow-hidden bg-[var(--bg-secondary)] border border-white/10 hover:border-[var(--accent)]/40 transition-colors"
+                      >
+                        <div className="aspect-[2/3] w-full bg-[var(--bg-primary)] overflow-hidden">
+                          {item.poster ? (
+                            <img
+                              src={item.poster}
+                              alt={item.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-4xl">🎬</div>
+                          )}
+                        </div>
+                        <div className="p-2.5">
+                          <p className="text-sm font-medium text-[var(--text-primary)] line-clamp-1">{item.title}</p>
+                          <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                            {item.year ? `${item.year} · ` : ''}
+                            {item.watchedAt ? new Date(item.watchedAt).toLocaleDateString('en-US') : 'Watched'}
+                          </p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
 
       {showTopModal && (
         <>

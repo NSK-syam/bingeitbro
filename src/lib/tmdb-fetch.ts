@@ -9,6 +9,18 @@ function isTmdbV3Url(url: string): boolean {
   }
 }
 
+function canonicalizeTmdbV3Url(url: string): string {
+  const parsed = new URL(url);
+  // API key is always injected server-side in proxy route; remove it from cache key.
+  parsed.searchParams.delete('api_key');
+  const sorted = [...parsed.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b));
+  parsed.search = '';
+  for (const [key, value] of sorted) {
+    parsed.searchParams.append(key, value);
+  }
+  return parsed.toString();
+}
+
 function hashForPath(input: string): string {
   // FNV-1a 32-bit hash, compact base36 key for route path segment.
   let hash = 0x811c9dc5;
@@ -34,12 +46,13 @@ function encodeBase64Url(input: string): string {
 }
 
 function getProxyUrl(url: string): string {
+  const canonicalUrl = canonicalizeTmdbV3Url(url);
   // Include a stable path key because some edge setups can cache route
   // handlers by pathname more aggressively than expected.
-  const pathKey = hashForPath(url);
-  const encoded = encodeBase64Url(url);
+  const pathKey = hashForPath(canonicalUrl);
+  const encoded = encodeBase64Url(canonicalUrl);
   // `pv` busts legacy edge entries after proxy behavior changes.
-  return `/api/tmdb/${pathKey}?u=${encoded}&pv=4`;
+  return `/api/tmdb/${pathKey}?u=${encoded}&pv=5`;
 }
 
 export async function fetchTmdbWithProxy(url: string, init?: RequestInit): Promise<Response> {

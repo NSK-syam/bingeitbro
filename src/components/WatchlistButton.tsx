@@ -26,15 +26,20 @@ export function WatchlistButton({ movieId, title, poster, size = 'md', showLabel
     toggleWatchlist(movieId, title, poster);
   };
 
+  const baseStateClass = inWatchlist
+    ? 'bg-[var(--accent)] text-[var(--bg-primary)] shadow-lg shadow-[var(--accent)]/30'
+    : 'bg-[var(--bg-primary)]/80 text-[var(--text-muted)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]';
+
+  const labeledStateClass = inWatchlist
+    ? 'bg-amber-400 text-[#191205] border border-amber-200/60 shadow-lg shadow-amber-400/35'
+    : 'bg-sky-500/20 text-sky-100 border border-sky-300/40 hover:bg-sky-500/30 hover:text-white';
+
   return (
     <button
       onClick={handleClick}
       className={`
         ${sizeClasses[size]}
-        ${inWatchlist
-          ? 'bg-[var(--accent)] text-[var(--bg-primary)] shadow-lg shadow-[var(--accent)]/30'
-          : 'bg-[var(--bg-primary)]/80 text-[var(--text-muted)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]'
-        }
+        ${showLabel ? labeledStateClass : baseStateClass}
         backdrop-blur-sm rounded-full flex items-center justify-center gap-1.5 transition-all duration-200
         ${showLabel ? 'px-3 w-auto' : ''}
       `}

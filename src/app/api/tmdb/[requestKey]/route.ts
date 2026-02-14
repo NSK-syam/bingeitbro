@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const TMDB_HOST = 'api.themoviedb.org';
 const SERVER_TMDB_API_KEY = (process.env.TMDB_API_KEY ?? process.env.NEXT_PUBLIC_TMDB_API_KEY ?? '').trim();
-const TMDB_REVALIDATE_SECONDS = 300;
+const TMDB_REVALIDATE_SECONDS = 900;
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -31,6 +31,17 @@ function isAllowedTmdbUrl(rawUrl: string): URL | null {
   }
 }
 
+function canonicalizeTmdbUrl(url: URL): string {
+  const canonical = new URL(url.toString());
+  canonical.searchParams.delete('api_key');
+  const sorted = [...canonical.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b));
+  canonical.search = '';
+  for (const [key, value] of sorted) {
+    canonical.searchParams.append(key, value);
+  }
+  return canonical.toString();
+}
+
 function hashForPath(input: string): string {
   // Must match client hash from src/lib/tmdb-fetch.ts
   let hash = 0x811c9dc5;
@@ -57,11 +68,12 @@ export async function GET(
   if (!tmdbUrl) {
     return NextResponse.json({ error: 'Invalid TMDB URL' }, { status: 400 });
   }
-  if (requestKey && requestKey !== hashForPath(rawUrl)) {
+  const canonicalUrl = canonicalizeTmdbUrl(tmdbUrl);
+  if (requestKey && requestKey !== hashForPath(canonicalUrl)) {
     return NextResponse.json({ error: 'Request key mismatch' }, { status: 400 });
   }
 
-  const upstreamUrl = new URL(tmdbUrl.toString());
+  const upstreamUrl = new URL(canonicalUrl);
   if (SERVER_TMDB_API_KEY) {
     // Always use server-side key so stale client bundles / key mismatches
     // cannot break movie loading in specific regions/countries.
@@ -84,11 +96,15 @@ export async function GET(
         'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
         // Cache only successful responses.
         'Cache-Control': isSuccess
-          ? `public, max-age=0, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`
+          ? `public, max-age=0, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=86400`
           : 'no-store',
         'CDN-Cache-Control': isSuccess
-          ? `public, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=3600`
+          ? `public, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=86400`
           : 'no-store',
+        'Surrogate-Control': isSuccess
+          ? `max-age=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=86400`
+          : 'no-store',
+        Vary: 'Accept-Encoding',
       },
     });
   } catch {

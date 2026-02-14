@@ -11,13 +11,20 @@ import { AuthModal } from '@/components/AuthModal';
 import { MovieBackground } from '@/components/MovieBackground';
 import { BibSplash } from '@/components/BibSplash';
 import { DailyQuoteBanner } from '@/components/DailyQuoteBanner';
+import { MovieCalendarSpotlightPopup } from '@/components/MovieCalendarSpotlightPopup';
+import { ValentineHeartsBurst } from '@/components/ValentineHeartsBurst';
 import { RecommendationToast } from '@/components/RecommendationToast';
 import { CountryToggle } from '@/components/CountryToggle';
 import { useAuth } from '@/components/AuthProvider';
 import { Recommendation, Recommender, OTTLink } from '@/types';
 import { useWatched, useNudges, useWatchlist, useCountry } from '@/hooks';
 import { createClient } from '@/lib/supabase';
-import { fetchFriendsList, getFriendRecommendationsUnreadCount, getRecentFriendRecommendations } from '@/lib/supabase-rest';
+import {
+  fetchFriendsList,
+  getFriendRecommendationsUnreadCount,
+  getRecentFriendRecommendations,
+  getUpcomingWatchReminders,
+} from '@/lib/supabase-rest';
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 import data from '@/data/recommendations.json';
 
@@ -41,12 +48,12 @@ const FriendRecommendationsModal = dynamic(
   () => import('@/components/FriendRecommendationsModal').then((mod) => mod.FriendRecommendationsModal),
   { ssr: false }
 );
-const TodayReleasesModal = dynamic(
-  () => import('@/components/TodayReleasesModal').then((mod) => mod.TodayReleasesModal),
-  { ssr: false }
-);
 const BingeCalculatorModal = dynamic(
   () => import('@/components/BingeCalculatorModal').then((mod) => mod.BingeCalculatorModal),
+  { ssr: false }
+);
+const ScheduleWatchModal = dynamic(
+  () => import('@/components/ScheduleWatchModal').then((mod) => mod.ScheduleWatchModal),
   { ssr: false }
 );
 const TrendingMovies = dynamic(
@@ -86,9 +93,16 @@ const getLocalDayIndex = () => {
   return Math.floor(localMidnight.getTime() / 86400000);
 };
 
+const getLocalMonthDay = () => {
+  const now = new Date();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${month}-${day}`;
+};
+
 export default function MoviesHome() {
   const staticRecommendations = data.recommendations as Recommendation[];
-  const { getWatchedCount, getWatchedCountThisMonth, getWatchedCountThisYear, isWatched } = useWatched();
+  const { watchedState, isWatched } = useWatched();
   const { getWatchlistCount } = useWatchlist();
   const { user, loading: authLoading } = useAuth();
   const [country, setCountry] = useCountry();
@@ -104,14 +118,19 @@ export default function MoviesHome() {
     if (typeof window === 'undefined') return false;
     return new URLSearchParams(window.location.search).get('view') === 'friends';
   });
-  const [showTodayReleases, setShowTodayReleases] = useState(false);
   const [showBingeCalculator, setShowBingeCalculator] = useState(false);
+  const [showScheduleWatch, setShowScheduleWatch] = useState(false);
+  const [valentineOpenSignal, setValentineOpenSignal] = useState(0);
+  const [valentineSpotlightOpen, setValentineSpotlightOpen] = useState(false);
+  const [localMonthDay, setLocalMonthDay] = useState(getLocalMonthDay);
+  const [showWatchedFriendsModal, setShowWatchedFriendsModal] = useState(false);
   const [friendsDropdownOpen, setFriendsDropdownOpen] = useState(false);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const friendsDropdownRef = useRef<HTMLDivElement>(null);
   const filterPanelRef = useRef<HTMLDivElement>(null);
   const [activeView, setActiveView] = useState<'trending' | 'friends'>('trending');
   const [friendRecommendationsCount, setFriendRecommendationsCount] = useState(0);
+  const [scheduledWatchCount, setScheduledWatchCount] = useState(0);
   const [authErrorFromRedirect, setAuthErrorFromRedirect] = useState(false);
   const { unreadCount: nudgeCount } = useNudges();
   const [recToast, setRecToast] = useState<{
@@ -131,6 +150,13 @@ export default function MoviesHome() {
       'there'
     );
   }, [user]);
+  const isValentinesDay = localMonthDay === '02-14';
+
+  useEffect(() => {
+    const tick = () => setLocalMonthDay(getLocalMonthDay());
+    const interval = window.setInterval(tick, 60_000);
+    return () => window.clearInterval(interval);
+  }, []);
 
   const [visitIndex, setVisitIndex] = useState<number | null>(null);
 
@@ -300,6 +326,33 @@ export default function MoviesHome() {
     if (!user) return;
     getFriendRecommendationsUnreadCount(user.id).then(setFriendRecommendationsCount);
   }, [user]);
+
+  const refreshScheduledWatchCount = useCallback(async () => {
+    if (!user) {
+      setScheduledWatchCount(0);
+      return;
+    }
+    try {
+      const reminders = await getUpcomingWatchReminders();
+      const now = Date.now();
+      const pending = reminders.filter((r) => !r.notifiedAt && new Date(r.remindAt).getTime() > now);
+      setScheduledWatchCount(Math.min(pending.length, 99));
+    } catch {
+      setScheduledWatchCount(0);
+    }
+  }, [user]);
+
+  useEffect(() => {
+    if (!user) {
+      setScheduledWatchCount(0);
+      return;
+    }
+    void refreshScheduledWatchCount();
+    const interval = window.setInterval(() => {
+      void refreshScheduledWatchCount();
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, [user, refreshScheduledWatchCount]);
 
   // Lightweight polling for new friend recommendations (toast notification)
   useEffect(() => {
@@ -471,10 +524,46 @@ export default function MoviesHome() {
     ([, value]) => value !== null && value !== 'all'
   ).length;
 
-  const watchedCount = getWatchedCount();
-  const watchedThisMonth = getWatchedCountThisMonth();
-  const watchedThisYear = getWatchedCountThisYear();
+  const { watchedCount, watchedThisMonth, watchedThisYear } = useMemo(() => {
+    const now = new Date();
+    const thisYear = now.getFullYear();
+    const thisMonth = now.getMonth();
+    let watchedCountLocal = 0;
+    let watchedThisMonthLocal = 0;
+    let watchedThisYearLocal = 0;
+
+    for (const rec of friendsRecommendations) {
+      const watchedEntry = watchedState[rec.id];
+      if (!watchedEntry?.watched) continue;
+      watchedCountLocal += 1;
+
+      if (!watchedEntry.watchedAt) continue;
+      const watchedDate = new Date(watchedEntry.watchedAt);
+      if (watchedDate.getFullYear() === thisYear) {
+        watchedThisYearLocal += 1;
+        if (watchedDate.getMonth() === thisMonth) {
+          watchedThisMonthLocal += 1;
+        }
+      }
+    }
+
+    return {
+      watchedCount: watchedCountLocal,
+      watchedThisMonth: watchedThisMonthLocal,
+      watchedThisYear: watchedThisYearLocal,
+    };
+  }, [friendsRecommendations, watchedState]);
   const totalCount = friendsRecommendations.length;
+  const watchedFriendsRecommendations = useMemo(() => {
+    return friendsRecommendations
+      .filter((rec) => watchedState[rec.id]?.watched)
+      .map((rec) => ({ rec, watchedAt: watchedState[rec.id]?.watchedAt }))
+      .sort((a, b) => {
+        const at = a.watchedAt ? new Date(a.watchedAt).getTime() : 0;
+        const bt = b.watchedAt ? new Date(b.watchedAt).getTime() : 0;
+        return bt - at;
+      });
+  }, [friendsRecommendations, watchedState]);
 
   return (
     <div className="min-h-screen relative">
@@ -491,7 +580,7 @@ export default function MoviesHome() {
         watchlistCount={getWatchlistCount()}
         friendRecommendationsCount={friendRecommendationsCount}
       />
-      {user && <HubTabs placement="center" />}
+      {user && activeView !== 'friends' && <HubTabs placement="center" />}
 
       {/* Auth Modal */}
       <AuthModal
@@ -550,16 +639,24 @@ export default function MoviesHome() {
         onCountChange={setFriendRecommendationsCount}
       />
 
-      {/* Today's Releases Modal - Shows once per day or on button click */}
-      <TodayReleasesModal
-        manualOpen={showTodayReleases}
-        onClose={() => setShowTodayReleases(false)}
-      />
-
       <BingeCalculatorModal
         isOpen={showBingeCalculator}
         onClose={() => setShowBingeCalculator(false)}
       />
+      <ScheduleWatchModal
+        isOpen={showScheduleWatch}
+        onClose={() => setShowScheduleWatch(false)}
+        onScheduled={refreshScheduledWatchCount}
+      />
+      {user && (
+        <MovieCalendarSpotlightPopup
+          userId={user.id}
+          mediaType="movie"
+          openSignal={valentineOpenSignal}
+          onOpenChange={setValentineSpotlightOpen}
+        />
+      )}
+      {isValentinesDay && <ValentineHeartsBurst active={valentineSpotlightOpen} />}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
         {!user ? (
@@ -594,7 +691,12 @@ export default function MoviesHome() {
               {/* Watch Progress - only show in Friends view */}
               {activeView === 'friends' && friendsRecommendations.length > 0 && (
                 <div className="flex items-center justify-center">
-                  <div className="flex items-center gap-3 px-4 py-2 bg-[var(--bg-secondary)] rounded-full">
+                  <button
+                    type="button"
+                    onClick={() => setShowWatchedFriendsModal(true)}
+                    className="flex items-center gap-3 px-4 py-2 bg-[var(--bg-secondary)] rounded-full border border-white/10 hover:border-[var(--accent)]/40 transition-colors text-left"
+                    title="View watched friend suggestions"
+                  >
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center">
                         <svg className="w-4 h-4 text-green-500" fill="currentColor" viewBox="0 0 20 20">
@@ -603,10 +705,13 @@ export default function MoviesHome() {
                       </div>
                       <div className="text-left">
                         <p className="text-sm font-medium text-[var(--text-primary)]">
-                          {watchedCount} / {totalCount} watched
+                          {watchedCount} watched from {totalCount} friend suggestions
                         </p>
                         <p className="text-xs text-[var(--text-muted)] mt-0.5">
                           {watchedThisMonth} this month · {watchedThisYear} this year
+                        </p>
+                        <p className="text-[11px] text-[var(--text-muted)]/80 mt-0.5">
+                          Tap to view watched list
                         </p>
                         <div className="w-24 h-1.5 bg-[var(--bg-card)] rounded-full overflow-hidden mt-1">
                           <div
@@ -616,12 +721,12 @@ export default function MoviesHome() {
                         </div>
                       </div>
                     </div>
-                  </div>
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Main Tabs - Trending, Friends, Add Friends, New Today */}
+            {/* Main Tabs - Trending and Friends */}
             <div className="flex flex-wrap items-center gap-2 mb-6">
               {/* Button design: consistent pill height, glassy surface, bold active state */}
               {/*
@@ -637,8 +742,8 @@ export default function MoviesHome() {
                   'backdrop-blur-xl border shadow-[0_10px_30px_rgba(0,0,0,0.28)]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
                   activeView === 'trending'
-                    ? 'bg-[var(--accent)] text-[var(--bg-primary)] border-[var(--accent)] shadow-[0_14px_40px_rgba(245,158,11,0.22)]'
-                    : 'bg-[var(--bg-secondary)]/75 text-[var(--text-secondary)] border-white/10 hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)] hover:border-white/15',
+                    ? 'bg-gradient-to-r from-amber-300 to-orange-500 text-[#16110a] border-orange-200 shadow-[0_14px_40px_rgba(245,158,11,0.3)]'
+                    : 'bg-gradient-to-r from-amber-500/30 to-orange-500/25 text-amber-100 border-amber-300/35 hover:from-amber-400/40 hover:to-orange-400/35 hover:text-amber-50',
                   'active:scale-[0.99]',
                 ].join(' ')}
                 aria-pressed={activeView === 'trending'}
@@ -659,8 +764,8 @@ export default function MoviesHome() {
                   'backdrop-blur-xl border shadow-[0_10px_30px_rgba(0,0,0,0.28)]',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
                   activeView === 'friends'
-                    ? 'bg-[var(--accent)] text-[var(--bg-primary)] border-[var(--accent)] shadow-[0_14px_40px_rgba(245,158,11,0.22)]'
-                    : 'bg-[var(--bg-secondary)]/75 text-[var(--text-secondary)] border-white/10 hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)] hover:border-white/15',
+                    ? 'bg-gradient-to-r from-cyan-300 to-blue-500 text-[#0a1222] border-cyan-200 shadow-[0_14px_40px_rgba(59,130,246,0.3)]'
+                    : 'bg-gradient-to-r from-cyan-500/25 to-blue-600/25 text-cyan-100 border-cyan-300/30 hover:from-cyan-400/35 hover:to-blue-500/35 hover:text-cyan-50',
                   'active:scale-[0.99]',
                 ].join(' ')}
                 aria-pressed={activeView === 'friends'}
@@ -676,47 +781,6 @@ export default function MoviesHome() {
                 )}
               </button>
 
-              {/* Add Friends — opens Manage Friends modal */}
-              {user && (
-                <button
-                  onClick={() => setShowFriendsManager(true)}
-                  className={[
-                    'h-11 px-5 rounded-full inline-flex items-center gap-2',
-                    'text-sm font-semibold',
-                    'transition-all select-none',
-                    'bg-[var(--bg-secondary)]/75 text-[var(--text-secondary)] border border-white/10 backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.24)]',
-                    'hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)] hover:border-white/15',
-                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
-                    'active:scale-[0.99]',
-                  ].join(' ')}
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                  </svg>
-                  Add Friends
-                </button>
-              )}
-
-              {/* New Today */}
-              <button
-                onClick={() => setShowTodayReleases(true)}
-                className={[
-                  'h-11 px-5 rounded-full inline-flex items-center gap-2',
-                  'text-sm font-semibold',
-                  'transition-all select-none',
-                  'text-white border border-white/10 backdrop-blur-xl',
-                  'bg-[radial-gradient(140%_120%_at_10%_0%,rgba(255,255,255,0.22)_0%,rgba(255,255,255,0)_45%),linear-gradient(90deg,#a855f7,#ec4899)]',
-                  'shadow-[0_14px_44px_rgba(236,72,153,0.22)] hover:brightness-110',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-pink-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
-                  'active:scale-[0.99]',
-                ].join(' ')}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                New Today
-              </button>
-
               {/* Binge Calculator */}
               <button
                 onClick={() => setShowBingeCalculator(true)}
@@ -724,8 +788,8 @@ export default function MoviesHome() {
                   'h-11 px-5 rounded-full inline-flex items-center gap-2',
                   'text-sm font-semibold',
                   'transition-all select-none',
-                  'bg-[var(--bg-secondary)]/75 text-[var(--text-secondary)] border border-white/10 backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.24)]',
-                  'hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)] hover:border-white/15',
+                  'bg-gradient-to-r from-violet-600/35 to-fuchsia-600/35 text-fuchsia-100 border border-fuchsia-300/30 backdrop-blur-xl shadow-[0_10px_30px_rgba(124,58,237,0.28)]',
+                  'hover:from-violet-500/45 hover:to-fuchsia-500/45 hover:text-fuchsia-50 hover:border-fuchsia-200/45',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
                   'active:scale-[0.99]',
                 ].join(' ')}
@@ -735,6 +799,50 @@ export default function MoviesHome() {
                 </svg>
                 Binge Calculator
               </button>
+
+              {/* Schedule Watch */}
+              <button
+                onClick={() => setShowScheduleWatch(true)}
+                className={[
+                  'h-11 px-5 rounded-full inline-flex items-center gap-2 relative',
+                  'text-sm font-semibold',
+                  'transition-all select-none',
+                  'bg-gradient-to-r from-cyan-500/40 to-blue-600/40 text-cyan-100 border border-cyan-300/35 backdrop-blur-xl shadow-[0_10px_30px_rgba(14,165,233,0.24)]',
+                  'hover:from-cyan-400/50 hover:to-blue-500/50 hover:text-cyan-50 hover:border-cyan-200/45',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                  'active:scale-[0.99]',
+                ].join(' ')}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10m-11 9h12a2 2 0 002-2V7a2 2 0 00-2-2H6a2 2 0 00-2 2v11a2 2 0 002 2z" />
+                </svg>
+                Schedule Watch
+                {scheduledWatchCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-cyan-200 text-[#071018] text-xs font-bold flex items-center justify-center border border-cyan-50/80 shadow-sm">
+                    {scheduledWatchCount > 99 ? '99+' : scheduledWatchCount}
+                  </span>
+                )}
+              </button>
+
+              {isValentinesDay && (
+                <button
+                  onClick={() => {
+                    setValentineOpenSignal((n) => n + 1);
+                  }}
+                  className={[
+                    'h-11 px-5 rounded-full inline-flex items-center gap-2',
+                    'text-sm font-semibold',
+                    'transition-all select-none',
+                    'bg-gradient-to-r from-rose-500/55 to-pink-500/55 text-rose-50 border border-rose-200/45 backdrop-blur-xl shadow-[0_10px_30px_rgba(244,63,94,0.28)]',
+                    'hover:from-rose-400/65 hover:to-pink-400/65 hover:border-rose-100/65',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                    'active:scale-[0.99]',
+                  ].join(' ')}
+                >
+                  <span aria-hidden>💘</span>
+                  Valentines Special
+                </button>
+              )}
 
               {/* Country (affects OTT logos) */}
               <div className="flex items-center gap-2 sm:ml-auto">
@@ -757,10 +865,10 @@ export default function MoviesHome() {
                   'h-11 px-5 rounded-full inline-flex items-center gap-2',
                   'text-sm font-semibold',
                   'transition-all select-none',
-                  'bg-[var(--bg-secondary)]/75 text-[var(--text-primary)] border backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.24)]',
+                  'text-sky-100 border backdrop-blur-xl shadow-[0_10px_30px_rgba(37,99,235,0.26)]',
                   friendsDropdownOpen
-                    ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]/40'
-                    : 'border-white/10 hover:bg-[var(--bg-card)] hover:border-white/15',
+                    ? 'bg-gradient-to-r from-sky-500/55 to-indigo-600/55 border-sky-200/65 ring-1 ring-sky-300/45'
+                    : 'bg-gradient-to-r from-sky-600/35 to-indigo-700/35 border-sky-300/30 hover:from-sky-500/45 hover:to-indigo-600/45 hover:border-sky-200/45',
                   'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
                   'active:scale-[0.99]',
                 ].join(' ')}
@@ -804,6 +912,25 @@ export default function MoviesHome() {
               )}
             </div>
 
+            {/* Add Friends — keep this action in Friends tab */}
+            <button
+              onClick={() => setShowFriendsManager(true)}
+              className={[
+                'h-11 px-5 rounded-full inline-flex items-center gap-2',
+                'text-sm font-semibold',
+                'transition-all select-none',
+                'bg-gradient-to-r from-emerald-500/35 to-teal-600/35 text-emerald-100 border border-emerald-300/30 backdrop-blur-xl shadow-[0_10px_30px_rgba(16,185,129,0.24)]',
+                'hover:from-emerald-400/45 hover:to-teal-500/45 hover:text-emerald-50 hover:border-emerald-200/45',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                'active:scale-[0.99]',
+              ].join(' ')}
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
+              Add Friends
+            </button>
+
             {/* 2. Filters — pill like image: filter icon + "Filters" + chevron, orange border when open */}
             {friendsRecommendations.length > 0 && (
               <div className="relative" ref={filterPanelRef}>
@@ -814,10 +941,10 @@ export default function MoviesHome() {
                     'h-11 px-5 rounded-full inline-flex items-center gap-2',
                     'text-sm font-semibold',
                     'transition-all select-none',
-                    'bg-[var(--bg-secondary)]/75 text-[var(--text-primary)] border backdrop-blur-xl shadow-[0_10px_30px_rgba(0,0,0,0.24)]',
+                    'text-amber-100 border backdrop-blur-xl shadow-[0_10px_30px_rgba(251,146,60,0.22)]',
                     filterPanelOpen
-                      ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]/40'
-                      : 'border-white/10 hover:bg-[var(--bg-card)] hover:border-white/15',
+                      ? 'bg-gradient-to-r from-amber-400/55 to-orange-500/55 border-amber-100/70 ring-1 ring-amber-300/50'
+                      : 'bg-gradient-to-r from-amber-600/35 to-orange-600/35 border-amber-300/35 hover:from-amber-500/45 hover:to-orange-500/45 hover:border-amber-100/50',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
                     'active:scale-[0.99]',
                   ].join(' ')}
@@ -837,7 +964,7 @@ export default function MoviesHome() {
                   </svg>
                 </button>
                 {filterPanelOpen && (
-              <div className="absolute left-0 top-full mt-2 z-40 w-[min(100%,420px)] max-h-[80vh] overflow-y-auto bg-[var(--bg-secondary)] rounded-2xl border border-white/10 shadow-xl p-4 space-y-4">
+              <div className="absolute left-1/2 -translate-x-1/2 sm:left-0 sm:translate-x-0 top-full mt-2 z-40 w-[min(92vw,440px)] max-h-[75vh] overflow-y-auto bg-[var(--bg-primary)]/95 backdrop-blur-2xl rounded-2xl border border-white/10 shadow-xl p-4 sm:p-5">
                 <FilterBar
                   recommendations={filters.recommendedBy
                     ? friendsRecommendations.filter(r => r.recommendedBy.id === filters.recommendedBy)
@@ -848,27 +975,26 @@ export default function MoviesHome() {
                   onFilterChange={handleFilterChange}
                   hideFriendsSection={true}
                 />
-                <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/5">
-                  <span className="text-xs text-[var(--text-muted)] w-16">Status:</span>
-                  {(['all', 'watched'] as const).map((status) => (
-                    <button
-                      key={status}
-                      onClick={() => handleFilterChange('watchedStatus', status)}
-                      className={`px-3 py-1.5 text-sm rounded-full transition-all flex items-center gap-1.5 ${filters.watchedStatus === status
-                        ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                        : 'bg-[var(--bg-card)] text-[var(--text-secondary)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
+                <div className="pt-4 mt-4 border-t border-white/10">
+                  <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Status</p>
+                  <div className="flex flex-wrap gap-2">
+                    {(['all', 'watched'] as const).map((status) => (
+                      <button
+                        key={status}
+                        onClick={() => handleFilterChange('watchedStatus', status)}
+                        className={`px-3 py-1.5 text-sm rounded-full transition-all ${
+                          filters.watchedStatus === status
+                            ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-semibold'
+                            : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)] border border-white/10'
                         }`}
-                    >
-                      {status === 'all' ? 'Unwatched' : (
-                        <>
-                          ✓ Watched
-                          <span className="opacity-90 font-normal">
-                            ({watchedThisMonth} this month · {watchedThisYear} this year)
-                          </span>
-                        </>
-                      )}
-                    </button>
-                  ))}
+                      >
+                        {status === 'all' ? 'Unwatched' : 'Watched'}
+                      </button>
+                    ))}
+                    <span className="text-xs text-[var(--text-muted)] self-center">
+                      {watchedThisMonth} this month · {watchedThisYear} this year
+                    </span>
+                  </div>
                 </div>
               </div>
             )}
@@ -879,7 +1005,9 @@ export default function MoviesHome() {
 
         {/* Show Trending or Friend Recommendations based on activeView */}
         {(!user || activeView === 'trending') ? (
-          <TrendingMovies searchQuery={searchQuery} country={country} />
+          <>
+            <TrendingMovies searchQuery={searchQuery} country={country} />
+          </>
         ) : (
           <>
             {/* Results count */}
@@ -960,6 +1088,76 @@ export default function MoviesHome() {
           </p>
         </footer>
       </main>
+
+      {showWatchedFriendsModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/75 backdrop-blur-sm z-[200]"
+            onClick={() => setShowWatchedFriendsModal(false)}
+          />
+          <div className="fixed inset-0 z-[210] flex items-center justify-center p-4">
+            <div className="isolate w-full max-w-3xl max-h-[85vh] bg-[var(--bg-primary)] rounded-2xl border border-white/10 shadow-2xl overflow-hidden">
+              <div className="p-5 border-b border-white/10 flex items-center justify-between">
+                <div>
+                  <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Watched</p>
+                  <h3 className="text-lg font-semibold text-[var(--text-primary)]">
+                    {watchedCount} watched from {totalCount} friend suggestions
+                  </h3>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowWatchedFriendsModal(false);
+                  }}
+                  className="w-8 h-8 rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                  title="Close"
+                >
+                  ✕
+                </button>
+              </div>
+
+              <div className="p-5 overflow-y-auto max-h-[calc(85vh-88px)]">
+                {watchedFriendsRecommendations.length === 0 ? (
+                  <div className="py-14 text-center text-[var(--text-muted)]">
+                    <div className="text-3xl mb-2">🎬</div>
+                    <p>No watched friend suggestions yet.</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+                    {watchedFriendsRecommendations.map(({ rec, watchedAt }) => (
+                      <Link
+                        key={rec.id}
+                        href={`/movie/${rec.id}`}
+                        className="group rounded-xl overflow-hidden bg-[var(--bg-secondary)] border border-white/10 hover:border-[var(--accent)]/40 transition-colors"
+                      >
+                        <div className="aspect-[2/3] w-full bg-[var(--bg-primary)] overflow-hidden">
+                          {rec.poster ? (
+                            <img
+                              src={rec.poster}
+                              alt={rec.title}
+                              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-4xl">🎬</div>
+                          )}
+                        </div>
+                        <div className="p-2.5">
+                          <p className="text-sm font-medium text-[var(--text-primary)] line-clamp-1">{rec.title}</p>
+                          <p className="text-[11px] text-[var(--text-muted)] mt-0.5 line-clamp-1">
+                            {rec.recommendedBy?.name ? `From ${rec.recommendedBy.name} · ` : ''}
+                            {watchedAt ? new Date(watchedAt).toLocaleDateString('en-US') : 'Watched'}
+                          </p>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 }

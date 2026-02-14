@@ -1,49 +1,21 @@
-import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  let supabaseResponse = NextResponse.next({
-    request,
-  });
-
-  const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
-  const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return supabaseResponse;
+  // Keep auth/session on a single origin so users stay signed in consistently.
+  const host = request.headers.get('host')?.toLowerCase() ?? '';
+  if (host === 'www.bingeitbro.com') {
+    const redirectUrl = request.nextUrl.clone();
+    redirectUrl.host = 'bingeitbro.com';
+    redirectUrl.protocol = 'https';
+    return NextResponse.redirect(redirectUrl, 308);
   }
 
-  const supabase = createServerClient(supabaseUrl, supabaseAnonKey, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
-      },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value }) =>
-          request.cookies.set(name, value)
-        );
-        supabaseResponse = NextResponse.next({
-          request,
-        });
-        cookiesToSet.forEach(({ name, value, options }) =>
-          supabaseResponse.cookies.set(name, value, options)
-        );
-      },
-    },
-  });
-
-  // Refresh session if expired - required for Server Components
-  // This also syncs the session with the browser
-  await supabase.auth.getSession();
-
-  return supabaseResponse;
+  return NextResponse.next({ request });
 }
 
 export const config = {
   matcher: [
-    // Match all paths except static files, API routes, and images.
-    // API routes use Authorization header; skipping avoids createServerClient/getSession() hang on /api/*.
+    // Match app paths except static files and API routes.
     '/((?!_next/static|_next/image|favicon.ico|api/|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };
-

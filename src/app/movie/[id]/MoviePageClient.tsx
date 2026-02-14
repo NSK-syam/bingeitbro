@@ -7,10 +7,13 @@ import { useSearchParams } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { WatchedButton } from '@/components/WatchedButton';
 import { WatchlistButton } from '@/components/WatchlistButton';
+import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
 import { useWatched } from '@/hooks';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { TrailerSection } from '@/components';
+import { SendToFriendModal } from '@/components/SendToFriendModal';
+import { useAuth } from '@/components/AuthProvider';
 
 function PosterImage({ src, alt, title }: { src: string; alt: string; title: string }) {
   const [error, setError] = useState(false);
@@ -85,6 +88,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
   const searchParams = useSearchParams();
   const fromLang = searchParams.get('from');
   const backUrl = fromLang ? `/?lang=${fromLang}` : '/';
+  const { user } = useAuth();
 
   // When Vercel rewrites /movie/tmdb-123 to /movie/fallback, we get id=fallback; resolve real id from URL
   const [resolvedId, setResolvedId] = useState(id);
@@ -110,6 +114,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
   const [regionNote, setRegionNote] = useState('');
   const [availability, setAvailability] = useState({ hasIndia: false, hasUSA: false });
   const [tmdbTrailerId, setTmdbTrailerId] = useState<number | null>(null);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
 
   useEffect(() => {
     if (resolvedId === 'fallback') return;
@@ -431,6 +436,12 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
 
   const showUsCheck = recommendedBy?.id === 'tmdb' && !availability.hasUSA;
   const usSearchUrl = `https://www.justwatch.com/us/search?q=${encodeURIComponent(title)}`;
+  const sendTmdbId = resolvedId.startsWith('tmdb-')
+    ? resolvedId.replace('tmdb-', '')
+    : /^\d+$/.test(resolvedId)
+      ? resolvedId
+      : null;
+  const sendRecommendationId = sendTmdbId ? null : resolvedId;
   const uniqueOttLinks = (ottLinks || []).filter(
     (link, index, arr) => arr.findIndex((l) => l.platform === link.platform) === index
   );
@@ -543,9 +554,37 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
                   </div>
                 )}
               </div>
-              <div className="mt-4 flex justify-center gap-2">
-                <WatchedButton movieId={resolvedId} size="lg" showLabel />
-                <WatchlistButton movieId={resolvedId} title={title} poster={poster} size="lg" showLabel />
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <div className="flex justify-center">
+                  <WatchedButton movieId={resolvedId} size="lg" showLabel />
+                </div>
+                <div className="flex justify-center">
+                  <WatchlistButton movieId={resolvedId} title={title} poster={poster} size="lg" showLabel />
+                </div>
+                <div className="flex justify-center">
+                  <ScheduleWatchButton
+                    movieId={resolvedId}
+                    movieTitle={title}
+                    moviePoster={poster}
+                    movieYear={year}
+                    size="lg"
+                    showLabel
+                  />
+                </div>
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    onClick={() => setSendModalOpen(true)}
+                    disabled={!user}
+                    title={user ? 'Send to friend' : 'Sign in to send'}
+                    className="h-11 px-4 rounded-full border border-pink-300/45 bg-gradient-to-r from-fuchsia-500/35 to-rose-500/35 text-fuchsia-50 font-semibold inline-flex items-center gap-2 hover:from-fuchsia-500/45 hover:to-rose-500/45 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                    Send
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -673,6 +712,17 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           </Link>
         </div>
       </div>
+
+      <SendToFriendModal
+        isOpen={sendModalOpen}
+        onClose={() => setSendModalOpen(false)}
+        movieId={sendRecommendationId || `tmdb-${sendTmdbId || resolvedId}`}
+        movieTitle={title}
+        moviePoster={poster}
+        movieYear={year}
+        tmdbId={sendTmdbId ?? undefined}
+        recommendationId={sendRecommendationId ?? undefined}
+      />
     </div>
   );
 }

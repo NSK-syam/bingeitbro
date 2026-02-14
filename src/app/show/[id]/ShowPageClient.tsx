@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { SendToFriendModal } from '@/components/SendToFriendModal';
 import { WatchlistButton } from '@/components/WatchlistButton';
 import { WatchedButton } from '@/components/WatchedButton';
+import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
@@ -214,6 +215,18 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
   const poster = show?.poster ?? '';
   const backdrop = show?.backdrop || poster;
   const year = show?.year ?? undefined;
+  const handleOpenSendModal = async () => {
+    const recId = await ensureRecommendationId();
+    if (!recId) return;
+    setSendRecommendationId(recId);
+    setSendModalOpen(true);
+  };
+  const reminderContentId = useMemo(() => {
+    if (typeof tmdbTrailerId === 'number' && Number.isFinite(tmdbTrailerId) && tmdbTrailerId > 0) {
+      return `show::tmdbtv-${tmdbTrailerId}`;
+    }
+    return `show::${resolvedId}`;
+  }, [tmdbTrailerId, resolvedId]);
   const getPreferredOttUrl = (platform: string, url: string) => {
     const lower = (platform || '').toLowerCase();
     if (lower.includes('prime') || lower.includes('amazon')) {
@@ -264,24 +277,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
             Back
           </Link>
 
-          <div className="flex items-center gap-2">
-            <WatchedButton movieId={show.id} />
-            <WatchlistButton movieId={show.id} title={show.title} poster={show.poster} />
-            <button
-              type="button"
-              className="px-3 py-2 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] text-sm font-semibold"
-              onClick={async () => {
-                const recId = await ensureRecommendationId();
-                if (!recId) return;
-                setSendRecommendationId(recId);
-                setSendModalOpen(true);
-              }}
-              title={user ? 'Send to friend' : 'Sign in to send'}
-              disabled={!user}
-            >
-              Send
-            </button>
-          </div>
+          <div className="text-xs text-[var(--text-muted)]">Series</div>
         </div>
       </header>
 
@@ -296,6 +292,38 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
           <div className="relative">
             <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/20">
               <img src={poster} alt={`${title} poster`} className="w-full h-auto object-cover" />
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="flex justify-center">
+                <WatchedButton movieId={show.id} size="lg" showLabel />
+              </div>
+              <div className="flex justify-center">
+                <WatchlistButton movieId={show.id} title={show.title} poster={show.poster} size="lg" showLabel />
+              </div>
+              <div className="flex justify-center">
+                <ScheduleWatchButton
+                  movieId={reminderContentId}
+                  movieTitle={title}
+                  moviePoster={poster}
+                  movieYear={year}
+                  size="lg"
+                  showLabel
+                />
+              </div>
+              <div className="flex justify-center">
+                <button
+                  type="button"
+                  className="h-11 px-4 rounded-full border border-pink-300/45 bg-gradient-to-r from-fuchsia-500/35 to-rose-500/35 text-fuchsia-50 font-semibold inline-flex items-center gap-2 hover:from-fuchsia-500/45 hover:to-rose-500/45 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  onClick={handleOpenSendModal}
+                  title={user ? 'Send to friend' : 'Sign in to send'}
+                  disabled={!user}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                  Send
+                </button>
+              </div>
             </div>
           </div>
 

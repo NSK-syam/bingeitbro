@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import { SendToFriendModal } from './SendToFriendModal';
+import { ScheduleWatchButton } from './ScheduleWatchButton';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
@@ -587,18 +588,33 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
               >
                 All
               </button>
-              {OTT_PROVIDERS.filter((p) => Boolean(p.ids[country])).map((p) => (
-                <button
-                  key={p.key}
-                  onClick={() => updateFilters({ ott: activeOttKey === p.key ? '' : p.key })}
-                  className={`px-3 py-1.5 text-sm rounded-full transition-all ${activeOttKey === p.key
-                    ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                    : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                  }`}
-                >
-                  {p.name}
-                </button>
-              ))}
+              {OTT_PROVIDERS.map((p) => {
+                const availableInCountry = Boolean(p.ids[country]);
+                const availabilityHint = !availableInCountry
+                  ? (p.ids.IN ? 'IN only' : p.ids.US ? 'US only' : '')
+                  : '';
+
+                return (
+                  <button
+                    key={p.key}
+                    onClick={() => {
+                      if (!availableInCountry) return;
+                      updateFilters({ ott: activeOttKey === p.key ? '' : p.key });
+                    }}
+                    disabled={!availableInCountry}
+                    title={!availableInCountry ? `Available in ${availabilityHint.replace(' only', '')}` : undefined}
+                    className={`px-3 py-1.5 text-sm rounded-full transition-all inline-flex items-center gap-1.5 ${!availableInCountry
+                      ? 'bg-[var(--bg-card)]/60 text-[var(--text-muted)]/55 border border-white/10 cursor-not-allowed'
+                      : activeOttKey === p.key
+                        ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
+                        : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
+                      }`}
+                  >
+                    <span>{p.name}</span>
+                    {availabilityHint && <span className="text-[10px] uppercase tracking-wide">{availabilityHint}</span>}
+                  </button>
+                );
+              })}
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
@@ -825,26 +841,35 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                 </div>
                 {/* Send to Friend button - visible (mobile-friendly) */}
                 {user && (
-                  <button
-                    type="button"
-                    onClick={async (e) => {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      try {
-                        const recommendationId = await ensureSeriesRecommendationId(show);
-                        setSendModal({ title: show.name, poster, year, recommendationId });
-                      } catch (err) {
-                        console.error(err);
-                      }
-                    }}
-                    className="mt-2 w-full text-xs px-2 py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                    title="Send to friend"
-                  >
-                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                    Send to Friend
-                  </button>
+                  <div className="mt-2 flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={async (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        try {
+                          const recommendationId = await ensureSeriesRecommendationId(show);
+                          setSendModal({ title: show.name, poster, year, recommendationId });
+                        } catch (err) {
+                          console.error(err);
+                        }
+                      }}
+                      className="flex-1 text-xs px-2 py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                      title="Send to friend"
+                    >
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      Send to Friend
+                    </button>
+                    <ScheduleWatchButton
+                      movieId={`show::tmdbtv-${show.id}`}
+                      movieTitle={show.name}
+                      moviePoster={poster}
+                      movieYear={year}
+                      size="sm"
+                    />
+                  </div>
                 )}
               </div>
             </Link>

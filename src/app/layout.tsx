@@ -15,10 +15,13 @@ export const metadata: Metadata = {
   description:
     "Discover what to watch next with personalized movie and series recommendations from your friends. Binge it bro.",
   icons: {
-    // Google Search can be picky about SVG favicons. Provide PNG/ICO routes too.
-    icon: [{ url: "/favicon.ico" }, { url: "/icon" }],
-    shortcut: "/favicon.ico",
-    apple: "/icon",
+    // Make icon candidates explicit for crawlers (Google requires multiples of 48px).
+    icon: [
+      { url: "/icon", type: "image/png", sizes: "192x192" },
+      { url: "/favicon.ico", type: "image/x-icon" },
+    ],
+    shortcut: "/icon",
+    apple: [{ url: "/apple-icon", sizes: "180x180", type: "image/png" }],
   },
   keywords: [
     "movies",

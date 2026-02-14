@@ -24,6 +24,10 @@ CREATE TABLE friend_recommendations (
   -- Watched status (recipient watched the recommendation)
   is_watched BOOLEAN DEFAULT FALSE,
   watched_at TIMESTAMP WITH TIME ZONE,
+  -- Optional scheduled reminder set by sender for the recipient.
+  remind_at TIMESTAMP WITH TIME ZONE,
+  reminder_notified_at TIMESTAMP WITH TIME ZONE,
+  reminder_email_sent_at TIMESTAMP WITH TIME ZONE,
   
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   
@@ -80,6 +84,19 @@ CREATE INDEX idx_friend_recommendations_recipient ON friend_recommendations(reci
 CREATE INDEX idx_friend_recommendations_sender ON friend_recommendations(sender_id);
 CREATE INDEX idx_friend_recommendations_created ON friend_recommendations(created_at DESC);
 CREATE INDEX idx_friend_recommendations_watched ON friend_recommendations(recipient_id, is_watched);
+CREATE INDEX idx_friend_recommendations_due
+  ON friend_recommendations(recipient_id, remind_at)
+  WHERE remind_at IS NOT NULL AND reminder_notified_at IS NULL;
+CREATE INDEX idx_friend_recommendations_email_due
+  ON friend_recommendations(remind_at)
+  WHERE remind_at IS NOT NULL AND reminder_email_sent_at IS NULL;
+
+ALTER TABLE friend_recommendations
+  ADD COLUMN IF NOT EXISTS remind_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE friend_recommendations
+  ADD COLUMN IF NOT EXISTS reminder_notified_at TIMESTAMP WITH TIME ZONE;
+ALTER TABLE friend_recommendations
+  ADD COLUMN IF NOT EXISTS reminder_email_sent_at TIMESTAMP WITH TIME ZONE;
 
 -- Helper view for unread count
 CREATE OR REPLACE VIEW friend_recommendations_unread_count AS

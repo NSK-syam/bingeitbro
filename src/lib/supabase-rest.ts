@@ -165,6 +165,147 @@ export async function fetchFriendsList(userId: string): Promise<FriendForSelect[
   });
 }
 
+export interface WatchReminder {
+  id: string;
+  movieId: string;
+  movieTitle: string;
+  moviePoster: string | null;
+  movieYear: number | null;
+  remindAt: string;
+  createdAt: string;
+  updatedAt: string;
+  notifiedAt: string | null;
+  canceledAt: string | null;
+}
+
+interface WatchReminderPayload {
+  movieId: string;
+  movieTitle: string;
+  moviePoster?: string | null;
+  movieYear?: number | null;
+  remindAt: string;
+}
+
+async function authedApiRequest<T>(
+  path: string,
+  options: RequestInit = {},
+  timeoutMs: number = 15000,
+): Promise<T> {
+  const token = getSupabaseAccessToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  const base = typeof window !== 'undefined' ? window.location.origin : '';
+
+  try {
+    const response = await fetch(`${base}${path}`, {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+        ...(options.headers ?? {}),
+      },
+      signal: controller.signal,
+    });
+
+    const text = await response.text();
+    let data: unknown = {};
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = { message: text };
+      }
+    }
+
+    if (!response.ok) {
+      const message =
+        typeof data === 'object' && data !== null && 'message' in data
+          ? String((data as { message?: string }).message || response.statusText)
+          : response.statusText || 'Request failed.';
+      throw new Error(message);
+    }
+
+    return data as T;
+  } catch (err) {
+    if (err instanceof DOMException && err.name === 'AbortError') {
+      throw new Error(`Request timed out after ${Math.floor(timeoutMs / 1000)}s`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+export async function getWatchReminderForMovie(movieId: string): Promise<WatchReminder | null> {
+  const encoded = encodeURIComponent(movieId);
+  const payload = await authedApiRequest<{ reminders?: WatchReminder[] }>(
+    `/api/watch-reminders?movieId=${encoded}`,
+    { method: 'GET' },
+  );
+  const reminders = Array.isArray(payload.reminders) ? payload.reminders : [];
+  return reminders[0] ?? null;
+}
+
+export async function getUpcomingWatchReminders(): Promise<WatchReminder[]> {
+  const payload = await authedApiRequest<{ reminders?: WatchReminder[] }>(
+    '/api/watch-reminders',
+    { method: 'GET' },
+  );
+  return Array.isArray(payload.reminders) ? payload.reminders : [];
+}
+
+export async function upsertWatchReminder(input: WatchReminderPayload): Promise<WatchReminder> {
+  const payload = await authedApiRequest<{ reminder?: WatchReminder }>(
+    '/api/watch-reminders',
+    {
+      method: 'POST',
+      body: JSON.stringify(input),
+    },
+  );
+  if (!payload.reminder) {
+    throw new Error('Reminder saved but response was empty.');
+  }
+  return payload.reminder;
+}
+
+export async function deleteWatchReminder(movieId: string): Promise<void> {
+  await authedApiRequest<{ ok?: boolean }>(
+    '/api/watch-reminders',
+    {
+      method: 'DELETE',
+      body: JSON.stringify({ movieId }),
+    },
+  );
+}
+
+export async function pollDueWatchReminders(limit: number = 5): Promise<WatchReminder[]> {
+  const payload = await authedApiRequest<{ reminders?: WatchReminder[] }>(
+    '/api/watch-reminders/poll',
+    {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    },
+  );
+  return Array.isArray(payload.reminders) ? payload.reminders : [];
+}
+
+export async function triggerWatchReminderEmailDispatch(
+  limit: number = 25,
+): Promise<{ processed?: number; sent?: number }> {
+  const payload = await authedApiRequest<{ processed?: number; sent?: number }>(
+    '/api/watch-reminders/dispatch-emails',
+    {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    },
+  );
+  return payload ?? {};
+}
+
 export interface FriendRecommendationRow {
   sender_id: string;
   recipient_id: string;
@@ -174,6 +315,33 @@ export interface FriendRecommendationRow {
   movie_poster: string;
   movie_year: number | null;
   personal_message: string;
+  remind_at?: string | null;
+}
+
+export interface FriendRecommendationReminder {
+  id: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar: string | null;
+  movieId: string;
+  movieTitle: string;
+  moviePoster: string | null;
+  movieYear: number | null;
+  remindAt: string;
+  isTmdb: boolean;
+}
+
+export async function pollDueFriendRecommendationReminders(
+  limit: number = 5,
+): Promise<FriendRecommendationReminder[]> {
+  const payload = await authedApiRequest<{ reminders?: FriendRecommendationReminder[] }>(
+    '/api/friend-recommendation-reminders/poll',
+    {
+      method: 'POST',
+      body: JSON.stringify({ limit }),
+    },
+  );
+  return Array.isArray(payload.reminders) ? payload.reminders : [];
 }
 
 /** Flat row from friend_recommendations (no embed). */
@@ -187,6 +355,7 @@ interface ReceivedRecRow {
   is_read: boolean;
   is_watched?: boolean;
   watched_at?: string | null;
+  remind_at?: string | null;
   created_at: string;
   tmdb_id: string | number | null;
   recommendation_id: string | null;
@@ -203,6 +372,7 @@ export interface ReceivedRecommendationRow {
   is_read: boolean;
   is_watched?: boolean;
   watched_at?: string | null;
+  remind_at?: string | null;
   created_at: string;
   tmdb_id: string | number | null;
   recommendation_id: string | null;
@@ -216,11 +386,11 @@ export async function getReceivedFriendRecommendations(
   userId: string,
 ): Promise<ReceivedRecommendationRow[]> {
   const token = getSupabaseAccessToken();
-  const buildParams = (includeWatched: boolean) =>
+  const buildParams = (includeExtendedColumns: boolean) =>
     new URLSearchParams({
       recipient_id: `eq.${userId}`,
-      select: includeWatched
-        ? 'id,sender_id,movie_title,movie_poster,movie_year,personal_message,is_read,is_watched,watched_at,created_at,tmdb_id,recommendation_id'
+      select: includeExtendedColumns
+        ? 'id,sender_id,movie_title,movie_poster,movie_year,personal_message,is_read,is_watched,watched_at,remind_at,created_at,tmdb_id,recommendation_id'
         : 'id,sender_id,movie_title,movie_poster,movie_year,personal_message,is_read,created_at,tmdb_id,recommendation_id',
       order: 'created_at.desc',
     });
@@ -234,7 +404,12 @@ export async function getReceivedFriendRecommendations(
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : '';
-    if (message.includes('is_watched') || message.includes('watched_at') || message.includes('schema cache')) {
+    if (
+      message.includes('is_watched') ||
+      message.includes('watched_at') ||
+      message.includes('remind_at') ||
+      message.includes('schema cache')
+    ) {
       rows = await supabaseRestRequest<ReceivedRecRow[]>(
         `friend_recommendations?${buildParams(false).toString()}`,
         { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
@@ -504,6 +679,7 @@ interface SentRecRow {
   is_read: boolean;
   is_watched?: boolean;
   watched_at?: string | null;
+  remind_at?: string | null;
   created_at: string;
   tmdb_id: number | null;
   recommendation_id: string | null;
@@ -520,6 +696,7 @@ export interface SentRecommendationRow {
   is_read: boolean;
   is_watched?: boolean;
   watched_at?: string | null;
+  remind_at?: string | null;
   created_at: string;
   tmdb_id: number | null;
   recommendation_id: string | null;
@@ -533,11 +710,11 @@ export async function getSentFriendRecommendations(
   userId: string,
 ): Promise<SentRecommendationRow[]> {
   const token = getSupabaseAccessToken();
-  const buildParams = (includeWatched: boolean) =>
+  const buildParams = (includeExtendedColumns: boolean) =>
     new URLSearchParams({
       sender_id: `eq.${userId}`,
-      select: includeWatched
-        ? 'id,recipient_id,movie_title,movie_poster,movie_year,personal_message,is_read,is_watched,watched_at,created_at,tmdb_id,recommendation_id'
+      select: includeExtendedColumns
+        ? 'id,recipient_id,movie_title,movie_poster,movie_year,personal_message,is_read,is_watched,watched_at,remind_at,created_at,tmdb_id,recommendation_id'
         : 'id,recipient_id,movie_title,movie_poster,movie_year,personal_message,is_read,created_at,tmdb_id,recommendation_id',
       order: 'created_at.desc',
     });
@@ -551,7 +728,12 @@ export async function getSentFriendRecommendations(
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : '';
-    if (message.includes('is_watched') || message.includes('watched_at') || message.includes('schema cache')) {
+    if (
+      message.includes('is_watched') ||
+      message.includes('watched_at') ||
+      message.includes('remind_at') ||
+      message.includes('schema cache')
+    ) {
       rows = await supabaseRestRequest<SentRecRow[]>(
         `friend_recommendations?${buildParams(false).toString()}`,
         { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },

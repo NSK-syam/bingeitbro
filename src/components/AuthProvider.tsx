@@ -7,6 +7,8 @@ import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
+import { WatchReminderCenter } from './WatchReminderCenter';
+import { FriendRecommendationReminderCenter } from './FriendRecommendationReminderCenter';
 import type { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
@@ -352,6 +354,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       isConfigured
     }}>
       {children}
+      <WatchReminderCenter />
+      <FriendRecommendationReminderCenter />
       <BalloonRain isOn={birthdayToday} />
       <BirthdayPopup
         isOpen={birthdayOpen}

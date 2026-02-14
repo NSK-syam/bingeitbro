@@ -24,15 +24,20 @@ export function WatchedButton({ movieId, size = 'md', showLabel = false }: Watch
     toggleWatched(movieId);
   };
 
+  const baseStateClass = watched
+    ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
+    : 'bg-[var(--bg-primary)]/80 text-[var(--text-muted)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]';
+
+  const labeledStateClass = watched
+    ? 'bg-green-500 text-white border border-green-300/50 shadow-lg shadow-green-500/35'
+    : 'bg-emerald-500/20 text-emerald-100 border border-emerald-300/40 hover:bg-emerald-500/30 hover:text-white';
+
   return (
     <button
       onClick={handleClick}
       className={`
         ${sizeClasses[size]}
-        ${watched
-          ? 'bg-green-500 text-white shadow-lg shadow-green-500/30'
-          : 'bg-[var(--bg-primary)]/80 text-[var(--text-muted)] hover:bg-[var(--bg-primary)] hover:text-[var(--text-primary)]'
-        }
+        ${showLabel ? labeledStateClass : baseStateClass}
         backdrop-blur-sm rounded-full flex items-center justify-center gap-1.5 transition-all duration-200
         ${showLabel ? 'px-3 w-auto' : ''}
       `}
