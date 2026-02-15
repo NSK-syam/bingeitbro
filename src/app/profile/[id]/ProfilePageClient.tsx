@@ -72,6 +72,7 @@ const parseLightingTheme = (raw: string | null | undefined): LightingState => {
 };
 
 const serializeLightingTheme = (s: LightingState) => `${s.mode}:${clamp(Math.round(s.intensity), 0, 100)}`;
+const normalizeUsername = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
 
 export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const { user, loading: authLoading } = useAuth();
@@ -102,6 +103,11 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const [lighting, setLighting] = useState<LightingState>(DEFAULT_LIGHTING);
   const [themeSaving, setThemeSaving] = useState(false);
   const [themeError, setThemeError] = useState('');
+  const [isEditingUsername, setIsEditingUsername] = useState(false);
+  const [usernameDraft, setUsernameDraft] = useState('');
+  const [usernameSaving, setUsernameSaving] = useState(false);
+  const [usernameError, setUsernameError] = useState('');
+  const [usernameSuccess, setUsernameSuccess] = useState('');
   const themeSaveTimerRef = useRef<number | null>(null);
   const [showWatchedModal, setShowWatchedModal] = useState(false);
   const [watchedItems, setWatchedItems] = useState<WatchedMovieItem[]>([]);
@@ -413,6 +419,85 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
   const displayUser = profileUser ?? fallbackProfileUser;
   const isOwnProfile = Boolean(user && displayUser && user.id === displayUser.id);
+
+  useEffect(() => {
+    if (!displayUser) return;
+    if (isEditingUsername) return;
+    setUsernameDraft(displayUser.username || '');
+  }, [displayUser, isEditingUsername]);
+
+  useEffect(() => {
+    if (!usernameSuccess) return;
+    const timer = window.setTimeout(() => setUsernameSuccess(''), 2800);
+    return () => window.clearTimeout(timer);
+  }, [usernameSuccess]);
+
+  const saveUsername = useCallback(async () => {
+    if (!user || !displayUser || !isOwnProfile) return;
+
+    const normalized = normalizeUsername(usernameDraft);
+    setUsernameError('');
+    setUsernameSuccess('');
+
+    if (normalized.length < 3) {
+      setUsernameError('Username must be at least 3 characters.');
+      return;
+    }
+    if (normalized.length > 24) {
+      setUsernameError('Username must be 24 characters or fewer.');
+      return;
+    }
+    if (normalized === (displayUser.username || '').toLowerCase()) {
+      setIsEditingUsername(false);
+      setUsernameDraft(normalized);
+      return;
+    }
+
+    setUsernameSaving(true);
+    try {
+      const checkParams = new URLSearchParams({
+        select: 'id',
+        username: `eq.${normalized}`,
+        id: `neq.${user.id}`,
+        limit: '1',
+      });
+      const existing = await supabaseRestRequest<Array<{ id: string }>>(
+        `users?${checkParams.toString()}`,
+        { method: 'GET', timeoutMs: 12000 },
+        accessToken,
+      );
+      if (Array.isArray(existing) && existing.length > 0) {
+        setUsernameError('That username is already taken.');
+        return;
+      }
+
+      await supabaseRestRequest(
+        `users?id=eq.${user.id}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({ username: normalized }),
+          timeoutMs: 12000,
+        },
+        accessToken,
+      );
+
+      setProfileUser((prev) => (prev ? { ...prev, username: normalized } : prev));
+      setUsernameDraft(normalized);
+      setIsEditingUsername(false);
+      setUsernameSuccess('Username updated.');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to update username.';
+      if (/duplicate|unique|taken|23505/i.test(message)) {
+        setUsernameError('That username is already taken.');
+      } else {
+        setUsernameError(message);
+      }
+    } finally {
+      setUsernameSaving(false);
+    }
+  }, [user, displayUser, isOwnProfile, usernameDraft, accessToken]);
+
   const watchedEntries = useMemo(() => {
     return Object.entries(watchedState)
       .filter(([, value]) => value?.watched)
@@ -1214,6 +1299,68 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             </div>
             <div className="text-center sm:text-left flex-1">
               <h1 className="text-3xl font-bold text-[var(--text-primary)]">{displayUser.name}</h1>
+              <div className="mt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                {!isEditingUsername ? (
+                  <>
+                    <p className="text-[var(--text-muted)]">@{displayUser.username || 'user'}</p>
+                    {isOwnProfile && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingUsername(true);
+                          setUsernameError('');
+                          setUsernameSuccess('');
+                        }}
+                        className="px-3 py-1 rounded-full text-xs font-medium bg-[var(--bg-secondary)] border border-white/10 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-[var(--accent)]/40 transition-colors"
+                      >
+                        Edit username
+                      </button>
+                    )}
+                  </>
+                ) : (
+                  <div className="w-full max-w-md flex flex-col items-center sm:items-start gap-2">
+                    <div className="w-full flex flex-wrap items-center gap-2">
+                      <span className="text-[var(--text-muted)] text-sm">@</span>
+                      <input
+                        type="text"
+                        value={usernameDraft}
+                        onChange={(e) => setUsernameDraft(normalizeUsername(e.target.value))}
+                        maxLength={24}
+                        autoComplete="username"
+                        className="flex-1 min-w-[180px] bg-[var(--bg-secondary)] text-[var(--text-primary)] text-sm px-3 py-2 rounded-xl border border-white/10 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/50"
+                        placeholder="your_username"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void saveUsername()}
+                        disabled={usernameSaving}
+                        className="px-3 py-2 rounded-xl bg-[var(--accent)] text-[var(--bg-primary)] text-xs font-semibold hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-60"
+                      >
+                        {usernameSaving ? 'Saving…' : 'Save'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsEditingUsername(false);
+                          setUsernameDraft(displayUser.username || '');
+                          setUsernameError('');
+                        }}
+                        disabled={usernameSaving}
+                        className="px-3 py-2 rounded-xl bg-[var(--bg-secondary)] text-[var(--text-secondary)] text-xs font-medium border border-white/10 hover:text-[var(--text-primary)] transition-colors"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                    <p className="text-[11px] text-[var(--text-muted)]">Use letters, numbers, and underscore only.</p>
+                  </div>
+                )}
+              </div>
+              {usernameError && (
+                <p className="mt-2 text-sm text-red-400">{usernameError}</p>
+              )}
+              {usernameSuccess && (
+                <p className="mt-2 text-sm text-green-400">{usernameSuccess}</p>
+              )}
               <div className="flex flex-wrap gap-4 mt-2 justify-center sm:justify-start">
                 {isOwnProfile && (
                   <>
@@ -1274,7 +1421,8 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
               <button
                 onClick={() => {
-                  const profileUrl = `${window.location.origin}/profile/${resolvedUserId}`;
+                  const profileHandle = displayUser.username || resolvedUserId;
+                  const profileUrl = `${window.location.origin}/profile/${profileHandle}`;
                   const message = `Check out ${displayUser.name}'s movie recommendations on BiB (Binge it bro)! ${profileUrl}`;
                   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
                   window.open(whatsappUrl, '_blank');
