@@ -91,3 +91,8 @@ CREATE INDEX IF NOT EXISTS idx_watch_reminders_due
 CREATE INDEX IF NOT EXISTS idx_watch_reminders_email_due
   ON public.watch_reminders (remind_at)
   WHERE canceled_at IS NULL AND email_sent_at IS NULL;
+
+-- Speeds up active reminder list fetches ordered by reminder time.
+CREATE INDEX IF NOT EXISTS idx_watch_reminders_active_user_remind_at
+  ON public.watch_reminders (user_id, remind_at)
+  WHERE canceled_at IS NULL;

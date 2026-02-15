@@ -1,7 +1,9 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
 import { buildBibEmailTemplate } from '@/lib/email-template';
+import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 30;
@@ -88,6 +90,12 @@ type DispatchSummary = {
 };
 
 const unosendBaseUrl = 'https://www.unosend.co/api/v1';
+const UNOSEND_FETCH_OPTIONS = {
+  timeoutMs: 12000,
+  retries: 2,
+  retryDelayMs: 350,
+} as const;
+type SupabaseServiceClient = SupabaseClient;
 
 function normalizeSecretCandidate(value: string | null | undefined): string {
   return String(value ?? '')
@@ -135,7 +143,7 @@ async function authorizeDispatch(request: Request): Promise<DispatchAuth> {
   try {
     const anonClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: { persistSession: false, autoRefreshToken: false },
-    }) as any;
+    });
     const { data, error } = await anonClient.auth.getUser(bearerToken);
     const userId = data?.user?.id;
     if (error || !userId) return { ok: false };
@@ -146,14 +154,14 @@ async function authorizeDispatch(request: Request): Promise<DispatchAuth> {
 }
 
 async function sendOneEmail(payload: UnosendPayload): Promise<{ ok: boolean; message?: string }> {
-  const response = await fetch(`${unosendBaseUrl}/emails`, {
+  const response = await fetchWithTimeoutRetry(`${unosendBaseUrl}/emails`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${unosendApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
-  });
+  }, UNOSEND_FETCH_OPTIONS);
 
   if (response.ok) return { ok: true };
   const text = await response.text();
@@ -161,14 +169,14 @@ async function sendOneEmail(payload: UnosendPayload): Promise<{ ok: boolean; mes
 }
 
 async function sendBatchEmails(payload: UnosendPayload[]): Promise<{ ok: boolean; message?: string }> {
-  const response = await fetch(`${unosendBaseUrl}/emails/batch`, {
+  const response = await fetchWithTimeoutRetry(`${unosendBaseUrl}/emails/batch`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${unosendApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
-  });
+  }, UNOSEND_FETCH_OPTIONS);
 
   if (response.ok) return { ok: true };
   const text = await response.text();
@@ -214,7 +222,7 @@ async function sendJobs(jobs: EmailJob[]): Promise<{ sentIds: string[]; failed: 
 }
 
 async function dispatchWatchReminderEmails(
-  supabase: any,
+  supabase: SupabaseServiceClient,
   limit: number,
   nowIso: string,
   onlyUserId: string | null = null,
@@ -278,6 +286,8 @@ async function dispatchWatchReminderEmails(
       `It's reminder time now.`,
       '',
       `Open now: ${openLink}`,
+      '',
+      `Inbox tip: If this email lands in Spam, click "Report not spam" and move it to Primary.`,
     ].join('\n');
     const html = buildBibEmailTemplate({
       siteUrl,
@@ -290,6 +300,7 @@ async function dispatchWatchReminderEmails(
       ctaLabel: 'Open on Binge it bro',
       ctaUrl: openLink,
       footerNote: 'You are receiving this because you scheduled this reminder in BiB.',
+      inboxTip: 'If this lands in Spam, click "Report not spam" and move future BiB emails to Primary.',
     });
 
     jobs.push({
@@ -330,7 +341,7 @@ async function dispatchWatchReminderEmails(
 }
 
 async function dispatchFriendRecommendationReminderEmails(
-  supabase: any,
+  supabase: SupabaseServiceClient,
   limit: number,
   nowIso: string,
   onlyRecipientId: string | null = null,
@@ -406,6 +417,8 @@ async function dispatchFriendRecommendationReminderEmails(
       `It's reminder time now.`,
       '',
       `Open now: ${openLink}`,
+      '',
+      `Inbox tip: If this email lands in Spam, click "Report not spam" and move it to Primary.`,
     ].join('\n');
     const html = buildBibEmailTemplate({
       siteUrl,
@@ -418,6 +431,7 @@ async function dispatchFriendRecommendationReminderEmails(
       ctaLabel: 'Open movie on Binge it bro',
       ctaUrl: openLink,
       footerNote: 'You can manage reminder alerts from your BiB account.',
+      inboxTip: 'If this lands in Spam, click "Report not spam" and move future BiB emails to Primary.',
     });
 
     jobs.push({
@@ -477,7 +491,7 @@ export async function POST(request: Request) {
 
     const supabase = createClient(supabaseUrl, supabaseServiceRoleKey, {
       auth: { persistSession: false },
-    }) as any;
+    });
 
     const scopedUserId = dispatchAuth.mode === 'user' ? dispatchAuth.userId : null;
     const watch = await dispatchWatchReminderEmails(supabase, limit, nowIso, scopedUserId);

@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
+import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 15;
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
+const SUPABASE_FETCH_OPTIONS = { timeoutMs: 9000, retries: 1, retryDelayMs: 300 } as const;
 
 type ReminderRow = {
   id: string;
@@ -32,13 +34,13 @@ function getBearerToken(request: Request): string | null {
 }
 
 async function getAuthedUserId(token: string): Promise<string | null> {
-  const authRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+  const authRes = await fetchWithTimeoutRetry(`${supabaseUrl}/auth/v1/user`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
       apikey: supabaseAnonKey,
     },
-  });
+  }, SUPABASE_FETCH_OPTIONS);
   if (!authRes.ok) return null;
   const user = (await authRes.json().catch(() => null)) as { id?: string } | null;
   return typeof user?.id === 'string' ? user.id : null;
@@ -75,13 +77,13 @@ export async function POST(request: Request) {
       or: '(is_watched.is.null,is_watched.eq.false)',
     });
 
-    const dueRes = await fetch(`${supabaseUrl}/rest/v1/friend_recommendations?${params.toString()}`, {
+    const dueRes = await fetchWithTimeoutRetry(`${supabaseUrl}/rest/v1/friend_recommendations?${params.toString()}`, {
       method: 'GET',
       headers: {
         apikey: supabaseAnonKey,
         Authorization: `Bearer ${token}`,
       },
-    });
+    }, SUPABASE_FETCH_OPTIONS);
 
     if (!dueRes.ok) {
       return NextResponse.json({ reminders: [] }, { status: 200 });
@@ -101,7 +103,7 @@ export async function POST(request: Request) {
             recipient_id: `eq.${userId}`,
             reminder_notified_at: 'is.null',
           });
-          const patchRes = await fetch(`${supabaseUrl}/rest/v1/friend_recommendations?${patchParams.toString()}`, {
+          const patchRes = await fetchWithTimeoutRetry(`${supabaseUrl}/rest/v1/friend_recommendations?${patchParams.toString()}`, {
             method: 'PATCH',
             headers: {
               apikey: supabaseAnonKey,
@@ -112,7 +114,7 @@ export async function POST(request: Request) {
             body: JSON.stringify({
               reminder_notified_at: nowIso,
             }),
-          });
+          }, SUPABASE_FETCH_OPTIONS);
           if (!patchRes.ok) return null;
           const patchText = await patchRes.text();
           const patchRows = (patchText ? (JSON.parse(patchText) as ReminderRow[]) : []) ?? [];
@@ -131,13 +133,13 @@ export async function POST(request: Request) {
       id: `in.(${senderIds.join(',')})`,
     });
 
-    const sendersRes = await fetch(`${supabaseUrl}/rest/v1/users?${sendersParams.toString()}`, {
+    const sendersRes = await fetchWithTimeoutRetry(`${supabaseUrl}/rest/v1/users?${sendersParams.toString()}`, {
       method: 'GET',
       headers: {
         apikey: supabaseAnonKey,
         Authorization: `Bearer ${token}`,
       },
-    });
+    }, SUPABASE_FETCH_OPTIONS);
 
     const senderRows = sendersRes.ok
       ? (((await sendersRes.json().catch(() => [])) as SenderRow[]) ?? [])

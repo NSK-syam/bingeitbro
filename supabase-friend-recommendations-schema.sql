@@ -90,6 +90,16 @@ CREATE INDEX idx_friend_recommendations_due
 CREATE INDEX idx_friend_recommendations_email_due
   ON friend_recommendations(remind_at)
   WHERE remind_at IS NOT NULL AND reminder_email_sent_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_friend_recommendations_due_unwatched
+  ON friend_recommendations(recipient_id, remind_at)
+  WHERE remind_at IS NOT NULL
+    AND reminder_notified_at IS NULL
+    AND COALESCE(is_watched, FALSE) = FALSE;
+CREATE INDEX IF NOT EXISTS idx_friend_recommendations_email_due_unwatched
+  ON friend_recommendations(remind_at, recipient_id)
+  WHERE remind_at IS NOT NULL
+    AND reminder_email_sent_at IS NULL
+    AND COALESCE(is_watched, FALSE) = FALSE;
 
 ALTER TABLE friend_recommendations
   ADD COLUMN IF NOT EXISTS remind_at TIMESTAMP WITH TIME ZONE;

@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
 
 /**
  * Insert friend recommendations directly via Supabase REST (no Edge Function).
@@ -12,6 +13,7 @@ const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
 const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SERVICE_ROLE_KEY ?? '').trim();
 const useServiceRole = serviceRoleKey.split('.').length === 3;
+const SUPABASE_FETCH_OPTIONS = { timeoutMs: 9000, retries: 1, retryDelayMs: 300 } as const;
 
 function getBearerToken(request: Request): string | null {
   const header = request.headers.get('authorization') || request.headers.get('Authorization');
@@ -59,10 +61,10 @@ export async function POST(request: Request) {
     }
     const raw = Array.isArray(body?.recommendations) ? body.recommendations : [];
 
-    const authRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+    const authRes = await fetchWithTimeoutRetry(`${supabaseUrl}/auth/v1/user`, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}`, apikey: supabaseAnonKey },
-    });
+    }, SUPABASE_FETCH_OPTIONS);
     if (!authRes.ok) {
       return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
     }
@@ -113,12 +115,13 @@ export async function POST(request: Request) {
   if (useServiceRole && serviceRoleKey) {
     const recipientIds = [...new Set(toInsert.map((r) => r.recipient_id))];
     if (recipientIds.length > 0) {
-      const friendsRes = await fetch(
+      const friendsRes = await fetchWithTimeoutRetry(
         `${supabaseUrl}/rest/v1/friends?select=friend_id&user_id=eq.${user.id}&friend_id=in.(${recipientIds.join(',')})`,
         {
           method: 'GET',
           headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${serviceRoleKey}` },
         },
+        SUPABASE_FETCH_OPTIONS,
       );
       if (friendsRes.ok) {
         const friends = (await friendsRes.json().catch(() => [])) as { friend_id?: string }[];
@@ -168,11 +171,11 @@ export async function POST(request: Request) {
     if (row.remind_at) {
       insertBody.remind_at = row.remind_at;
     }
-    const insertRes = await fetch(`${supabaseUrl}/rest/v1/friend_recommendations`, {
+    const insertRes = await fetchWithTimeoutRetry(`${supabaseUrl}/rest/v1/friend_recommendations`, {
       method: 'POST',
       headers,
       body: JSON.stringify(insertBody),
-    });
+    }, SUPABASE_FETCH_OPTIONS);
     const text = await insertRes.text();
     let data: { code?: string; message?: string } | null = null;
     if (text) {

@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
+import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 15;
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
+const SUPABASE_FETCH_OPTIONS = { timeoutMs: 9000, retries: 1, retryDelayMs: 300 } as const;
 
 type ReminderRow = {
   id: string;
@@ -33,13 +35,13 @@ function getBearerToken(request: Request): string | null {
 }
 
 async function getAuthedUserId(token: string): Promise<string | null> {
-  const authRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+  const authRes = await fetchWithTimeoutRetry(`${supabaseUrl}/auth/v1/user`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
       apikey: supabaseAnonKey,
     },
-  });
+  }, SUPABASE_FETCH_OPTIONS);
   if (!authRes.ok) return null;
   const user = (await authRes.json().catch(() => null)) as { id?: string } | null;
   return typeof user?.id === 'string' ? user.id : null;
@@ -85,13 +87,13 @@ export async function POST(request: Request) {
       limit: String(limit),
     });
 
-    const dueRes = await fetch(`${supabaseUrl}/rest/v1/watch_reminders?${params.toString()}`, {
+    const dueRes = await fetchWithTimeoutRetry(`${supabaseUrl}/rest/v1/watch_reminders?${params.toString()}`, {
       method: 'GET',
       headers: {
         apikey: supabaseAnonKey,
         Authorization: `Bearer ${token}`,
       },
-    });
+    }, SUPABASE_FETCH_OPTIONS);
 
     const dueText = await dueRes.text();
     if (!dueRes.ok) {
@@ -111,7 +113,7 @@ export async function POST(request: Request) {
             user_id: `eq.${userId}`,
             notified_at: 'is.null',
           });
-          const patchRes = await fetch(`${supabaseUrl}/rest/v1/watch_reminders?${patchParams.toString()}`, {
+          const patchRes = await fetchWithTimeoutRetry(`${supabaseUrl}/rest/v1/watch_reminders?${patchParams.toString()}`, {
             method: 'PATCH',
             headers: {
               apikey: supabaseAnonKey,
@@ -123,7 +125,7 @@ export async function POST(request: Request) {
               notified_at: nowIso,
               updated_at: nowIso,
             }),
-          });
+          }, SUPABASE_FETCH_OPTIONS);
           if (!patchRes.ok) return null;
           const patchText = await patchRes.text();
           const patchRows = (patchText ? (JSON.parse(patchText) as ReminderRow[]) : []) ?? [];

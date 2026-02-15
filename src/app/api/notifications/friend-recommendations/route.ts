@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { buildBibEmailTemplate } from '@/lib/email-template';
+import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
 
 export const runtime = 'nodejs';
 
@@ -59,16 +60,21 @@ function getBearerToken(request: Request): string | null {
 }
 
 const unosendBaseUrl = 'https://www.unosend.co/api/v1';
+const UNOSEND_FETCH_OPTIONS = {
+  timeoutMs: 12000,
+  retries: 2,
+  retryDelayMs: 350,
+} as const;
 
 async function unosendRequest(path: string, payload: unknown) {
-  const response = await fetch(`${unosendBaseUrl}${path}`, {
+  const response = await fetchWithTimeoutRetry(`${unosendBaseUrl}${path}`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${unosendApiKey}`,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
-  });
+  }, UNOSEND_FETCH_OPTIONS);
 
   const text = await response.text();
   let data: unknown = null;
@@ -195,6 +201,8 @@ export async function POST(request: Request) {
       message ? `Message: "${message}"` : null,
       '',
       `View it: ${link}`,
+      '',
+      `Inbox tip: If this email lands in Spam, click "Report not spam" and move it to Primary.`,
     ].filter(Boolean);
 
     const html = buildBibEmailTemplate({
@@ -210,6 +218,7 @@ export async function POST(request: Request) {
       ctaLabel: 'View on Binge it bro',
       ctaUrl: link,
       footerNote: 'If you did not expect this, you can ignore this email.',
+      inboxTip: 'If this lands in Spam, click "Report not spam" and move future BiB emails to Primary.',
     });
 
     return [

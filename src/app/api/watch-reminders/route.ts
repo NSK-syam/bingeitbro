@@ -1,10 +1,12 @@
 import { NextResponse } from 'next/server';
+import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
 
 export const runtime = 'nodejs';
 export const maxDuration = 15;
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
+const SUPABASE_FETCH_OPTIONS = { timeoutMs: 9000, retries: 1, retryDelayMs: 300 } as const;
 
 type RestError = {
   code?: string;
@@ -47,13 +49,13 @@ function getBearerToken(request: Request): string | null {
 }
 
 async function getAuthedUserId(token: string): Promise<string | null> {
-  const authRes = await fetch(`${supabaseUrl}/auth/v1/user`, {
+  const authRes = await fetchWithTimeoutRetry(`${supabaseUrl}/auth/v1/user`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${token}`,
       apikey: supabaseAnonKey,
     },
-  });
+  }, SUPABASE_FETCH_OPTIONS);
   if (!authRes.ok) return null;
   const user = (await authRes.json().catch(() => null)) as { id?: string } | null;
   return typeof user?.id === 'string' ? user.id : null;
@@ -113,13 +115,13 @@ export async function GET(request: Request) {
       params.set('limit', '1');
     }
 
-    const response = await fetch(`${supabaseUrl}/rest/v1/watch_reminders?${params.toString()}`, {
+    const response = await fetchWithTimeoutRetry(`${supabaseUrl}/rest/v1/watch_reminders?${params.toString()}`, {
       method: 'GET',
       headers: {
         apikey: supabaseAnonKey,
         Authorization: `Bearer ${token}`,
       },
-    });
+    }, SUPABASE_FETCH_OPTIONS);
 
     const text = await response.text();
     if (!response.ok) {
@@ -191,7 +193,7 @@ export async function POST(request: Request) {
     };
 
     const params = new URLSearchParams({ on_conflict: 'user_id,movie_id' });
-    const response = await fetch(`${supabaseUrl}/rest/v1/watch_reminders?${params.toString()}`, {
+    const response = await fetchWithTimeoutRetry(`${supabaseUrl}/rest/v1/watch_reminders?${params.toString()}`, {
       method: 'POST',
       headers: {
         apikey: supabaseAnonKey,
@@ -200,7 +202,7 @@ export async function POST(request: Request) {
         Prefer: 'resolution=merge-duplicates,return=representation',
       },
       body: JSON.stringify(payload),
-    });
+    }, SUPABASE_FETCH_OPTIONS);
 
     const text = await response.text();
     if (!response.ok) {
@@ -246,14 +248,14 @@ export async function DELETE(request: Request) {
       user_id: `eq.${userId}`,
       movie_id: `eq.${movieId}`,
     });
-    const response = await fetch(`${supabaseUrl}/rest/v1/watch_reminders?${params.toString()}`, {
+    const response = await fetchWithTimeoutRetry(`${supabaseUrl}/rest/v1/watch_reminders?${params.toString()}`, {
       method: 'DELETE',
       headers: {
         apikey: supabaseAnonKey,
         Authorization: `Bearer ${token}`,
         Prefer: 'return=minimal',
       },
-    });
+    }, SUPABASE_FETCH_OPTIONS);
 
     if (!response.ok) {
       const text = await response.text();
