@@ -81,13 +81,23 @@ export function HelpBotWidget() {
       <button
         type="button"
         onClick={openBot}
-        className="relative h-14 w-14 rounded-full border border-cyan-100/55 bg-gradient-to-br from-cyan-400 to-blue-600 text-[#041221] shadow-[0_14px_40px_rgba(56,189,248,0.45)] hover:scale-[1.03] active:scale-100 transition-transform"
+        className="relative h-14 w-14 rounded-full border border-amber-100/65 bg-gradient-to-br from-amber-300 via-orange-400 to-rose-500 text-[#fff7e0] shadow-[0_14px_40px_rgba(245,158,11,0.45)] hover:scale-[1.03] active:scale-100 transition-transform"
         aria-label="Open help updates"
         title="Help & updates"
       >
-        <span className="text-2xl leading-none" aria-hidden>
-          🤖
-        </span>
+        <span className="absolute inset-[3px] rounded-full bg-black/18" aria-hidden />
+        <svg
+          className="relative z-10 mx-auto h-7 w-7 drop-shadow-[0_2px_6px_rgba(0,0,0,0.4)]"
+          viewBox="0 0 24 24"
+          fill="none"
+          aria-hidden
+        >
+          <rect x="3.5" y="8.5" width="17" height="11" rx="2.3" stroke="currentColor" strokeWidth="1.6" />
+          <path d="M4.2 8.5L6.8 4.8H10l-2.6 3.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M10.6 8.5L13.2 4.8h3.2l-2.6 3.7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          <path d="M11 12.2l3.8 2.3-3.8 2.3v-4.6z" fill="currentColor" />
+          <circle cx="18.2" cy="6" r="1.2" fill="currentColor" opacity="0.9" />
+        </svg>
         {hasUnseen && (
           <span className="absolute -top-1 -right-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white border border-white/70">
             New
@@ -97,4 +107,3 @@ export function HelpBotWidget() {
     </div>
   );
 }
-
