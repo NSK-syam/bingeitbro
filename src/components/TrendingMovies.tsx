@@ -341,11 +341,12 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             : '';
 
           const hasFilters = Boolean(selectedLang || selectedGenre || selectedYear || selectedOtt);
-          // Keep request volume low; fetch more only when user narrows filters.
-          const maxPages = hasFilters ? 2 : 1;
+          // Keep request volume low; fetch a bit more so Trending feels fuller.
+          // With our proxy caching + single-region fetch, this stays within limits.
+          const maxPages = hasFilters ? 3 : 2;
           const pagesToFetch = Array.from({ length: maxPages }, (_, i) => i + 1);
-          // Upcoming: a couple pages max to avoid rate limits.
-          const upcomingMaxPages = (selectedLang || (selectedYearNum && selectedYearNum > currentYear)) ? 3 : 1;
+          // Upcoming: still capped to avoid rate limits, but allow a bit more.
+          const upcomingMaxPages = (selectedLang || (selectedYearNum && selectedYearNum > currentYear)) ? 4 : 2;
           const upcomingPagesToFetch = Array.from({ length: upcomingMaxPages }, (_, i) => i + 1);
 
           // When an OTT has a language restriction (e.g. Aha = Telugu + Tamil only), use only those languages
