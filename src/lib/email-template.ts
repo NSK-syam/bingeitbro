@@ -11,6 +11,7 @@ type BibEmailTemplateInput = {
   ctaLabel: string;
   ctaUrl: string;
   footerNote?: string;
+  inboxTip?: string;
 };
 
 function normalizeSiteUrl(siteUrl: string): string {
@@ -40,6 +41,7 @@ export function buildBibEmailTemplate(input: BibEmailTemplateInput): string {
   const safeMessageLabel = input.messageLabel ? escapeHtml(input.messageLabel) : '';
   const safeMessageValue = input.messageValue ? escapeHtml(input.messageValue) : '';
   const safeFooterNote = input.footerNote ? escapeHtml(input.footerNote) : '';
+  const safeInboxTip = input.inboxTip ? escapeHtml(input.inboxTip) : '';
 
   const spotlightBlock =
     safeSpotlightLabel && safeSpotlightValue
@@ -71,6 +73,13 @@ export function buildBibEmailTemplate(input: BibEmailTemplateInput): string {
 
   const footerNoteBlock = safeFooterNote
     ? `<div style="margin-top:8px;color:#8e97b1;">${safeFooterNote}</div>`
+    : '';
+  const inboxTipBlock = safeInboxTip
+    ? `
+      <div style="margin-top:10px;padding:10px 12px;border:1px solid #2a3150;border-radius:10px;background:#0f1527;color:#b9c3df;">
+        <strong style="color:#e8edff;">Inbox tip:</strong> ${safeInboxTip}
+      </div>
+    `
     : '';
 
   return `<!doctype html>
@@ -115,6 +124,7 @@ export function buildBibEmailTemplate(input: BibEmailTemplateInput): string {
               <td style="padding:0 24px 20px 24px;font-size:12px;line-height:1.55;color:#7f88a4;">
                 This is a transactional email from BiB.
                 ${footerNoteBlock}
+                ${inboxTipBlock}
               </td>
             </tr>
           </table>
