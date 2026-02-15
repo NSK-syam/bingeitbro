@@ -356,6 +356,16 @@ export function Header({
                         </svg>
                         View My Profile
                       </button>
+                      <Link
+                        href="/trivia"
+                        onClick={() => setShowUserMenu(false)}
+                        className="w-full px-4 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 cursor-pointer"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6M9 11h6M9 15h4M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
+                        </svg>
+                        Weekly Trivia
+                      </Link>
                       <button
                         type="button"
                         onClick={() => {

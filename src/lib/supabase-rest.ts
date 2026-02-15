@@ -1029,6 +1029,18 @@ type WatchGroupInviteRow = {
   responded_at: string | null;
 };
 
+export type TriviaLanguage = 'en' | 'te' | 'hi' | 'ta';
+
+export type TriviaLeaderboardEntry = {
+  userId: string;
+  name: string;
+  username: string | null;
+  avatar: string | null;
+  score: number;
+  durationMs: number;
+  createdAt: string;
+};
+
 function ensureAuthedToken(): string {
   const token = getSupabaseAccessToken();
   if (!token) {
@@ -1102,6 +1114,78 @@ export async function markWatchGroupSeen(groupId: string): Promise<void> {
   } catch {
     // ignore (RPC may not exist yet)
   }
+}
+
+export async function submitTriviaAttempt(input: {
+  weekKey: string;
+  language: TriviaLanguage;
+  score: number;
+  durationMs: number;
+}): Promise<string> {
+  const token = ensureAuthedToken();
+  const rows = await supabaseRestRequest<Array<{ submit_trivia_attempt: string }>>(
+    'rpc/submit_trivia_attempt',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        p_week_key: input.weekKey,
+        p_language: input.language,
+        p_score: input.score,
+        p_duration_ms: input.durationMs,
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+  const first = Array.isArray(rows) ? rows[0] : null;
+  const id = first ? String(first.submit_trivia_attempt || '').trim() : '';
+  if (!id) throw new Error('Failed to submit trivia attempt.');
+  return id;
+}
+
+export async function getTriviaLeaderboard(input: {
+  weekKey: string;
+  language: TriviaLanguage;
+}): Promise<TriviaLeaderboardEntry[]> {
+  const token = ensureAuthedToken();
+  const rows = await supabaseRestRequest<
+    Array<{
+      user_id: string;
+      name: string;
+      username: string | null;
+      avatar: string | null;
+      score: number | string;
+      duration_ms: number | string;
+      created_at: string;
+    }>
+  >(
+    'rpc/get_trivia_leaderboard',
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        p_week_key: input.weekKey,
+        p_language: input.language,
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const scoreRaw = typeof row.score === 'string' ? Number(row.score) : row.score;
+    const durationRaw = typeof row.duration_ms === 'string' ? Number(row.duration_ms) : row.duration_ms;
+    return {
+      userId: row.user_id,
+      name: row.name || 'User',
+      username: row.username ?? null,
+      avatar: row.avatar ?? null,
+      score: Number.isFinite(scoreRaw) ? Number(scoreRaw) : 0,
+      durationMs: Number.isFinite(durationRaw) ? Number(durationRaw) : 0,
+      createdAt: row.created_at,
+    } satisfies TriviaLeaderboardEntry;
+  });
 }
 
 export async function createWatchGroup(
