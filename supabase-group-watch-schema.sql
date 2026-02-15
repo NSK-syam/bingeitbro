@@ -16,6 +16,7 @@ CREATE TABLE IF NOT EXISTS public.watch_group_members (
   group_id UUID NOT NULL REFERENCES public.watch_groups(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'member')),
+  last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (group_id, user_id)
 );
@@ -145,6 +146,41 @@ BEGIN
   RETURN QUERY
     SELECT v_invite.id, v_invite.group_id, v_status;
 END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.mark_watch_group_seen(p_group_id UUID)
+RETURNS VOID
+LANGUAGE SQL
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  UPDATE public.watch_group_members
+  SET last_seen_at = NOW()
+  WHERE group_id = p_group_id
+    AND user_id = auth.uid();
+$$;
+
+CREATE OR REPLACE FUNCTION public.get_watch_group_unseen_counts(p_group_ids UUID[] DEFAULT NULL)
+RETURNS TABLE (
+  group_id UUID,
+  unseen_count BIGINT
+)
+LANGUAGE SQL
+STABLE
+SECURITY DEFINER
+SET search_path = public
+AS $$
+  SELECT
+    m.group_id,
+    COUNT(*)::BIGINT AS unseen_count
+  FROM public.watch_group_members m
+  JOIN public.watch_group_picks p
+    ON p.group_id = m.group_id
+  WHERE m.user_id = auth.uid()
+    AND (p_group_ids IS NULL OR m.group_id = ANY (p_group_ids))
+    AND p.created_at > m.last_seen_at
+    AND p.sender_id <> m.user_id
+  GROUP BY m.group_id;
 $$;
 
 DROP TRIGGER IF EXISTS watch_groups_after_insert ON public.watch_groups;
@@ -459,6 +495,9 @@ CREATE INDEX IF NOT EXISTS idx_watch_group_members_user_id
 CREATE INDEX IF NOT EXISTS idx_watch_group_members_group_id
   ON public.watch_group_members (group_id);
 
+CREATE INDEX IF NOT EXISTS idx_watch_group_members_last_seen
+  ON public.watch_group_members (group_id, last_seen_at);
+
 CREATE INDEX IF NOT EXISTS idx_watch_group_invites_group_id
   ON public.watch_group_invites (group_id);
 
@@ -474,6 +513,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_watch_group_invites_pending
 
 REVOKE ALL ON FUNCTION public.respond_watch_group_invite(UUID, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.respond_watch_group_invite(UUID, TEXT) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.mark_watch_group_seen(UUID) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.mark_watch_group_seen(UUID) TO authenticated;
+
+REVOKE ALL ON FUNCTION public.get_watch_group_unseen_counts(UUID[]) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.get_watch_group_unseen_counts(UUID[]) TO authenticated;
 
 CREATE INDEX IF NOT EXISTS idx_watch_group_picks_group_created
   ON public.watch_group_picks (group_id, created_at DESC);

@@ -25,6 +25,7 @@ import {
   getFriendRecommendationsUnreadCount,
   getRecentFriendRecommendations,
   getUpcomingWatchReminders,
+  getMyWatchGroups,
 } from '@/lib/supabase-rest';
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 import data from '@/data/recommendations.json';
@@ -137,6 +138,7 @@ export default function MoviesHome() {
   const [activeView, setActiveView] = useState<'trending' | 'friends'>('trending');
   const [friendRecommendationsCount, setFriendRecommendationsCount] = useState(0);
   const [scheduledWatchCount, setScheduledWatchCount] = useState(0);
+  const [groupWatchCount, setGroupWatchCount] = useState(0);
   const [authErrorFromRedirect, setAuthErrorFromRedirect] = useState(false);
   const { unreadCount: nudgeCount } = useNudges();
   const [recToast, setRecToast] = useState<{
@@ -348,6 +350,20 @@ export default function MoviesHome() {
     }
   }, [user]);
 
+  const refreshGroupWatchCount = useCallback(async () => {
+    if (!user) {
+      setGroupWatchCount(0);
+      return;
+    }
+    try {
+      const groups = await getMyWatchGroups(user.id);
+      const total = groups.reduce((sum, g) => sum + (g.unseenCount || 0), 0);
+      setGroupWatchCount(Math.min(total, 99));
+    } catch {
+      setGroupWatchCount(0);
+    }
+  }, [user]);
+
   useEffect(() => {
     if (!user) {
       setScheduledWatchCount(0);
@@ -359,6 +375,25 @@ export default function MoviesHome() {
     }, 60000);
     return () => window.clearInterval(interval);
   }, [user, refreshScheduledWatchCount]);
+
+  useEffect(() => {
+    if (!user) {
+      setGroupWatchCount(0);
+      return;
+    }
+    void refreshGroupWatchCount();
+    const interval = window.setInterval(() => {
+      void refreshGroupWatchCount();
+    }, 60000);
+    return () => window.clearInterval(interval);
+  }, [user, refreshGroupWatchCount]);
+
+  useEffect(() => {
+    // When modal closes (and it may mark groups as seen), refresh badge.
+    if (!showGroupWatch) {
+      void refreshGroupWatchCount();
+    }
+  }, [showGroupWatch, refreshGroupWatchCount]);
 
   // Lightweight polling for new friend recommendations (toast notification)
   useEffect(() => {
@@ -851,6 +886,11 @@ export default function MoviesHome() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
                 Group Watch
+                {groupWatchCount > 0 && (
+                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-200 text-[#071018] text-xs font-bold flex items-center justify-center border border-indigo-50/80 shadow-sm">
+                    {groupWatchCount > 99 ? '99+' : groupWatchCount}
+                  </span>
+                )}
               </button>
 
               {isValentinesDay && (

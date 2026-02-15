@@ -10,6 +10,7 @@ import {
   fetchFriendsList,
   getIncomingWatchGroupInvites,
   getMyWatchGroups,
+  markWatchGroupSeen,
   getWatchGroupMembers,
   getPendingWatchGroupInvites,
   getWatchGroupPicks,
@@ -193,6 +194,12 @@ export function GroupWatchModal({
       ]);
       setMembers(memberRows);
       setPicks(pickRows);
+      // Mark group as seen after successfully loading picks.
+      void markWatchGroupSeen(groupId).then(() => {
+        setGroups((prev) =>
+          prev.map((g) => (g.id === groupId ? { ...g, unseenCount: 0 } : g)),
+        );
+      });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load group data.');
       setMembers([]);
@@ -568,7 +575,7 @@ export function GroupWatchModal({
                 <p className="text-sm font-semibold text-[var(--text-primary)]">Your groups</p>
                 {groupsLoading && <span className="text-xs text-[var(--text-muted)]">Loading…</span>}
               </div>
-              {groups.length === 0 ? (
+                  {groups.length === 0 ? (
                 <p className="text-sm text-[var(--text-muted)]">No groups yet. Create your first one.</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
@@ -584,7 +591,14 @@ export function GroupWatchModal({
                           : 'border-white/10 bg-[var(--bg-primary)] hover:border-indigo-300/35',
                       ].join(' ')}
                     >
-                      <p className="text-sm font-medium text-[var(--text-primary)] line-clamp-1">{group.name}</p>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-medium text-[var(--text-primary)] line-clamp-1">{group.name}</p>
+                        {group.unseenCount > 0 && (
+                          <span className="shrink-0 rounded-full bg-rose-500/20 border border-rose-300/30 px-2 py-0.5 text-[11px] font-semibold text-rose-100">
+                            {group.unseenCount}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-[var(--text-muted)] mt-0.5">
                         {group.memberCount} members · {group.role === 'owner' ? 'Owner' : 'Member'}
                       </p>

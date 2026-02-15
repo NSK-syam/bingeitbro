@@ -930,6 +930,7 @@ export interface WatchGroup {
   updatedAt: string;
   role: 'owner' | 'member';
   memberCount: number;
+  unseenCount: number;
 }
 
 export interface WatchGroupMember {
@@ -1050,7 +1051,57 @@ function mapWatchGroup(
     updatedAt: group.updated_at,
     role: membership.role,
     memberCount,
+    unseenCount: 0,
   };
+}
+
+async function getWatchGroupUnseenCountMap(
+  groupIds: string[],
+): Promise<Map<string, number>> {
+  const token = ensureAuthedToken();
+  if (groupIds.length === 0) return new Map();
+  try {
+    const rows = await supabaseRestRequest<Array<{ group_id: string; unseen_count: number | string }>>(
+      'rpc/get_watch_group_unseen_counts',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_group_ids: groupIds }),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    );
+    const map = new Map<string, number>();
+    for (const row of Array.isArray(rows) ? rows : []) {
+      const id = String(row.group_id || '').trim();
+      if (!id) continue;
+      const raw = typeof row.unseen_count === 'string' ? Number(row.unseen_count) : row.unseen_count;
+      const value = Number.isFinite(raw) ? Number(raw) : 0;
+      map.set(id, Math.max(0, value));
+    }
+    return map;
+  } catch {
+    // If the RPC isn't installed yet, don't break the UI.
+    return new Map();
+  }
+}
+
+export async function markWatchGroupSeen(groupId: string): Promise<void> {
+  const token = ensureAuthedToken();
+  try {
+    await supabaseRestRequest(
+      'rpc/mark_watch_group_seen',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ p_group_id: groupId }),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    );
+  } catch {
+    // ignore (RPC may not exist yet)
+  }
 }
 
 export async function createWatchGroup(
@@ -1152,6 +1203,7 @@ export async function getMyWatchGroups(userId: string): Promise<WatchGroup[]> {
   if (!Array.isArray(memberships) || memberships.length === 0) return [];
 
   const groupIds = memberships.map((m) => m.group_id);
+  const unseenByGroup = await getWatchGroupUnseenCountMap(groupIds);
   const groupsParams = new URLSearchParams({
     select: 'id,owner_id,name,description,created_at,updated_at',
     id: `in.(${groupIds.join(',')})`,
@@ -1182,7 +1234,8 @@ export async function getMyWatchGroups(userId: string): Promise<WatchGroup[]> {
     .map((group) => {
       const membership = membershipByGroup.get(group.id);
       if (!membership) return null;
-      return mapWatchGroup(group, membership, countByGroup.get(group.id) ?? 1);
+      const base = mapWatchGroup(group, membership, countByGroup.get(group.id) ?? 1);
+      return { ...base, unseenCount: unseenByGroup.get(group.id) ?? 0 };
     })
     .filter((group): group is WatchGroup => group !== null)
     .sort((a, b) => {
