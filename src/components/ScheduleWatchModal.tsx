@@ -238,7 +238,7 @@ export function ScheduleWatchModal({
       });
       await loadScheduled();
       onScheduled?.();
-      setSuccess(`Scheduled "${selected.title}"`);
+      setSuccess(`Scheduled "${selected.title}". If reminder email goes to Spam, click "Report not spam" to keep BiB emails in Primary.`);
       setTimeout(() => onClose(), 500);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save reminder.');
