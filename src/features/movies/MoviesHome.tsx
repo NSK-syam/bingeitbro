@@ -15,6 +15,7 @@ import { MovieCalendarSpotlightPopup } from '@/components/MovieCalendarSpotlight
 import { ValentineHeartsBurst } from '@/components/ValentineHeartsBurst';
 import { RecommendationToast } from '@/components/RecommendationToast';
 import { CountryToggle } from '@/components/CountryToggle';
+import { HelpBotWidget } from '@/components/HelpBotWidget';
 import { useAuth } from '@/components/AuthProvider';
 import { Recommendation, Recommender, OTTLink } from '@/types';
 import { useWatched, useNudges, useWatchlist, useCountry } from '@/hooks';
@@ -657,6 +658,7 @@ export default function MoviesHome() {
         />
       )}
       {isValentinesDay && <ValentineHeartsBurst active={valentineSpotlightOpen} />}
+      {user && <HelpBotWidget />}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
         {!user ? (
