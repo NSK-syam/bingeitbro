@@ -94,7 +94,10 @@ DO $$ BEGIN
     CREATE POLICY watch_groups_select_member
       ON public.watch_groups
       FOR SELECT
-      USING (public.is_watch_group_member(id));
+      USING (
+        owner_id = auth.uid()
+        OR public.is_watch_group_member(id)
+      );
   END IF;
 END $$;
 
