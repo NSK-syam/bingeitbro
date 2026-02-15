@@ -98,7 +98,7 @@ async function fetchShows(args: {
           ];
         }
 
-        const defaultLangs = ['en', 'hi', 'te', 'ta'];
+        const defaultLangs = ['en', 'hi', 'te', 'ta', 'kn'];
         const langs = args.lang ? [args.lang] : defaultLangs;
         const maxPages = 4;
         const pages = Array.from({ length: maxPages }, (_, i) => i + 1);
@@ -493,6 +493,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                 { name: 'Telugu', code: 'te' },
                 { name: 'Tamil', code: 'ta' },
                 { name: 'Malayalam', code: 'ml' },
+                { name: 'Kannada', code: 'kn' },
                 { name: 'Korean', code: 'ko' },
                 { name: 'Japanese', code: 'ja' },
               ].map((lang) => (

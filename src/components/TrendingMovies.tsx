@@ -110,6 +110,7 @@ const LANGUAGES = [
   { name: 'Telugu', code: 'te' },
   { name: 'Tamil', code: 'ta' },
   { name: 'Malayalam', code: 'ml' },
+  { name: 'Kannada', code: 'kn' },
   { name: 'Korean', code: 'ko' },
   { name: 'Japanese', code: 'ja' },
   { name: 'Chinese', code: 'zh' },
