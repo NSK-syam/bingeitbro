@@ -2,7 +2,15 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthProvider';
-import { fetchFriendsList, sendFriendRecommendations, getAlreadyRecommendedRecipientIds, type FriendForSelect } from '@/lib/supabase-rest';
+import {
+    fetchFriendsList,
+    sendFriendRecommendations,
+    getAlreadyRecommendedRecipientIds,
+    getMyWatchGroups,
+    addWatchGroupPick,
+    type FriendForSelect,
+    type WatchGroup,
+} from '@/lib/supabase-rest';
 import { notifyFriendRecommendationEmails } from '@/lib/notifications';
 import { getResolvedTimeZone, parseLocalDateTimeInput } from '@/lib/local-datetime';
 
@@ -32,12 +40,16 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
     const { user } = useAuth();
     const [friends, setFriends] = useState<FriendForSelect[]>([]);
     const [selectedFriends, setSelectedFriends] = useState<Set<string>>(new Set());
+    const [groups, setGroups] = useState<WatchGroup[]>([]);
+    const [selectedGroups, setSelectedGroups] = useState<Set<string>>(new Set());
     const [personalMessage, setPersonalMessage] = useState('');
     const [isLoading, setIsLoading] = useState(true);
+    const [groupsLoading, setGroupsLoading] = useState(true);
     const [isSending, setIsSending] = useState(false);
     const [error, setError] = useState('');
     const [statusMessage, setStatusMessage] = useState('');
     const [friendsLoadError, setFriendsLoadError] = useState('');
+    const [groupsLoadError, setGroupsLoadError] = useState('');
     const [success, setSuccess] = useState(false);
     const [alreadySentTo, setAlreadySentTo] = useState<Set<string>>(new Set());
     const [scheduleReminder, setScheduleReminder] = useState(false);
@@ -63,13 +75,32 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
         }
     }, [user]);
 
+    const fetchGroups = useCallback(async () => {
+        if (!user) return;
+        setGroupsLoading(true);
+        setGroupsLoadError('');
+        try {
+            const rows = await getMyWatchGroups(user.id);
+            // Only show groups created by this user (owner)
+            const owned = rows.filter((g) => g.role === 'owner').sort((a, b) => a.name.localeCompare(b.name));
+            setGroups(owned);
+        } catch (err) {
+            console.error('Error fetching groups:', err);
+            setGroupsLoadError(err instanceof Error ? err.message : 'Could not load groups. Please try again.');
+            setGroups([]);
+        } finally {
+            setGroupsLoading(false);
+        }
+    }, [user]);
+
     // Fetch friends when modal opens; clear previous error
     useEffect(() => {
         if (!isOpen || !user) return;
         setError('');
         setStatusMessage('');
         fetchFriends();
-    }, [isOpen, user, fetchFriends]);
+        fetchGroups();
+    }, [isOpen, user, fetchFriends, fetchGroups]);
 
     // Pre-check which friends already have this movie (so we can show "Already sent" and avoid 409)
     useEffect(() => {
@@ -82,13 +113,20 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
             tmdbId: tmdbId != null ? Number(tmdbId) : null,
             recommendationId: recommendationId ?? null,
         }).then(setAlreadySentTo);
-    }, [isOpen, user?.id, friends, tmdbId, recommendationId]);
+    }, [isOpen, user, friends, tmdbId, recommendationId]);
 
     // Filter friends based on search
     const filteredFriends = friends.filter(friend =>
         friend.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         friend.username?.toLowerCase().includes(searchQuery.toLowerCase())
     );
+
+    const toggleGroupSelection = (groupId: string) => {
+        const next = new Set(selectedGroups);
+        if (next.has(groupId)) next.delete(groupId);
+        else next.add(groupId);
+        setSelectedGroups(next);
+    };
 
     const toggleFriendSelection = (friendId: string) => {
         const newSelection = new Set(selectedFriends);
@@ -101,8 +139,8 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
     };
 
     const handleSend = async () => {
-        if (selectedFriends.size === 0) {
-            setError('Please select at least one friend');
+        if (selectedFriends.size === 0 && selectedGroups.size === 0) {
+            setError('Please select at least one friend or group');
             return;
         }
 
@@ -113,6 +151,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
         try {
             const remindAtIso = (() => {
                 if (!scheduleReminder) return null;
+                if (selectedFriends.size === 0) return null; // schedule is for friends only
                 const raw = remindAtInput.trim();
                 if (!raw) return '';
                 const parsed = parseLocalDateTimeInput(raw);
@@ -121,7 +160,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 return parsed.toISOString();
             })();
 
-            if (scheduleReminder) {
+            if (scheduleReminder && selectedFriends.size > 0) {
                 if (!remindAtIso) {
                     setError('Pick a valid date and time for the reminder.');
                     return;
@@ -130,18 +169,6 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                     setError('Reminder time must be in the future.');
                     return;
                 }
-            }
-
-            const recipientList = Array.from(selectedFriends);
-            const alreadySent = await getAlreadyRecommendedRecipientIds(user!.id, recipientList, {
-                tmdbId: tmdbId != null ? Number(tmdbId) : null,
-                recommendationId: recommendationId ?? null,
-            });
-            const toSend = recipientList.filter(id => !alreadySent.has(id));
-
-            if (toSend.length === 0) {
-                setError('You\'ve already recommended this movie to all selected friends.');
-                return;
             }
 
             const safePoster = (() => {
@@ -155,28 +182,105 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
             const safeMessage = personalMessage.trim().slice(0, 200);
             const safeTitle = movieTitle.trim().slice(0, 200);
 
-            const recommendations = toSend.map(recipientId => ({
-                sender_id: user!.id,
-                recipient_id: recipientId,
-                recommendation_id: recommendationId ?? null,
-                tmdb_id: tmdbId != null ? Number(tmdbId) : null,
-                movie_title: safeTitle,
-                movie_poster: safePoster,
-                movie_year: movieYear ?? null,
-                personal_message: safeMessage,
-                remind_at: remindAtIso,
-            }));
+            let sentCount = 0;
+            let duplicateCount = 0;
+            let notAllowedCount = 0;
+            let alreadySent = new Set<string>();
+            let recommendations: Array<{
+                sender_id: string;
+                recipient_id: string;
+                recommendation_id: string | null;
+                tmdb_id: number | null;
+                movie_title: string;
+                movie_poster: string;
+                movie_year: number | null;
+                personal_message: string;
+                remind_at: string | null;
+            }> = [];
+            let sentRecipientIds: string[] = [];
 
-            const result = await sendFriendRecommendations(recommendations);
+            if (selectedFriends.size > 0) {
+                const recipientList = Array.from(selectedFriends);
+                alreadySent = await getAlreadyRecommendedRecipientIds(user!.id, recipientList, {
+                    tmdbId: tmdbId != null ? Number(tmdbId) : null,
+                    recommendationId: recommendationId ?? null,
+                });
+                const toSend = recipientList.filter(id => !alreadySent.has(id));
 
-            const sentCount = result.sent ?? 0;
-            const duplicateCount = result.skipped?.duplicates?.length ?? 0;
-            const notAllowedCount = result.skipped?.notAllowed?.length ?? 0;
+                if (toSend.length === 0) {
+                    // allow group sending even if friends already have it
+                } else {
+                    recommendations = toSend.map(recipientId => ({
+                        sender_id: user!.id,
+                        recipient_id: recipientId,
+                        recommendation_id: recommendationId ?? null,
+                        tmdb_id: tmdbId != null ? Number(tmdbId) : null,
+                        movie_title: safeTitle,
+                        movie_poster: safePoster,
+                        movie_year: movieYear ?? null,
+                        personal_message: safeMessage,
+                        remind_at: remindAtIso,
+                    }));
+
+                    const result = await sendFriendRecommendations(recommendations);
+                    sentCount = result.sent ?? 0;
+                    sentRecipientIds = Array.isArray(result.sentRecipientIds) ? result.sentRecipientIds : [];
+                    duplicateCount = result.skipped?.duplicates?.length ?? 0;
+                    notAllowedCount = result.skipped?.notAllowed?.length ?? 0;
+                }
+            }
+
+            let groupAdded = 0;
+            let groupSkipped = 0;
+            if (selectedGroups.size > 0) {
+                const groupIds = Array.from(selectedGroups);
+                const groupTmdbId = (() => {
+                    const raw = String(tmdbId ?? '').trim();
+                    if (raw) return raw;
+                    const rec = String(recommendationId ?? '').trim();
+                    if (rec) return `rec:${rec}`;
+                    const fallback = String(props.movieId ?? '').trim();
+                    return fallback ? `local:${fallback}` : 'unknown';
+                })();
+
+                const results = await Promise.allSettled(
+                    groupIds.map((groupId) => addWatchGroupPick({
+                        groupId,
+                        senderId: user!.id,
+                        mediaType: 'movie',
+                        tmdbId: groupTmdbId,
+                        title: safeTitle,
+                        poster: safePoster,
+                        releaseYear: movieYear ?? null,
+                        note: safeMessage || null,
+                    }))
+                );
+                for (const r of results) {
+                    if (r.status === 'fulfilled') {
+                        groupAdded += 1;
+                    } else {
+                        const msg = r.reason instanceof Error ? r.reason.message : String(r.reason ?? '');
+                        if (/duplicate|unique|already/i.test(msg)) {
+                            groupSkipped += 1;
+                            continue;
+                        }
+                        // any other error should surface
+                        throw r.reason;
+                    }
+                }
+            }
+
             const alreadyCount = alreadySent.size + duplicateCount;
 
             const messageParts: string[] = [];
             if (sentCount > 0) {
                 messageParts.push(`Sent to ${sentCount} friend${sentCount === 1 ? '' : 's'}.`);
+            }
+            if (groupAdded > 0) {
+                messageParts.push(`Added to ${groupAdded} group${groupAdded === 1 ? '' : 's'}.`);
+            }
+            if (groupSkipped > 0) {
+                messageParts.push(`Skipped ${groupSkipped} group${groupSkipped === 1 ? '' : 's'} (already in picks).`);
             }
             if (alreadyCount > 0) {
                 messageParts.push(`Skipped ${alreadyCount} who already had this recommendation.`);
@@ -185,12 +289,11 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 messageParts.push(`Skipped ${notAllowedCount} who aren't in your friends list.`);
             }
 
-            if (sentCount === 0) {
+            if (sentCount === 0 && groupAdded === 0) {
                 setError(messageParts.join(' ') || 'No recommendations were sent. Please try again.');
                 return;
             }
 
-            const sentRecipientIds = Array.isArray(result.sentRecipientIds) ? result.sentRecipientIds : [];
             let emailRecipients = recommendations;
             if (sentRecipientIds.length > 0) {
                 const sentSet = new Set(sentRecipientIds);
@@ -213,13 +316,16 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
 
             if (alreadyCount > 0 || notAllowedCount > 0) {
                 setStatusMessage(messageParts.join(' '));
-            } else if (scheduleReminder && remindAtIso) {
+            } else if (scheduleReminder && selectedFriends.size > 0 && remindAtIso) {
                 setStatusMessage(`Reminder scheduled for ${new Date(remindAtIso).toLocaleString()}.`);
+            } else if (messageParts.length > 0) {
+                setStatusMessage(messageParts.join(' '));
             }
             setSuccess(true);
             setTimeout(() => {
                 onClose();
                 setSelectedFriends(new Set());
+                setSelectedGroups(new Set());
                 setPersonalMessage('');
                 setSearchQuery('');
                 setScheduleReminder(false);
@@ -244,6 +350,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
         if (!isSending) {
             onClose();
             setSelectedFriends(new Set());
+            setSelectedGroups(new Set());
             setPersonalMessage('');
             setSearchQuery('');
             setScheduleReminder(false);
@@ -300,6 +407,9 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                             {statusMessage && (
                                 <p className="text-sm text-[var(--text-muted)] mt-2 text-center">{statusMessage}</p>
                             )}
+                            <p className="text-xs text-amber-200/90 mt-3 text-center">
+                                Ask friends to check Spam and click <span className="font-semibold">&quot;Report not spam&quot;</span> so BiB emails move to Primary.
+                            </p>
                         </div>
                     ) : (
                         <>
@@ -330,7 +440,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                             setScheduleReminder(e.target.checked);
                                             if (!e.target.checked) setRemindAtInput('');
                                         }}
-                                        disabled={isSending}
+                                        disabled={isSending || selectedFriends.size === 0}
                                         className="h-4 w-4 rounded border-white/20 bg-transparent text-[var(--accent)] focus:ring-[var(--accent)]"
                                     />
                                     Schedule reminder for selected friends
@@ -338,6 +448,11 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                 <p className="mt-1 text-xs text-[var(--text-muted)]">
                                     They&apos;ll get a reminder notification and email at this time.
                                 </p>
+                                {selectedFriends.size === 0 && (
+                                    <p className="mt-1 text-xs text-[var(--text-muted)]">
+                                        Select at least 1 friend to enable scheduling.
+                                    </p>
+                                )}
                                 {scheduleReminder && (
                                     <div className="mt-3">
                                         <input
@@ -350,6 +465,58 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                             className="w-full rounded-lg border border-white/10 bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:border-[var(--accent)]/60 focus:outline-none disabled:opacity-50"
                                         />
                                         <p className="mt-2 text-xs text-[var(--text-muted)]">Your timezone: {userTimeZone}</p>
+                                    </div>
+                                )}
+                            </div>
+
+                            {/* Groups List */}
+                            <div className="mb-6">
+                                <h3 className="text-sm font-medium text-[var(--text-primary)] mb-3">
+                                    Send to Groups ({selectedGroups.size} selected)
+                                </h3>
+                                {groupsLoading ? (
+                                    <div className="flex justify-center py-5">
+                                        <div className="w-6 h-6 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+                                    </div>
+                                ) : groupsLoadError ? (
+                                    <div className="text-center py-5">
+                                        <p className="text-red-400 mb-2">{groupsLoadError}</p>
+                                        <button
+                                            type="button"
+                                            onClick={() => fetchGroups()}
+                                            className="px-4 py-2 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:opacity-90 transition-opacity"
+                                        >
+                                            Retry
+                                        </button>
+                                    </div>
+                                ) : groups.length === 0 ? (
+                                    <div className="text-sm text-[var(--text-muted)]">
+                                        No groups created yet.
+                                    </div>
+                                ) : (
+                                    <div className="space-y-2 max-h-40 overflow-y-auto">
+                                        {groups.map((group) => (
+                                            <button
+                                                key={group.id}
+                                                type="button"
+                                                onClick={() => toggleGroupSelection(group.id)}
+                                                disabled={isSending}
+                                                className={`w-full flex items-center justify-between p-3 rounded-xl transition-all disabled:opacity-50 ${selectedGroups.has(group.id)
+                                                    ? 'bg-indigo-500/20 border-2 border-indigo-300/60'
+                                                    : 'bg-[var(--bg-secondary)] border-2 border-transparent hover:border-white/10'
+                                                    }`}
+                                            >
+                                                <div className="text-left">
+                                                    <p className="font-medium text-[var(--text-primary)]">{group.name}</p>
+                                                    <p className="text-xs text-[var(--text-muted)]">{group.memberCount} members</p>
+                                                </div>
+                                                {selectedGroups.has(group.id) ? (
+                                                    <svg className="w-5 h-5 text-indigo-200" fill="currentColor" viewBox="0 0 20 20">
+                                                        <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                                    </svg>
+                                                ) : null}
+                                            </button>
+                                        ))}
                                     </div>
                                 )}
                             </div>
@@ -463,7 +630,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                         </button>
                         <button
                             onClick={handleSend}
-                            disabled={isSending || selectedFriends.size === 0}
+                            disabled={isSending || (selectedFriends.size === 0 && selectedGroups.size === 0)}
                             className="flex-1 px-4 py-2.5 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                         >
                             {isSending ? (
