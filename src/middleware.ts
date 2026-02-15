@@ -47,6 +47,10 @@ function getRateLimitRule(request: NextRequest): RateLimitRule | null {
     return { key: 'signup', limit: 10, windowMs: 10 * 60 * 1000 };
   }
 
+  if (method === 'GET' && pathname === '/api/username-available') {
+    return { key: 'username-available', limit: 120, windowMs: 60 * 1000 };
+  }
+
   if (
     method === 'POST' &&
     (pathname === '/api/send-friend-recommendations' ||

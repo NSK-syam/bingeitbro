@@ -37,13 +37,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [birthdayToday, setBirthdayToday] = useState(false);
   // Confetti removed by request; keep balloons + popup only.
 
-  useEffect(() => {
-    if (!user?.id) {
-      setBirthdayToday(false);
-      setBirthdayOpen(false);
-      setBirthdayName('');
-    }
-  }, [user?.id]);
+  const resetBirthdayState = () => {
+    setBirthdayToday(false);
+    setBirthdayOpen(false);
+    setBirthdayName('');
+  };
 
   useEffect(() => {
     if (!isConfigured) {
@@ -115,6 +113,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);
+      if (!session?.user) resetBirthdayState();
 
       // Ensure user profile exists for OAuth users (SIGNED_IN) and initial sessions after redirect
       void ensureUserProfile(session?.user ?? null);
@@ -129,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(session);
         setUser(session?.user ?? null);
         setLoading(false);
+        if (!session?.user) resetBirthdayState();
         void ensureUserProfile(session?.user ?? null);
       }
     }).catch(() => {
@@ -191,7 +191,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [isConfigured, user?.id]);
+  }, [isConfigured, user?.id, user?.email, user?.user_metadata?.name]);
 
   const signIn = async (email: string, password: string) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
@@ -204,29 +204,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const checkUsernameAvailable = async (username: string): Promise<boolean> => {
     if (!isConfigured) return false;
 
-    const supabase = createClient();
     const normalized = username.trim().toLowerCase();
     if (!normalized) return false;
 
-    const { data, error } = await supabase
-      .from('users')
-      .select('id')
-      .ilike('username', normalized)
-      .limit(1);
-
-    if (error) return false;
-
-    return !data || data.length === 0;
+    try {
+      const resp = await fetch(`/api/username-available?username=${encodeURIComponent(normalized)}`, {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' },
+      });
+      const payload = (await resp.json().catch(() => ({}))) as { available?: unknown };
+      if (typeof payload.available === 'boolean') return payload.available;
+      // Don't block signup because of an availability check issue.
+      return true;
+    } catch {
+      return true;
+    }
   };
 
   const signUp = async (email: string, password: string, name: string, username: string, birthdate: string | null) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
-
-    // Check if username is available
-    const isAvailable = await checkUsernameAvailable(username);
-    if (!isAvailable) {
-      return { error: new Error('Username is already taken') };
-    }
 
     try {
       const resp = await fetch('/api/signup', {
@@ -240,9 +236,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           birthdate: birthdate || null,
         }),
       });
-      const payload = (await resp.json()) as { ok?: boolean; error?: string; needsEmailConfirmation?: boolean };
+      const payload = (await resp.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string; needsEmailConfirmation?: boolean };
       if (!resp.ok || !payload?.ok) {
-        return { error: new Error(payload?.error || 'Signup failed.') };
+        return { error: new Error(payload?.error || payload?.message || 'Signup failed.') };
       }
       if (payload.needsEmailConfirmation) {
         return {
