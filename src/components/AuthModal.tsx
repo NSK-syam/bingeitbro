@@ -82,6 +82,11 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
           setLoading(false);
           return;
         }
+        if (username.length > 24) {
+          setError('Username must be 24 characters or fewer');
+          setLoading(false);
+          return;
+        }
         if (usernameStatus === 'taken') {
           setError('Username is already taken');
           setLoading(false);
@@ -89,6 +94,11 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
         }
         if (!name.trim()) {
           setError('Please enter your name');
+          setLoading(false);
+          return;
+        }
+        if (password.length < 8) {
+          setError('Password must be at least 8 characters');
           setLoading(false);
           return;
         }

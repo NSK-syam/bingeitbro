@@ -10,6 +10,8 @@ type SignupBody = {
   birthdate?: unknown; // YYYY-MM-DD
 };
 
+const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/i;
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
 }
@@ -86,11 +88,20 @@ export async function POST(req: Request) {
   if (!email || !password || !name || !username) {
     return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 });
   }
-  if (password.length < 6) {
-    return NextResponse.json({ error: 'Password must be at least 6 characters.' }, { status: 400 });
+  if (!EMAIL_RE.test(email) || email.length > 254) {
+    return NextResponse.json({ error: 'Invalid email address.' }, { status: 400 });
+  }
+  if (password.length < 8) {
+    return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
+  }
+  if (name.length > 80) {
+    return NextResponse.json({ error: 'Name is too long.' }, { status: 400 });
   }
   if (username.length < 3) {
     return NextResponse.json({ error: 'Username must be at least 3 characters.' }, { status: 400 });
+  }
+  if (username.length > 24) {
+    return NextResponse.json({ error: 'Username must be 24 characters or fewer.' }, { status: 400 });
   }
   if (birthdate && !isValidBirthdate(birthdate)) {
     return NextResponse.json({ error: 'Invalid birthdate.' }, { status: 400 });
