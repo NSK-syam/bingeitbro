@@ -38,11 +38,11 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/bib-logo.png",
-        width: 1024,
-        height: 558,
+        url: "/social-card-1200x630.jpg?v=20260215b",
+        width: 1200,
+        height: 630,
         alt: "BiB - Binge it bro",
-        type: "image/png",
+        type: "image/jpeg",
       },
     ],
   },
@@ -52,9 +52,9 @@ export const metadata: Metadata = {
     description: "Friends recommend, you watch",
     images: [
       {
-        url: "/bib-logo.png",
-        width: 1024,
-        height: 558,
+        url: "/social-card-1200x630.jpg?v=20260215b",
+        width: 1200,
+        height: 630,
         alt: "BiB - Binge it bro",
       },
     ],
