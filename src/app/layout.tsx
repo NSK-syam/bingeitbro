@@ -38,9 +38,23 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/og-bib.svg",
-        width: 1200,
-        height: 630,
+        url: "/bib-logo.png",
+        width: 1024,
+        height: 558,
+        alt: "BiB - Binge it bro",
+        type: "image/png",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "BiB - Binge it bro",
+    description: "Friends recommend, you watch",
+    images: [
+      {
+        url: "/bib-logo.png",
+        width: 1024,
+        height: 558,
         alt: "BiB - Binge it bro",
       },
     ],
