@@ -960,6 +960,27 @@ export interface WatchGroupPick {
   myVote: -1 | 0 | 1;
 }
 
+export interface WatchGroupIncomingInvite {
+  id: string;
+  groupId: string;
+  groupName: string;
+  inviterId: string;
+  inviterName: string;
+  inviterAvatar: string | null;
+  status: 'pending' | 'accepted' | 'rejected' | 'canceled';
+  createdAt: string;
+}
+
+export interface WatchGroupPendingInvite {
+  id: string;
+  groupId: string;
+  inviteeId: string;
+  inviteeName: string;
+  inviteeAvatar: string | null;
+  status: 'pending' | 'accepted' | 'rejected' | 'canceled';
+  createdAt: string;
+}
+
 type WatchGroupRow = {
   id: string;
   owner_id: string;
@@ -992,6 +1013,19 @@ type WatchGroupPickVoteRow = {
   pick_id: string;
   user_id: string;
   vote_value: -1 | 1;
+};
+
+type WatchGroupInviteStatus = 'pending' | 'accepted' | 'rejected' | 'canceled';
+
+type WatchGroupInviteRow = {
+  id: string;
+  group_id: string;
+  inviter_id: string;
+  invitee_id: string;
+  status: WatchGroupInviteStatus;
+  created_at: string;
+  updated_at: string;
+  responded_at: string | null;
 };
 
 function ensureAuthedToken(): string {
@@ -1167,6 +1201,206 @@ export async function addWatchGroupMember(groupId: string, memberUserId: string)
     },
     token,
   );
+}
+
+export async function sendWatchGroupInvite(input: {
+  groupId: string;
+  inviterId: string;
+  inviteeId: string;
+}): Promise<void> {
+  const token = ensureAuthedToken();
+  if (!input.groupId || !input.inviterId || !input.inviteeId) {
+    throw new Error('Missing invite details.');
+  }
+  if (input.inviterId === input.inviteeId) {
+    throw new Error('You cannot invite yourself.');
+  }
+
+  const memberCheckParams = new URLSearchParams({
+    select: 'group_id,user_id,role',
+    group_id: `eq.${input.groupId}`,
+    user_id: `eq.${input.inviteeId}`,
+    limit: '1',
+  });
+  const existingMembers = await supabaseRestRequest<WatchGroupMemberRow[]>(
+    `watch_group_members?${memberCheckParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  if (Array.isArray(existingMembers) && existingMembers.length > 0) {
+    throw new Error('This friend is already in the group.');
+  }
+
+  const inviteCheckParams = new URLSearchParams({
+    select: 'id',
+    group_id: `eq.${input.groupId}`,
+    invitee_id: `eq.${input.inviteeId}`,
+    status: 'eq.pending',
+    limit: '1',
+  });
+  const existingInvites = await supabaseRestRequest<Array<{ id: string }>>(
+    `watch_group_invites?${inviteCheckParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  if (Array.isArray(existingInvites) && existingInvites.length > 0) {
+    throw new Error('Invite already pending for this friend.');
+  }
+
+  await supabaseRestRequest(
+    'watch_group_invites',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({
+        group_id: input.groupId,
+        inviter_id: input.inviterId,
+        invitee_id: input.inviteeId,
+        status: 'pending',
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
+
+export async function getIncomingWatchGroupInvites(
+  userId: string,
+): Promise<WatchGroupIncomingInvite[]> {
+  const token = ensureAuthedToken();
+  const inviteParams = new URLSearchParams({
+    select: 'id,group_id,inviter_id,invitee_id,status,created_at,updated_at,responded_at',
+    invitee_id: `eq.${userId}`,
+    status: 'eq.pending',
+    order: 'created_at.desc',
+  });
+  const inviteRows = await supabaseRestRequest<WatchGroupInviteRow[]>(
+    `watch_group_invites?${inviteParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const invites = Array.isArray(inviteRows) ? inviteRows : [];
+  if (invites.length === 0) return [];
+
+  const inviterIds = [...new Set(invites.map((invite) => invite.inviter_id))];
+  const groupIds = [...new Set(invites.map((invite) => invite.group_id))];
+
+  const inviterParams = new URLSearchParams({
+    select: 'id,name,avatar',
+    id: `in.(${inviterIds.join(',')})`,
+  });
+  const inviters = await supabaseRestRequest<Array<{ id: string; name: string; avatar: string | null }>>(
+    `users?${inviterParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const inviterMap = new Map((Array.isArray(inviters) ? inviters : []).map((row) => [row.id, row]));
+
+  const groupParams = new URLSearchParams({
+    select: 'id,name',
+    id: `in.(${groupIds.join(',')})`,
+  });
+  const groups = await supabaseRestRequest<Array<{ id: string; name: string }>>(
+    `watch_groups?${groupParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const groupMap = new Map((Array.isArray(groups) ? groups : []).map((row) => [row.id, row]));
+
+  return invites.map((invite) => {
+    const inviter = inviterMap.get(invite.inviter_id);
+    const group = groupMap.get(invite.group_id);
+    return {
+      id: invite.id,
+      groupId: invite.group_id,
+      groupName: group?.name || 'Group',
+      inviterId: invite.inviter_id,
+      inviterName: inviter?.name || 'Friend',
+      inviterAvatar: inviter?.avatar ?? null,
+      status: invite.status,
+      createdAt: invite.created_at,
+    } satisfies WatchGroupIncomingInvite;
+  });
+}
+
+export async function getPendingWatchGroupInvites(
+  groupId: string,
+): Promise<WatchGroupPendingInvite[]> {
+  const token = ensureAuthedToken();
+  const inviteParams = new URLSearchParams({
+    select: 'id,group_id,inviter_id,invitee_id,status,created_at,updated_at,responded_at',
+    group_id: `eq.${groupId}`,
+    status: 'eq.pending',
+    order: 'created_at.desc',
+  });
+  const inviteRows = await supabaseRestRequest<WatchGroupInviteRow[]>(
+    `watch_group_invites?${inviteParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const invites = Array.isArray(inviteRows) ? inviteRows : [];
+  if (invites.length === 0) return [];
+
+  const inviteeIds = [...new Set(invites.map((invite) => invite.invitee_id))];
+  const inviteeParams = new URLSearchParams({
+    select: 'id,name,avatar',
+    id: `in.(${inviteeIds.join(',')})`,
+  });
+  const invitees = await supabaseRestRequest<Array<{ id: string; name: string; avatar: string | null }>>(
+    `users?${inviteeParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const inviteeMap = new Map((Array.isArray(invitees) ? invitees : []).map((row) => [row.id, row]));
+
+  return invites.map((invite) => {
+    const invitee = inviteeMap.get(invite.invitee_id);
+    return {
+      id: invite.id,
+      groupId: invite.group_id,
+      inviteeId: invite.invitee_id,
+      inviteeName: invitee?.name || 'Friend',
+      inviteeAvatar: invitee?.avatar ?? null,
+      status: invite.status,
+      createdAt: invite.created_at,
+    } satisfies WatchGroupPendingInvite;
+  });
+}
+
+export async function respondToWatchGroupInvite(
+  inviteId: string,
+  decision: 'accepted' | 'rejected',
+): Promise<{ inviteId: string; groupId: string; status: 'accepted' | 'rejected' }> {
+  const token = ensureAuthedToken();
+  const rows = await supabaseRestRequest<Array<{ invite_id: string; group_id: string; status: string }>>(
+    'rpc/respond_watch_group_invite',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify({
+        p_invite_id: inviteId,
+        p_decision: decision,
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+
+  const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+  if (!row || (row.status !== 'accepted' && row.status !== 'rejected')) {
+    throw new Error('Failed to respond to invite.');
+  }
+  return {
+    inviteId: row.invite_id,
+    groupId: row.group_id,
+    status: row.status,
+  };
 }
 
 export async function addWatchGroupPick(input: {

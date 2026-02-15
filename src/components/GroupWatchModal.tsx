@@ -4,18 +4,23 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthProvider';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import {
-  addWatchGroupMember,
   addWatchGroupPick,
   clearWatchGroupPickVote,
   createWatchGroup,
   fetchFriendsList,
+  getIncomingWatchGroupInvites,
   getMyWatchGroups,
   getWatchGroupMembers,
+  getPendingWatchGroupInvites,
   getWatchGroupPicks,
+  respondToWatchGroupInvite,
+  sendWatchGroupInvite,
   voteOnWatchGroupPick,
   type FriendForSelect,
   type WatchGroup,
+  type WatchGroupIncomingInvite,
   type WatchGroupMember,
+  type WatchGroupPendingInvite,
   type WatchGroupPick,
 } from '@/lib/supabase-rest';
 
@@ -66,14 +71,19 @@ export function GroupWatchModal({
   const [picks, setPicks] = useState<WatchGroupPick[]>([]);
   const [picksLoading, setPicksLoading] = useState(false);
   const [friends, setFriends] = useState<FriendForSelect[]>([]);
+  const [incomingInvites, setIncomingInvites] = useState<WatchGroupIncomingInvite[]>([]);
+  const [incomingInvitesLoading, setIncomingInvitesLoading] = useState(false);
+  const [pendingInvites, setPendingInvites] = useState<WatchGroupPendingInvite[]>([]);
+  const [pendingInvitesLoading, setPendingInvitesLoading] = useState(false);
 
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
   const [creatingGroup, setCreatingGroup] = useState(false);
 
   const [friendSearch, setFriendSearch] = useState('');
-  const [addingMemberUserId, setAddingMemberUserId] = useState('');
-  const [addingMember, setAddingMember] = useState(false);
+  const [inviteUserId, setInviteUserId] = useState('');
+  const [sendingInvite, setSendingInvite] = useState(false);
+  const [respondingInviteId, setRespondingInviteId] = useState<string | null>(null);
 
   const [mediaType, setMediaType] = useState<'movie' | 'show'>('movie');
   const [pickQuery, setPickQuery] = useState('');
@@ -97,16 +107,17 @@ export function GroupWatchModal({
 
   const filteredFriends = useMemo(() => {
     const memberIds = new Set(members.map((m) => m.userId));
+    const pendingInviteeIds = new Set(pendingInvites.map((invite) => invite.inviteeId));
     const query = friendSearch.trim().toLowerCase();
     return friends
-      .filter((friend) => !memberIds.has(friend.id))
+      .filter((friend) => !memberIds.has(friend.id) && !pendingInviteeIds.has(friend.id))
       .filter((friend) => {
         if (!query) return true;
         const username = friend.username?.toLowerCase() ?? '';
         return friend.name.toLowerCase().includes(query) || username.includes(query);
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [friends, members, friendSearch]);
+  }, [friends, members, pendingInvites, friendSearch]);
 
   const loadGroups = useCallback(async (preferredGroupId?: string) => {
     if (!user) return;
@@ -140,6 +151,31 @@ export function GroupWatchModal({
     }
   }, [user]);
 
+  const loadIncomingInvites = useCallback(async () => {
+    if (!user) return;
+    setIncomingInvitesLoading(true);
+    try {
+      const rows = await getIncomingWatchGroupInvites(user.id);
+      setIncomingInvites(rows);
+    } catch {
+      setIncomingInvites([]);
+    } finally {
+      setIncomingInvitesLoading(false);
+    }
+  }, [user]);
+
+  const loadPendingInvites = useCallback(async (groupId: string) => {
+    setPendingInvitesLoading(true);
+    try {
+      const rows = await getPendingWatchGroupInvites(groupId);
+      setPendingInvites(rows);
+    } catch {
+      setPendingInvites([]);
+    } finally {
+      setPendingInvitesLoading(false);
+    }
+  }, []);
+
   const loadActiveGroupData = useCallback(async (groupId: string) => {
     if (!user) return;
     setMembersLoading(true);
@@ -165,8 +201,9 @@ export function GroupWatchModal({
     if (!isOpen || !user) return;
     void loadGroups();
     void loadFriends();
+    void loadIncomingInvites();
     setTimeout(() => searchInputRef.current?.focus(), 0);
-  }, [isOpen, user, loadGroups, loadFriends]);
+  }, [isOpen, user, loadGroups, loadFriends, loadIncomingInvites]);
 
   useEffect(() => {
     if (!isOpen || !activeGroupId) return;
@@ -174,19 +211,31 @@ export function GroupWatchModal({
   }, [isOpen, activeGroupId, loadActiveGroupData]);
 
   useEffect(() => {
+    if (!isOpen || !activeGroupId || !isActiveGroupOwner) {
+      setPendingInvites([]);
+      return;
+    }
+    void loadPendingInvites(activeGroupId);
+  }, [isOpen, activeGroupId, isActiveGroupOwner, loadPendingInvites]);
+
+  useEffect(() => {
     if (!isOpen) {
       setGroupName('');
       setGroupDescription('');
       setFriendSearch('');
-      setAddingMemberUserId('');
+      setInviteUserId('');
       setPickQuery('');
       setPickNote('');
       setSearchResults([]);
       setError('');
       setSuccess('');
       setMediaType('movie');
+      setSendingInvite(false);
       setAddingPickId(null);
       setVotingPickId(null);
+      setRespondingInviteId(null);
+      setPendingInvites([]);
+      setIncomingInvites([]);
     }
   }, [isOpen]);
 
@@ -278,22 +327,54 @@ export function GroupWatchModal({
     }
   };
 
-  const handleAddMember = async () => {
-    if (!activeGroupId || !addingMemberUserId) return;
-    setAddingMember(true);
+  const handleSendInvite = async () => {
+    if (!activeGroupId || !user || !inviteUserId) return;
+    setSendingInvite(true);
     setError('');
     setSuccess('');
     try {
-      await addWatchGroupMember(activeGroupId, addingMemberUserId);
-      setAddingMemberUserId('');
+      await sendWatchGroupInvite({
+        groupId: activeGroupId,
+        inviterId: user.id,
+        inviteeId: inviteUserId,
+      });
+      setInviteUserId('');
       setFriendSearch('');
-      setSuccess('Member added to group.');
-      await loadGroups(activeGroupId);
-      await loadActiveGroupData(activeGroupId);
+      setSuccess('Invite sent. Friend must accept to join.');
+      await loadPendingInvites(activeGroupId);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to add member.');
+      setError(err instanceof Error ? err.message : 'Failed to send invite.');
     } finally {
-      setAddingMember(false);
+      setSendingInvite(false);
+    }
+  };
+
+  const handleRespondInvite = async (
+    invite: WatchGroupIncomingInvite,
+    decision: 'accepted' | 'rejected',
+  ) => {
+    if (!user) return;
+    setRespondingInviteId(invite.id);
+    setError('');
+    setSuccess('');
+    try {
+      const response = await respondToWatchGroupInvite(invite.id, decision);
+      if (decision === 'accepted') {
+        setSuccess(`You joined "${invite.groupName}".`);
+      } else {
+        setSuccess(`Invite to "${invite.groupName}" declined.`);
+      }
+
+      await loadIncomingInvites();
+      await loadGroups(decision === 'accepted' ? response.groupId : undefined);
+      if (decision === 'accepted') {
+        setActiveGroupId(response.groupId);
+        await loadActiveGroupData(response.groupId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to respond to invite.');
+    } finally {
+      setRespondingInviteId(null);
     }
   };
 
@@ -450,6 +531,52 @@ export function GroupWatchModal({
                 </div>
               )}
             </section>
+
+            <section className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-sm font-semibold text-[var(--text-primary)]">Invites</p>
+                {incomingInvitesLoading && (
+                  <span className="text-xs text-[var(--text-muted)]">Loading…</span>
+                )}
+              </div>
+              {incomingInvites.length === 0 ? (
+                <p className="text-sm text-[var(--text-muted)]">No pending group invites.</p>
+              ) : (
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {incomingInvites.map((invite) => (
+                    <div
+                      key={invite.id}
+                      className="rounded-xl border border-white/10 bg-[var(--bg-primary)] px-3 py-2"
+                    >
+                      <p className="text-sm font-medium text-[var(--text-primary)] line-clamp-1">
+                        {invite.groupName}
+                      </p>
+                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                        From {invite.inviterName}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => void handleRespondInvite(invite, 'accepted')}
+                          disabled={respondingInviteId === invite.id}
+                          className="rounded-lg bg-emerald-400/90 px-2.5 py-1.5 text-xs font-semibold text-[#0b1327] disabled:opacity-50"
+                        >
+                          Accept
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void handleRespondInvite(invite, 'rejected')}
+                          disabled={respondingInviteId === invite.id}
+                          className="rounded-lg border border-white/15 bg-[var(--bg-card)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-secondary)] disabled:opacity-50"
+                        >
+                          Reject
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
           </aside>
 
           <section className="space-y-5 min-w-0">
@@ -496,7 +623,9 @@ export function GroupWatchModal({
 
                   {isActiveGroupOwner && (
                     <div className="mt-4 rounded-xl border border-white/10 bg-[var(--bg-primary)] p-3">
-                      <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Add friend to group</p>
+                      <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">
+                        Invite friends (private group)
+                      </p>
                       <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_auto]">
                         <input
                           type="text"
@@ -506,8 +635,8 @@ export function GroupWatchModal({
                           className="rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
                         />
                         <select
-                          value={addingMemberUserId}
-                          onChange={(e) => setAddingMemberUserId(e.target.value)}
+                          value={inviteUserId}
+                          onChange={(e) => setInviteUserId(e.target.value)}
                           className="rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
                         >
                           <option value="">Choose friend</option>
@@ -519,12 +648,42 @@ export function GroupWatchModal({
                         </select>
                         <button
                           type="button"
-                          onClick={handleAddMember}
-                          disabled={!addingMemberUserId || addingMember}
+                          onClick={handleSendInvite}
+                          disabled={!inviteUserId || sendingInvite}
                           className="rounded-lg bg-indigo-400/90 px-3 py-2 text-sm font-semibold text-[#0b1327] disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {addingMember ? 'Adding…' : 'Add'}
+                          {sendingInvite ? 'Sending…' : 'Send invite'}
                         </button>
+                      </div>
+                      <p className="mt-2 text-xs text-[var(--text-muted)]">
+                        Invited users must accept before they can see this group.
+                      </p>
+
+                      <div className="mt-3 border-t border-white/10 pt-3">
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)]">
+                            Pending invites
+                          </p>
+                          {pendingInvitesLoading && (
+                            <span className="text-[11px] text-[var(--text-muted)]">Loading…</span>
+                          )}
+                        </div>
+                        {pendingInvites.length === 0 ? (
+                          <p className="text-sm text-[var(--text-muted)]">No pending invites.</p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            {pendingInvites.map((invite) => (
+                              <span
+                                key={invite.id}
+                                className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[var(--bg-card)] px-2.5 py-1 text-xs text-[var(--text-secondary)]"
+                              >
+                                <span>{invite.inviteeAvatar || '🎬'}</span>
+                                <span>{invite.inviteeName}</span>
+                                <span className="text-amber-200">• pending</span>
+                              </span>
+                            ))}
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
