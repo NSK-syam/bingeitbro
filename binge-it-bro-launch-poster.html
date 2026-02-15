@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binge It Bro - Official Launch</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Archivo+Black&family=Manrope:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --flame-orange: #FF4500;
+            --cyber-purple: #8B5CF6;
+            --hot-pink: #EC4899;
+            --electric-blue: #3B82F6;
+            --deep-space: #0F0A1E;
+            --dark-matter: #1A1329;
+            --star-white: #F8FAFC;
+            --neon-yellow: #FBBF24;
+        }
+
+        body {
+            font-family: 'Manrope', sans-serif;
+            background: #000;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .poster {
+            width: 1200px;
+            height: 628px;
+            background: radial-gradient(ellipse at top right, var(--dark-matter) 0%, var(--deep-space) 100%);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 25px 80px rgba(0, 0, 0, 0.9);
+        }
+
+        /* Dynamic background */
+        .bg-gradient {
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(circle at 80% 20%, rgba(139, 92, 246, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 20% 80%, rgba(255, 69, 0, 0.15) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(236, 72, 153, 0.1) 0%, transparent 70%);
+            animation: breathe 8s ease-in-out infinite;
+        }
+
+        @keyframes breathe {
+            0%, 100% { opacity: 0.6; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+        }
+
+        /* Geometric patterns */
+        .pattern {
+            position: absolute;
+            inset: 0;
+            background-image:
+                linear-gradient(30deg, rgba(139, 92, 246, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(139, 92, 246, 0.03) 87.5%, rgba(139, 92, 246, 0.03)),
+                linear-gradient(150deg, rgba(139, 92, 246, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(139, 92, 246, 0.03) 87.5%, rgba(139, 92, 246, 0.03)),
+                linear-gradient(30deg, rgba(139, 92, 246, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(139, 92, 246, 0.03) 87.5%, rgba(139, 92, 246, 0.03)),
+                linear-gradient(150deg, rgba(139, 92, 246, 0.03) 12%, transparent 12.5%, transparent 87%, rgba(139, 92, 246, 0.03) 87.5%, rgba(139, 92, 246, 0.03));
+            background-size: 80px 140px;
+            background-position: 0 0, 0 0, 40px 70px, 40px 70px;
+        }
+
+        /* Floating popcorn */
+        .popcorn-float {
+            position: absolute;
+            font-size: 80px;
+            opacity: 0.15;
+            animation: float-rotate 15s ease-in-out infinite;
+            filter: blur(2px);
+        }
+
+        .pop-1 { top: 10%; left: 15%; animation-delay: 0s; }
+        .pop-2 { top: 60%; left: 85%; animation-delay: 3s; font-size: 100px; }
+        .pop-3 { top: 85%; left: 10%; animation-delay: 6s; font-size: 60px; }
+        .pop-4 { top: 25%; right: 20%; animation-delay: 9s; font-size: 90px; }
+
+        @keyframes float-rotate {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            25% { transform: translate(20px, -20px) rotate(90deg); }
+            50% { transform: translate(40px, 10px) rotate(180deg); }
+            75% { transform: translate(10px, 30px) rotate(270deg); }
+        }
+
+        /* Content wrapper */
+        .content {
+            position: relative;
+            z-index: 10;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 50px 60px;
+        }
+
+        /* Header section */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 45px;
+        }
+
+        .branding {
+            animation: slideDown 0.8s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .logo-text {
+            font-family: 'Archivo Black', sans-serif;
+            font-size: 72px;
+            line-height: 0.95;
+            letter-spacing: -2px;
+            background: linear-gradient(135deg, var(--flame-orange) 0%, var(--hot-pink) 50%, var(--cyber-purple) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            position: relative;
+            animation: glow-pulse 3s ease-in-out infinite;
+        }
+
+        @keyframes glow-pulse {
+            0%, 100% {
+                filter: drop-shadow(0 0 20px rgba(255, 69, 0, 0.4))
+                        drop-shadow(0 0 40px rgba(139, 92, 246, 0.2));
+            }
+            50% {
+                filter: drop-shadow(0 0 30px rgba(255, 69, 0, 0.6))
+                        drop-shadow(0 0 60px rgba(139, 92, 246, 0.4));
+            }
+        }
+
+        .popcorn-emoji {
+            font-size: 56px;
+            display: inline-block;
+            animation: bounce 2s ease-in-out infinite;
+        }
+
+        @keyframes bounce {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .launch-tag {
+            background: linear-gradient(135deg, var(--flame-orange), var(--hot-pink));
+            color: white;
+            font-size: 14px;
+            font-weight: 800;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            padding: 8px 20px;
+            border-radius: 100px;
+            display: inline-block;
+            box-shadow: 0 4px 20px rgba(255, 69, 0, 0.5);
+            animation: slideDown 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.2s backwards;
+        }
+
+        /* Tagline */
+        .tagline {
+            font-size: 38px;
+            font-weight: 800;
+            color: var(--star-white);
+            line-height: 1.2;
+            max-width: 700px;
+            margin-bottom: 50px;
+            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.3s backwards;
+        }
+
+        .highlight {
+            background: linear-gradient(90deg, var(--cyber-purple), var(--hot-pink));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            position: relative;
+        }
+
+        .highlight::after {
+            content: '';
+            position: absolute;
+            bottom: 2px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--cyber-purple), var(--hot-pink));
+            opacity: 0.4;
+        }
+
+        /* Features grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            margin-bottom: 45px;
+        }
+
+        .feature-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 20px;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) backwards;
+        }
+
+        .feature-card:nth-child(1) { animation-delay: 0.4s; }
+        .feature-card:nth-child(2) { animation-delay: 0.5s; }
+        .feature-card:nth-child(3) { animation-delay: 0.6s; }
+        .feature-card:nth-child(4) { animation-delay: 0.7s; }
+        .feature-card:nth-child(5) { animation-delay: 0.8s; }
+
+        .feature-card:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--flame-orange);
+            transform: translateY(-8px) scale(1.02);
+            box-shadow: 0 20px 40px rgba(255, 69, 0, 0.2);
+        }
+
+        .feature-icon {
+            font-size: 32px;
+            margin-bottom: 10px;
+            display: block;
+            filter: drop-shadow(0 2px 8px rgba(255, 69, 0, 0.3));
+        }
+
+        .feature-title {
+            font-size: 16px;
+            font-weight: 800;
+            color: var(--star-white);
+            margin-bottom: 6px;
+        }
+
+        .feature-desc {
+            font-size: 13px;
+            color: rgba(248, 250, 252, 0.6);
+            line-height: 1.4;
+        }
+
+        /* Footer CTA */
+        .footer {
+            margin-top: auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+        }
+
+        .cta-section {
+            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 0.9s backwards;
+        }
+
+        .cta-label {
+            font-size: 14px;
+            font-weight: 600;
+            color: rgba(248, 250, 252, 0.5);
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            margin-bottom: 8px;
+        }
+
+        .website-link {
+            font-family: 'Archivo Black', sans-serif;
+            font-size: 48px;
+            color: var(--star-white);
+            text-decoration: none;
+            letter-spacing: -1px;
+            display: inline-block;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .website-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background: linear-gradient(90deg, var(--flame-orange), var(--cyber-purple), var(--hot-pink));
+            transform: scaleX(0);
+            transform-origin: right;
+            transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .website-link:hover::after {
+            transform: scaleX(1);
+            transform-origin: left;
+        }
+
+        .website-link:hover {
+            color: var(--flame-orange);
+        }
+
+        .stats {
+            display: flex;
+            gap: 50px;
+            animation: slideUp 0.8s cubic-bezier(0.16, 1, 0.3, 1) 1s backwards;
+        }
+
+        .stat-item {
+            text-align: center;
+        }
+
+        .stat-number {
+            font-family: 'Archivo Black', sans-serif;
+            font-size: 52px;
+            background: linear-gradient(135deg, var(--neon-yellow), var(--flame-orange));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1;
+            display: block;
+        }
+
+        .stat-label {
+            font-size: 13px;
+            color: rgba(248, 250, 252, 0.5);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 6px;
+        }
+
+        /* Accent line */
+        .accent-line {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg,
+                var(--flame-orange) 0%,
+                var(--hot-pink) 33%,
+                var(--cyber-purple) 66%,
+                var(--electric-blue) 100%);
+            animation: shimmer 3s linear infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 200% 50%; }
+        }
+
+        /* Animations */
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Grain overlay */
+        .grain-overlay {
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.05'/%3E%3C/svg%3E");
+            pointer-events: none;
+            opacity: 0.4;
+        }
+
+        /* Spotlight effect */
+        .spotlight {
+            position: absolute;
+            width: 600px;
+            height: 600px;
+            background: radial-gradient(circle, rgba(255, 69, 0, 0.08) 0%, transparent 70%);
+            border-radius: 50%;
+            pointer-events: none;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation: spotlight-pulse 6s ease-in-out infinite;
+        }
+
+        @keyframes spotlight-pulse {
+            0%, 100% { transform: translate(-50%, -50%) scale(1); opacity: 0.5; }
+            50% { transform: translate(-50%, -50%) scale(1.2); opacity: 0.8; }
+        }
+    </style>
+</head>
+<body>
+    <div class="poster">
+        <!-- Background layers -->
+        <div class="accent-line"></div>
+        <div class="bg-gradient"></div>
+        <div class="pattern"></div>
+        <div class="spotlight"></div>
+        <div class="grain-overlay"></div>
+
+        <!-- Floating popcorn -->
+        <div class="popcorn-float pop-1">🍿</div>
+        <div class="popcorn-float pop-2">🍿</div>
+        <div class="popcorn-float pop-3">🍿</div>
+        <div class="popcorn-float pop-4">🍿</div>
+
+        <!-- Main content -->
+        <div class="content">
+            <!-- Header -->
+            <div class="header">
+                <div class="branding">
+                    <div class="logo-text">
+                        <span class="popcorn-emoji">🍿</span><br>
+                        Binge It Bro
+                    </div>
+                </div>
+                <div class="launch-tag">🚀 Launching Today</div>
+            </div>
+
+            <!-- Tagline -->
+            <div class="tagline">
+                Stop asking algorithms.<br>
+                Start asking <span class="highlight">friends</span>.
+            </div>
+
+            <!-- Features -->
+            <div class="features-grid">
+                <div class="feature-card">
+                    <span class="feature-icon">👥</span>
+                    <div class="feature-title">Friend Recommendations</div>
+                    <div class="feature-desc">Get personalized picks from people who actually know your taste</div>
+                </div>
+
+                <div class="feature-card">
+                    <span class="feature-icon">🎵</span>
+                    <div class="feature-title">Share Your Playlist</div>
+                    <div class="feature-desc">Make your movie collection public and inspire others</div>
+                </div>
+
+                <div class="feature-card">
+                    <span class="feature-icon">📧</span>
+                    <div class="feature-title">Email Notifications</div>
+                    <div class="feature-desc">Never miss when friends send you their next favorite film</div>
+                </div>
+
+                <div class="feature-card">
+                    <span class="feature-icon">📅</span>
+                    <div class="feature-title">Schedule Watchlist</div>
+                    <div class="feature-desc">Plan movie nights and watch when you're actually free</div>
+                </div>
+
+                <div class="feature-card">
+                    <span class="feature-icon">📺</span>
+                    <div class="feature-title">Where to Watch</div>
+                    <div class="feature-desc">Direct links to Netflix, Prime, Disney+ and 20+ platforms</div>
+                </div>
+            </div>
+
+            <!-- Footer -->
+            <div class="footer">
+                <div class="cta-section">
+                    <div class="cta-label">Start Watching Better</div>
+                    <a href="https://bingeitbro.com" class="website-link">bingeitbro.com</a>
+                </div>
+
+                <div class="stats">
+                    <div class="stat-item">
+                        <span class="stat-number">10+</span>
+                        <div class="stat-label">Languages</div>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">20+</span>
+                        <div class="stat-label">OTT Platforms</div>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">Free</span>
+                        <div class="stat-label">Forever</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Parallax effect on mouse move
+        let mouseX = 0, mouseY = 0;
+        let currentX = 0, currentY = 0;
+
+        document.addEventListener('mousemove', (e) => {
+            const poster = document.querySelector('.poster');
+            const rect = poster.getBoundingClientRect();
+            mouseX = ((e.clientX - rect.left) / rect.width - 0.5) * 2;
+            mouseY = ((e.clientY - rect.top) / rect.height - 0.5) * 2;
+        });
+
+        function animate() {
+            currentX += (mouseX - currentX) * 0.1;
+            currentY += (mouseY - currentY) * 0.1;
+
+            const spotlight = document.querySelector('.spotlight');
+            if (spotlight) {
+                spotlight.style.transform = `translate(calc(-50% + ${currentX * 50}px), calc(-50% + ${currentY * 50}px))`;
+            }
+
+            document.querySelectorAll('.popcorn-float').forEach((pop, index) => {
+                const speed = (index + 1) * 3;
+                pop.style.transform = `translate(${currentX * speed}px, ${currentY * speed}px)`;
+            });
+
+            requestAnimationFrame(animate);
+        }
+
+        animate();
+
+        // Add click animation to features
+        document.querySelectorAll('.feature-card').forEach(card => {
+            card.addEventListener('click', function() {
+                this.style.transform = 'scale(0.95)';
+                setTimeout(() => {
+                    this.style.transform = '';
+                }, 150);
+            });
+        });
+    </script>
+</body>
+</html>
