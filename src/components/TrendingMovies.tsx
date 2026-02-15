@@ -322,96 +322,82 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
           const genrePart = selectedGenre ? `&with_genres=${selectedGenre}` : '';
           const yearPart = selectedYear ? `&primary_release_year=${selectedYear}` : '';
           const numericOtt = selectedOtt && /^\d+$/.test(selectedOtt) ? Number(selectedOtt) : null;
-          const ottIdUS = resolvedOttProvider?.ids.US ?? (resolvedOttProvider ? undefined : numericOtt ?? undefined);
-          const ottIdIN = resolvedOttProvider?.ids.IN ?? (resolvedOttProvider ? undefined : numericOtt ?? undefined);
-          const includeUS = !selectedOtt || !!ottIdUS;
-          const includeIN = !selectedOtt || !!ottIdIN;
-          const ottPartUS = ottIdUS ? `&with_watch_providers=${ottIdUS}` : '';
-          const ottPartIN = ottIdIN ? `&with_watch_providers=${ottIdIN}` : '';
+          const ottId = country === 'US'
+            ? (resolvedOttProvider?.ids.US ?? (resolvedOttProvider ? undefined : numericOtt ?? undefined))
+            : (resolvedOttProvider?.ids.IN ?? (resolvedOttProvider ? undefined : numericOtt ?? undefined));
+          const ottPart = ottId ? `&with_watch_providers=${ottId}` : '';
 
-          // Released: only movies on OTT (USA or India), optionally by provider
-          const releasedBase = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=${sortBy}&primary_release_date.lte=${today}&with_watch_monetization_types=flatrate${genrePart}${yearPart}`;
-          const releasedBaseUrlUS = includeUS ? `${releasedBase}&watch_region=US${ottPartUS}` : '';
-          const releasedBaseUrlIN = includeIN ? `${releasedBase}&watch_region=IN${ottPartIN}` : '';
+          // Released: only movies on OTT for the selected country, optionally by provider.
+          const releasedBaseUrl =
+            `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}` +
+            `&sort_by=${sortBy}` +
+            `&primary_release_date.lte=${today}` +
+            `&with_watch_monetization_types=flatrate` +
+            `&watch_region=${country}` +
+            `${ottPart}` +
+            `${genrePart}${yearPart}`;
           const upcomingBaseUrl = upcomingWindow
             ? `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.asc&primary_release_date.gte=${upcomingWindow.start}&primary_release_date.lte=${upcomingWindow.end}${genrePart}${selectedYear ? `&primary_release_year=${selectedYear}` : ''}`
             : '';
 
           const hasFilters = Boolean(selectedLang || selectedGenre || selectedYear || selectedOtt);
-          const maxPages = hasFilters ? 4 : 2;
+          // Keep request volume low; fetch more only when user narrows filters.
+          const maxPages = hasFilters ? 2 : 1;
           const pagesToFetch = Array.from({ length: maxPages }, (_, i) => i + 1);
-          // Fetch more upcoming pages when filtering by language or future year so we get more "Coming Soon" titles (e.g. 2026 Telugu)
-          const upcomingMaxPages = (selectedLang || (selectedYearNum && selectedYearNum > currentYear)) ? 10 : 2;
+          // Upcoming: a couple pages max to avoid rate limits.
+          const upcomingMaxPages = (selectedLang || (selectedYearNum && selectedYearNum > currentYear)) ? 3 : 1;
           const upcomingPagesToFetch = Array.from({ length: upcomingMaxPages }, (_, i) => i + 1);
-          const yearStart = `${currentYear}-01-01`;
-          const releasedThisYearUS = includeUS
-            ? `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=${sortBy}&primary_release_date.gte=${yearStart}&primary_release_date.lte=${today}&with_watch_monetization_types=flatrate&watch_region=US${genrePart}${ottPartUS}`
-            : '';
-          const releasedThisYearIN = includeIN
-            ? `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=${sortBy}&primary_release_date.gte=${yearStart}&primary_release_date.lte=${today}&with_watch_monetization_types=flatrate&watch_region=IN${genrePart}${ottPartIN}`
-            : '';
 
           // When an OTT has a language restriction (e.g. Aha = Telugu + Tamil only), use only those languages
           const ottRestrictedLangs = resolvedOttProvider?.languages ?? (numericOtt ? OTT_TO_LANGUAGES[numericOtt] : null);
           const defaultLangs = ['en', 'hi', 'te', 'ta'];
-          const langCodesToFetch: string[] = ottRestrictedLangs
-            ? (selectedLang && ottRestrictedLangs.includes(selectedLang) ? [selectedLang] : ottRestrictedLangs)
-            : (selectedLang ? [selectedLang] : defaultLangs);
+          // If user didn't pick a language, avoid per-language fanout. We'll fetch once and
+          // let the UI naturally contain mixed languages from that region.
+          const langCodesToFetch: string[] = selectedLang
+            ? [selectedLang]
+            : (ottRestrictedLangs ? ottRestrictedLangs : ['']);
 
           const releasedPromises: Promise<Response>[] = [];
           const upcomingPromises: Promise<Response>[] = [];
-          const yearPromises: Promise<Response>[] = [];
 
           for (const lang of langCodesToFetch) {
             for (const page of pagesToFetch) {
-              if (releasedBaseUrlUS) {
-                releasedPromises.push(
-                  fetchTmdbWithProxy(`${releasedBaseUrlUS}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
-                );
-              }
-              if (releasedBaseUrlIN) {
-                releasedPromises.push(
-                  fetchTmdbWithProxy(`${releasedBaseUrlIN}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
-                );
-              }
+              const langPart = lang ? `&with_original_language=${lang}` : '';
+              releasedPromises.push(
+                fetchTmdbWithProxy(`${releasedBaseUrl}${langPart}&page=${page}`, { signal: controller.signal })
+              );
             }
             for (const page of upcomingPagesToFetch) {
               if (upcomingBaseUrl) {
+                const langPart = lang ? `&with_original_language=${lang}` : '';
                 upcomingPromises.push(
-                  fetchTmdbWithProxy(`${upcomingBaseUrl}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
-                );
-              }
-            }
-            for (const page of [1, 2]) {
-              if (releasedThisYearUS) {
-                yearPromises.push(
-                  fetchTmdbWithProxy(`${releasedThisYearUS}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
-                );
-              }
-              if (releasedThisYearIN) {
-                yearPromises.push(
-                  fetchTmdbWithProxy(`${releasedThisYearIN}&with_original_language=${lang}&page=${page}`, { signal: controller.signal })
+                  fetchTmdbWithProxy(`${upcomingBaseUrl}${langPart}&page=${page}`, { signal: controller.signal })
                 );
               }
             }
           }
 
-          const [releasedResponses, upcomingResponses, yearResponses] = await Promise.all([
+          const [releasedResponses, upcomingResponses] = await Promise.all([
             Promise.all(releasedPromises),
             Promise.all(upcomingPromises),
-            Promise.all(yearPromises)
           ]);
+
+          const any429 = [...releasedResponses, ...upcomingResponses].some((r) => r.status === 429);
+          if (any429) {
+            setError('TMDB is rate limiting right now. Please wait a minute and refresh.');
+            setMovies([]);
+            setComingSoonByLang({});
+            setLoading(false);
+            return;
+          }
 
           const releasedData = await Promise.all(releasedResponses.map(r => r.json()));
           const upcomingData = await Promise.all(upcomingResponses.map(r => r.json()));
-          const yearData = await Promise.all(yearResponses.map(r => r.json()));
 
           const releasedFlat = releasedData.flatMap(d => d.results || []);
-          const yearFlat = selectedYear ? [] : yearData.flatMap(d => d.results || []);
           const seenIds = new Set<number>();
           allMovies = [];
           releasedFlat.forEach(m => { if (!seenIds.has(m.id)) { seenIds.add(m.id); allMovies.push(m); } });
-          yearFlat.forEach(m => { if (!seenIds.has(m.id)) { seenIds.add(m.id); allMovies.push(m); } });
           allMovies.sort((a, b) =>
             new Date(b.release_date || '1900-01-01').getTime() -
             new Date(a.release_date || '1900-01-01').getTime()
@@ -550,7 +536,9 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
   useEffect(() => {
     if (loading || movies.length === 0) return;
     let cancelled = false;
-    const limit = searchQuery ? 36 : 60;
+    // Watch provider hydration is expensive (1 TMDB request per movie).
+    // Keep it capped to avoid rate limiting.
+    const limit = searchQuery ? 18 : 22;
     const targets = movies.slice(0, limit).map((m) => m.id);
 
     const hydrateFromCache = () => {

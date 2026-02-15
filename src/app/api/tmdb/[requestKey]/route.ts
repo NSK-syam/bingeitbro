@@ -9,6 +9,15 @@ export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const preferredRegion = ['bom1', 'sin1', 'iad1'];
 
+type UpstreamResult = {
+  status: number;
+  ok: boolean;
+  contentType: string;
+  body: string;
+};
+
+const inflight = new Map<string, Promise<UpstreamResult>>();
+
 function decodeBase64Url(input: string): string | null {
   try {
     const base64 = input.replace(/-/g, '+').replace(/_/g, '/');
@@ -81,19 +90,47 @@ export async function GET(
   }
 
   try {
-    const upstream = await fetch(upstreamUrl.toString(), {
-      headers: {
-        Accept: 'application/json',
-      },
-      next: { revalidate: TMDB_REVALIDATE_SECONDS },
-    });
+    // Explicit edge cache: OpenNext + force-dynamic can bypass Next's caching.
+    // Use Cache API when available (Cloudflare Workers) to reduce TMDB rate limiting.
+    // Cloudflare Workers provides `caches.default`, but TypeScript's lib.dom types
+    // don't include that property. Use `any` to avoid build-time type errors.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const cacheDefault: Cache | undefined = (globalThis as any).caches?.default;
+    const cacheKey = new Request(request.url, { method: 'GET' });
+    if (cacheDefault) {
+      const cached = await cacheDefault.match(cacheKey);
+      if (cached) return cached;
+    }
 
-    const body = await upstream.text();
-    const isSuccess = upstream.ok;
-    return new NextResponse(body, {
-      status: upstream.status,
+    const inflightKey = upstreamUrl.toString();
+    const pending = inflight.get(inflightKey);
+    const result = await (pending ??
+      (async () => {
+        const p = (async (): Promise<UpstreamResult> => {
+          const upstream = await fetch(upstreamUrl.toString(), {
+            headers: { Accept: 'application/json' },
+            next: { revalidate: TMDB_REVALIDATE_SECONDS },
+          });
+          return {
+            status: upstream.status,
+            ok: upstream.ok,
+            contentType: upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+            body: await upstream.text(),
+          };
+        })();
+        inflight.set(inflightKey, p);
+        try {
+          return await p;
+        } finally {
+          inflight.delete(inflightKey);
+        }
+      })());
+
+    const isSuccess = result.ok;
+    const response = new NextResponse(result.body, {
+      status: result.status,
       headers: {
-        'Content-Type': upstream.headers.get('content-type') || 'application/json; charset=utf-8',
+        'Content-Type': result.contentType,
         // Cache only successful responses.
         'Cache-Control': isSuccess
           ? `public, max-age=0, s-maxage=${TMDB_REVALIDATE_SECONDS}, stale-while-revalidate=86400`
@@ -107,6 +144,12 @@ export async function GET(
         Vary: 'Accept-Encoding',
       },
     });
+
+    if (isSuccess && cacheDefault) {
+      // Cache the full response; respects our s-maxage.
+      await cacheDefault.put(cacheKey, response.clone());
+    }
+    return response;
   } catch {
     return NextResponse.json({ error: 'TMDB fetch failed' }, { status: 502 });
   }

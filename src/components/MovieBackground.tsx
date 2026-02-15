@@ -6,7 +6,8 @@ import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 const CACHE_KEY = 'bib-movie-bg-posters-v3';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
-const QUERY_LIMIT = 7;
+// Keep this low to avoid TMDB rate limiting on cold loads.
+const QUERY_LIMIT = 3;
 const POSTERS_PER_QUERY = 6;
 const MAX_POSTERS = 56;
 
