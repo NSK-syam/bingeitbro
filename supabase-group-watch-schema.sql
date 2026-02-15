@@ -100,7 +100,6 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
-SET plpgsql.variable_conflict = use_column
 AS $$
 DECLARE
   v_invite public.watch_group_invites%ROWTYPE;
@@ -133,9 +132,12 @@ BEGIN
   v_status := p_decision;
 
   IF v_status = 'accepted' THEN
-    INSERT INTO public.watch_group_members (group_id, user_id, role)
-    VALUES (v_invite.group_id, v_invite.invitee_id, 'member')
-    ON CONFLICT (group_id, user_id) DO NOTHING;
+    -- Use dynamic SQL to avoid PL/pgSQL name conflicts with the output column `group_id`.
+    EXECUTE
+      'INSERT INTO public.watch_group_members (group_id, user_id, role)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (group_id, user_id) DO NOTHING'
+    USING v_invite.group_id, v_invite.invitee_id, 'member';
   END IF;
 
   UPDATE public.watch_group_invites
