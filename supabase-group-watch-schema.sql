@@ -154,10 +154,10 @@ LANGUAGE SQL
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  UPDATE public.watch_group_members
+  UPDATE public.watch_group_members AS m
   SET last_seen_at = NOW()
-  WHERE group_id = p_group_id
-    AND user_id = auth.uid();
+  WHERE m.group_id = p_group_id
+    AND m.user_id = auth.uid();
 $$;
 
 CREATE OR REPLACE FUNCTION public.get_watch_group_unseen_counts(p_group_ids UUID[] DEFAULT NULL)
