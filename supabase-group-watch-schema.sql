@@ -100,6 +100,7 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path = public
+SET plpgsql.variable_conflict = use_column
 AS $$
 DECLARE
   v_invite public.watch_group_invites%ROWTYPE;
