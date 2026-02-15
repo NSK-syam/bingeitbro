@@ -13,8 +13,10 @@ import {
   getWatchGroupMembers,
   getPendingWatchGroupInvites,
   getWatchGroupPicks,
+  leaveWatchGroup,
   respondToWatchGroupInvite,
   sendWatchGroupInvite,
+  updateWatchGroup,
   voteOnWatchGroupPick,
   type FriendForSelect,
   type WatchGroup,
@@ -79,6 +81,10 @@ export function GroupWatchModal({
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
   const [creatingGroup, setCreatingGroup] = useState(false);
+  const [editingGroupName, setEditingGroupName] = useState('');
+  const [editingGroupDescription, setEditingGroupDescription] = useState('');
+  const [savingGroupSettings, setSavingGroupSettings] = useState(false);
+  const [leavingGroup, setLeavingGroup] = useState(false);
 
   const [friendSearch, setFriendSearch] = useState('');
   const [inviteUserId, setInviteUserId] = useState('');
@@ -211,6 +217,16 @@ export function GroupWatchModal({
   }, [isOpen, activeGroupId, loadActiveGroupData]);
 
   useEffect(() => {
+    if (!activeGroup) {
+      setEditingGroupName('');
+      setEditingGroupDescription('');
+      return;
+    }
+    setEditingGroupName(activeGroup.name);
+    setEditingGroupDescription(activeGroup.description ?? '');
+  }, [activeGroup]);
+
+  useEffect(() => {
     if (!isOpen || !activeGroupId || !isActiveGroupOwner) {
       setPendingInvites([]);
       return;
@@ -222,6 +238,8 @@ export function GroupWatchModal({
     if (!isOpen) {
       setGroupName('');
       setGroupDescription('');
+      setEditingGroupName('');
+      setEditingGroupDescription('');
       setFriendSearch('');
       setInviteUserId('');
       setPickQuery('');
@@ -231,6 +249,8 @@ export function GroupWatchModal({
       setSuccess('');
       setMediaType('movie');
       setSendingInvite(false);
+      setSavingGroupSettings(false);
+      setLeavingGroup(false);
       setAddingPickId(null);
       setVotingPickId(null);
       setRespondingInviteId(null);
@@ -324,6 +344,48 @@ export function GroupWatchModal({
       setError(err instanceof Error ? err.message : 'Failed to create group.');
     } finally {
       setCreatingGroup(false);
+    }
+  };
+
+  const handleSaveGroupSettings = async () => {
+    if (!activeGroup || !isActiveGroupOwner) return;
+    const name = editingGroupName.trim();
+    if (name.length < 2) {
+      setError('Group name must be at least 2 characters.');
+      return;
+    }
+    setSavingGroupSettings(true);
+    setError('');
+    setSuccess('');
+    try {
+      await updateWatchGroup(activeGroup.id, {
+        name,
+        description: editingGroupDescription,
+      });
+      setSuccess('Group settings updated.');
+      await loadGroups(activeGroup.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update group settings.');
+    } finally {
+      setSavingGroupSettings(false);
+    }
+  };
+
+  const handleLeaveGroup = async () => {
+    if (!user || !activeGroup || isActiveGroupOwner) return;
+    setLeavingGroup(true);
+    setError('');
+    setSuccess('');
+    try {
+      await leaveWatchGroup(activeGroup.id, user.id);
+      setSuccess(`You left "${activeGroup.name}".`);
+      setMembers([]);
+      setPicks([]);
+      await loadGroups();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to leave group.');
+    } finally {
+      setLeavingGroup(false);
     }
   };
 
@@ -598,6 +660,54 @@ export function GroupWatchModal({
                       <span className="text-[11px] uppercase tracking-[0.16em] px-2 py-1 rounded-full border border-indigo-300/40 text-indigo-200">
                         Owner controls enabled
                       </span>
+                    )}
+                  </div>
+
+                  <div className="mt-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">
+                      Group settings
+                    </p>
+                    {isActiveGroupOwner ? (
+                      <div className="rounded-xl border border-white/10 bg-[var(--bg-primary)] p-3 space-y-2">
+                        <input
+                          type="text"
+                          value={editingGroupName}
+                          onChange={(e) => setEditingGroupName(e.target.value)}
+                          maxLength={60}
+                          className="w-full rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
+                          placeholder="Group name"
+                        />
+                        <textarea
+                          value={editingGroupDescription}
+                          onChange={(e) => setEditingGroupDescription(e.target.value)}
+                          maxLength={300}
+                          rows={2}
+                          className="w-full rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55 resize-none"
+                          placeholder="Group description"
+                        />
+                        <button
+                          type="button"
+                          onClick={handleSaveGroupSettings}
+                          disabled={savingGroupSettings}
+                          className="rounded-lg bg-indigo-400/90 px-3 py-2 text-sm font-semibold text-[#0b1327] disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {savingGroupSettings ? 'Saving…' : 'Save settings'}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="rounded-xl border border-white/10 bg-[var(--bg-primary)] p-3">
+                        <p className="text-sm text-[var(--text-muted)]">
+                          Don&apos;t want this group anymore? You can leave anytime.
+                        </p>
+                        <button
+                          type="button"
+                          onClick={handleLeaveGroup}
+                          disabled={leavingGroup}
+                          className="mt-2 rounded-lg border border-rose-300/40 bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {leavingGroup ? 'Leaving…' : 'Leave group'}
+                        </button>
+                      </div>
                     )}
                   </div>
 

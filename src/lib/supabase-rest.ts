@@ -1084,6 +1084,60 @@ export async function createWatchGroup(
   return mapWatchGroup(row, { group_id: row.id, user_id: ownerId, role: 'owner' }, 1);
 }
 
+export async function updateWatchGroup(
+  groupId: string,
+  input: { name: string; description?: string | null },
+): Promise<WatchGroup> {
+  const token = ensureAuthedToken();
+  const name = input.name.trim();
+  if (name.length < 2) {
+    throw new Error('Group name must be at least 2 characters.');
+  }
+  const params = new URLSearchParams({
+    id: `eq.${groupId}`,
+    select: 'id,owner_id,name,description,created_at,updated_at',
+  });
+  const rows = await supabaseRestRequest<WatchGroupRow[]>(
+    `watch_groups?${params.toString()}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify({
+        name: name.slice(0, 60),
+        description: input.description?.trim() ? input.description.trim().slice(0, 300) : null,
+        updated_at: new Date().toISOString(),
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+  const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+  if (!row) {
+    throw new Error('Failed to update group.');
+  }
+  const memberCountParams = new URLSearchParams({
+    select: 'group_id,user_id,role',
+    group_id: `eq.${groupId}`,
+  });
+  const memberRows = await supabaseRestRequest<WatchGroupMemberRow[]>(
+    `watch_group_members?${memberCountParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  return mapWatchGroup(
+    row,
+    {
+      group_id: row.id,
+      user_id: row.owner_id,
+      role: 'owner',
+    },
+    Array.isArray(memberRows) ? memberRows.length : 1,
+  );
+}
+
 export async function getMyWatchGroups(userId: string): Promise<WatchGroup[]> {
   const token = ensureAuthedToken();
   const membershipParams = new URLSearchParams({
@@ -1197,6 +1251,25 @@ export async function addWatchGroupMember(groupId: string, memberUserId: string)
         user_id: memberUserId,
         role: 'member',
       }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
+
+export async function leaveWatchGroup(groupId: string, userId: string): Promise<void> {
+  const token = ensureAuthedToken();
+  const params = new URLSearchParams({
+    group_id: `eq.${groupId}`,
+    user_id: `eq.${userId}`,
+  });
+  await supabaseRestRequest(
+    `watch_group_members?${params.toString()}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Prefer: 'return=minimal',
+      },
       timeoutMs: DEFAULT_TIMEOUT_MS,
     },
     token,
