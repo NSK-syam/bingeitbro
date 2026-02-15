@@ -39,6 +39,32 @@ function isoWeekKeyUTC(date = new Date()): string {
   return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
 }
 
+async function fetchDiscoverMovies(params: {
+  apiKey: string;
+  language: TriviaLanguage;
+  page: number;
+  voteCountMin: number;
+}): Promise<{ results: unknown[]; totalPages: number }> {
+  const base = `https://api.themoviedb.org/3/discover/movie?api_key=${params.apiKey}` +
+    `&with_original_language=${params.language}` +
+    `&primary_release_date.gte=2000-01-01&primary_release_date.lte=2026-12-31` +
+    `&vote_count.gte=${params.voteCountMin}` +
+    `&include_adult=false&sort_by=popularity.desc` +
+    `&page=${params.page}`;
+
+  try {
+    const res = await fetchTmdbWithProxy(base);
+    if (!res.ok) return { results: [], totalPages: 0 };
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const json: any = await res.json();
+    const results = Array.isArray(json?.results) ? json.results : [];
+    const totalPages = Number.isFinite(Number(json?.total_pages)) ? Number(json.total_pages) : 0;
+    return { results, totalPages };
+  } catch {
+    return { results: [], totalPages: 0 };
+  }
+}
+
 function pickYearOptions(correct: number, rand: () => number): { options: number[]; correctIndex: number } {
   const minYear = 2000;
   const maxYear = 2026;
@@ -82,43 +108,57 @@ export async function GET(req: Request) {
 
   const seed = fnv1a32(`${weekKey}:${language}`);
   const rand = xorshift32(seed || 1);
-  const pageA = (Math.floor(rand() * 10) % 10) + 1;
-  let pageB = (Math.floor(rand() * 10) % 10) + 1;
-  if (pageB === pageA) pageB = ((pageB % 10) + 1);
 
-  const base = `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}` +
-    `&with_original_language=${language}` +
-    `&primary_release_date.gte=2000-01-01&primary_release_date.lte=2026-12-31` +
-    `&vote_count.gte=200&include_adult=false&sort_by=popularity.desc`;
+  // Build a stable weekly set, but always include page 1 to avoid empty results
+  // when TMDB has only a few pages for a language+filters.
+  const collectCandidates = async (voteCountMin: number, pagesWanted: number) => {
+    const page1 = await fetchDiscoverMovies({ apiKey, language, page: 1, voteCountMin });
+    const maxPages = Math.max(1, Math.min(12, page1.totalPages || 1));
+    const pagePool = Array.from({ length: Math.max(0, maxPages - 1) }, (_, i) => i + 2);
+    // Seeded shuffle page pool.
+    for (let i = pagePool.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rand() * (i + 1));
+      const tmp = pagePool[i];
+      pagePool[i] = pagePool[j]!;
+      pagePool[j] = tmp!;
+    }
+    const pages = [1, ...pagePool.slice(0, Math.max(0, pagesWanted - 1))];
+    const settled = await Promise.all(
+      pages.map((page) => fetchDiscoverMovies({ apiKey, language, page, voteCountMin })),
+    );
 
-  const [r1, r2] = await Promise.all([
-    fetchTmdbWithProxy(`${base}&page=${pageA}`),
-    fetchTmdbWithProxy(`${base}&page=${pageB}`),
-  ]);
-  const [d1, d2] = await Promise.all([r1.json(), r2.json()]);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const results: any[] = [...(d1?.results || []), ...(d2?.results || [])];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const merged: any[] = [];
+    for (const s of settled) merged.push(...(Array.isArray(s.results) ? s.results : []));
 
-  const seen = new Set<number>();
-  const candidates = results
-    .filter((m) => m && typeof m.id === 'number' && !seen.has(m.id) && typeof m.title === 'string' && typeof m.release_date === 'string')
-    .filter((m) => {
-      const year = Number(String(m.release_date).slice(0, 4));
-      return Number.isFinite(year) && year >= 2000 && year <= 2026;
-    })
-    .filter((m) => {
-      if (seen.has(m.id)) return false;
-      seen.add(m.id);
-      return true;
-    });
+    const seenIds = new Set<number>();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const candidates = merged
+      .filter((m: any) => m && typeof m.id === 'number' && typeof m.title === 'string' && typeof m.release_date === 'string')
+      .filter((m: any) => {
+        const year = Number(String(m.release_date).slice(0, 4));
+        return Number.isFinite(year) && year >= 2000 && year <= 2026;
+      })
+      .filter((m: any) => {
+        if (seenIds.has(m.id)) return false;
+        seenIds.add(m.id);
+        return true;
+      });
 
-  // Seeded shuffle candidates to avoid always same top 10.
-  for (let i = candidates.length - 1; i > 0; i -= 1) {
-    const j = Math.floor(rand() * (i + 1));
-    const tmp = candidates[i];
-    candidates[i] = candidates[j];
-    candidates[j] = tmp;
-  }
+    // Seeded shuffle candidates to avoid always the same top 10.
+    for (let i = candidates.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(rand() * (i + 1));
+      const tmp = candidates[i];
+      candidates[i] = candidates[j];
+      candidates[j] = tmp;
+    }
+    return candidates;
+  };
+
+  // Try strict first; relax if this language has fewer qualifying titles.
+  let candidates = await collectCandidates(200, 3);
+  if (candidates.length < 10) candidates = await collectCandidates(50, 4);
+  if (candidates.length < 10) candidates = await collectCandidates(10, 6);
 
   const picked = candidates.slice(0, 10);
   const questions = picked.map((m, idx) => {
@@ -153,4 +193,3 @@ export async function GET(req: Request) {
     },
   );
 }
-
