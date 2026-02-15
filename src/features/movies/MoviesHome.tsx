@@ -57,6 +57,10 @@ const ScheduleWatchModal = dynamic(
   () => import('@/components/ScheduleWatchModal').then((mod) => mod.ScheduleWatchModal),
   { ssr: false }
 );
+const GroupWatchModal = dynamic(
+  () => import('@/components/GroupWatchModal').then((mod) => mod.GroupWatchModal),
+  { ssr: false }
+);
 const TrendingMovies = dynamic(
   () => import('@/components/TrendingMovies').then((mod) => mod.TrendingMovies),
   {
@@ -121,6 +125,7 @@ export default function MoviesHome() {
   });
   const [showBingeCalculator, setShowBingeCalculator] = useState(false);
   const [showScheduleWatch, setShowScheduleWatch] = useState(false);
+  const [showGroupWatch, setShowGroupWatch] = useState(false);
   const [valentineOpenSignal, setValentineOpenSignal] = useState(0);
   const [valentineSpotlightOpen, setValentineSpotlightOpen] = useState(false);
   const [localMonthDay, setLocalMonthDay] = useState(getLocalMonthDay);
@@ -649,6 +654,10 @@ export default function MoviesHome() {
         onClose={() => setShowScheduleWatch(false)}
         onScheduled={refreshScheduledWatchCount}
       />
+      <GroupWatchModal
+        isOpen={showGroupWatch}
+        onClose={() => setShowGroupWatch(false)}
+      />
       {user && (
         <MovieCalendarSpotlightPopup
           userId={user.id}
@@ -824,6 +833,24 @@ export default function MoviesHome() {
                     {scheduledWatchCount > 99 ? '99+' : scheduledWatchCount}
                   </span>
                 )}
+              </button>
+
+              <button
+                onClick={() => setShowGroupWatch(true)}
+                className={[
+                  'h-11 px-5 rounded-full inline-flex items-center gap-2 relative',
+                  'text-sm font-semibold',
+                  'transition-all select-none',
+                  'bg-gradient-to-r from-indigo-500/40 to-fuchsia-600/40 text-indigo-100 border border-indigo-300/35 backdrop-blur-xl shadow-[0_10px_30px_rgba(99,102,241,0.26)]',
+                  'hover:from-indigo-400/50 hover:to-fuchsia-500/50 hover:text-indigo-50 hover:border-indigo-200/45',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                  'active:scale-[0.99]',
+                ].join(' ')}
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                Group Watch
               </button>
 
               {isValentinesDay && (

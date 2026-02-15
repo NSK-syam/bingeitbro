@@ -920,3 +920,411 @@ export async function sendFriendRecommendations(
 
   throw lastErr ?? new Error('Request failed');
 }
+
+export interface WatchGroup {
+  id: string;
+  ownerId: string;
+  name: string;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+  role: 'owner' | 'member';
+  memberCount: number;
+}
+
+export interface WatchGroupMember {
+  groupId: string;
+  userId: string;
+  role: 'owner' | 'member';
+  name: string;
+  username: string | null;
+  avatar: string | null;
+}
+
+export interface WatchGroupPick {
+  id: string;
+  groupId: string;
+  senderId: string;
+  senderName: string;
+  senderAvatar: string | null;
+  mediaType: 'movie' | 'show';
+  tmdbId: string;
+  title: string;
+  poster: string | null;
+  releaseYear: number | null;
+  note: string | null;
+  createdAt: string;
+  upvotes: number;
+  downvotes: number;
+  score: number;
+  myVote: -1 | 0 | 1;
+}
+
+type WatchGroupRow = {
+  id: string;
+  owner_id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+type WatchGroupMemberRow = {
+  group_id: string;
+  user_id: string;
+  role: 'owner' | 'member';
+};
+
+type WatchGroupPickRow = {
+  id: string;
+  group_id: string;
+  sender_id: string;
+  media_type: 'movie' | 'show';
+  tmdb_id: string;
+  title: string;
+  poster: string | null;
+  release_year: number | null;
+  note: string | null;
+  created_at: string;
+};
+
+type WatchGroupPickVoteRow = {
+  pick_id: string;
+  user_id: string;
+  vote_value: -1 | 1;
+};
+
+function ensureAuthedToken(): string {
+  const token = getSupabaseAccessToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  return token;
+}
+
+function mapWatchGroup(
+  group: WatchGroupRow,
+  membership: WatchGroupMemberRow,
+  memberCount: number,
+): WatchGroup {
+  return {
+    id: group.id,
+    ownerId: group.owner_id,
+    name: group.name,
+    description: group.description,
+    createdAt: group.created_at,
+    updatedAt: group.updated_at,
+    role: membership.role,
+    memberCount,
+  };
+}
+
+export async function createWatchGroup(
+  ownerId: string,
+  input: { name: string; description?: string | null },
+): Promise<WatchGroup> {
+  const token = ensureAuthedToken();
+  const payload = {
+    owner_id: ownerId,
+    name: input.name.trim().slice(0, 60),
+    description: input.description?.trim() ? input.description.trim().slice(0, 300) : null,
+  };
+
+  const groups = await supabaseRestRequest<WatchGroupRow[]>(
+    'watch_groups?select=id,owner_id,name,description,created_at,updated_at',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'return=representation',
+      },
+      body: JSON.stringify(payload),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+
+  const row = Array.isArray(groups) && groups.length > 0 ? groups[0] : null;
+  if (!row) throw new Error('Failed to create group.');
+
+  return mapWatchGroup(row, { group_id: row.id, user_id: ownerId, role: 'owner' }, 1);
+}
+
+export async function getMyWatchGroups(userId: string): Promise<WatchGroup[]> {
+  const token = ensureAuthedToken();
+  const membershipParams = new URLSearchParams({
+    select: 'group_id,user_id,role',
+    user_id: `eq.${userId}`,
+  });
+  const memberships = await supabaseRestRequest<WatchGroupMemberRow[]>(
+    `watch_group_members?${membershipParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  if (!Array.isArray(memberships) || memberships.length === 0) return [];
+
+  const groupIds = memberships.map((m) => m.group_id);
+  const groupsParams = new URLSearchParams({
+    select: 'id,owner_id,name,description,created_at,updated_at',
+    id: `in.(${groupIds.join(',')})`,
+  });
+  const groups = await supabaseRestRequest<WatchGroupRow[]>(
+    `watch_groups?${groupsParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+
+  const countsParams = new URLSearchParams({
+    select: 'group_id,user_id,role',
+    group_id: `in.(${groupIds.join(',')})`,
+  });
+  const allMembers = await supabaseRestRequest<WatchGroupMemberRow[]>(
+    `watch_group_members?${countsParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const countByGroup = new Map<string, number>();
+  for (const member of Array.isArray(allMembers) ? allMembers : []) {
+    countByGroup.set(member.group_id, (countByGroup.get(member.group_id) ?? 0) + 1);
+  }
+
+  const membershipByGroup = new Map(memberships.map((m) => [m.group_id, m]));
+  const rows = Array.isArray(groups) ? groups : [];
+  return rows
+    .map((group) => {
+      const membership = membershipByGroup.get(group.id);
+      if (!membership) return null;
+      return mapWatchGroup(group, membership, countByGroup.get(group.id) ?? 1);
+    })
+    .filter((group): group is WatchGroup => group !== null)
+    .sort((a, b) => {
+      if (a.role !== b.role) return a.role === 'owner' ? -1 : 1;
+      return new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime();
+    });
+}
+
+export async function getWatchGroupMembers(groupId: string): Promise<WatchGroupMember[]> {
+  const token = ensureAuthedToken();
+  const membersParams = new URLSearchParams({
+    select: 'group_id,user_id,role',
+    group_id: `eq.${groupId}`,
+  });
+  const rows = await supabaseRestRequest<WatchGroupMemberRow[]>(
+    `watch_group_members?${membersParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return [];
+
+  const userIds = rows.map((r) => r.user_id);
+  const usersParams = new URLSearchParams({
+    select: 'id,name,username,avatar',
+    id: `in.(${userIds.join(',')})`,
+  });
+  const users = await supabaseRestRequest<Array<{ id: string; name: string; username: string | null; avatar: string | null }>>(
+    `users?${usersParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const userMap = new Map((Array.isArray(users) ? users : []).map((u) => [u.id, u]));
+
+  return rows
+    .map((row) => {
+      const user = userMap.get(row.user_id);
+      if (!user) return null;
+      return {
+        groupId: row.group_id,
+        userId: row.user_id,
+        role: row.role,
+        name: user.name || 'User',
+        username: user.username ?? null,
+        avatar: user.avatar ?? null,
+      } satisfies WatchGroupMember;
+    })
+    .filter((member): member is WatchGroupMember => member !== null)
+    .sort((a, b) => {
+      if (a.role !== b.role) return a.role === 'owner' ? -1 : 1;
+      return a.name.localeCompare(b.name);
+    });
+}
+
+export async function addWatchGroupMember(groupId: string, memberUserId: string): Promise<void> {
+  const token = ensureAuthedToken();
+  await supabaseRestRequest(
+    'watch_group_members',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({
+        group_id: groupId,
+        user_id: memberUserId,
+        role: 'member',
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
+
+export async function addWatchGroupPick(input: {
+  groupId: string;
+  senderId: string;
+  mediaType: 'movie' | 'show';
+  tmdbId: string;
+  title: string;
+  poster?: string | null;
+  releaseYear?: number | null;
+  note?: string | null;
+}): Promise<void> {
+  const token = ensureAuthedToken();
+  await supabaseRestRequest(
+    'watch_group_picks',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({
+        group_id: input.groupId,
+        sender_id: input.senderId,
+        media_type: input.mediaType,
+        tmdb_id: input.tmdbId,
+        title: input.title.trim().slice(0, 200),
+        poster: input.poster?.trim() ? input.poster.trim().slice(0, 500) : null,
+        release_year: input.releaseYear ?? null,
+        note: input.note?.trim() ? input.note.trim().slice(0, 400) : null,
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
+
+export async function getWatchGroupPicks(groupId: string, currentUserId: string): Promise<WatchGroupPick[]> {
+  const token = ensureAuthedToken();
+  const pickParams = new URLSearchParams({
+    select: 'id,group_id,sender_id,media_type,tmdb_id,title,poster,release_year,note,created_at',
+    group_id: `eq.${groupId}`,
+    order: 'created_at.desc',
+  });
+  const rows = await supabaseRestRequest<WatchGroupPickRow[]>(
+    `watch_group_picks?${pickParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const picks = Array.isArray(rows) ? rows : [];
+  if (picks.length === 0) return [];
+
+  const senderIds = [...new Set(picks.map((p) => p.sender_id))];
+  const usersParams = new URLSearchParams({
+    select: 'id,name,avatar',
+    id: `in.(${senderIds.join(',')})`,
+  });
+  const users = await supabaseRestRequest<Array<{ id: string; name: string; avatar: string | null }>>(
+    `users?${usersParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const userMap = new Map((Array.isArray(users) ? users : []).map((u) => [u.id, u]));
+
+  const pickIds = picks.map((p) => p.id);
+  const votesParams = new URLSearchParams({
+    select: 'pick_id,user_id,vote_value',
+    pick_id: `in.(${pickIds.join(',')})`,
+  });
+  const votes = await supabaseRestRequest<WatchGroupPickVoteRow[]>(
+    `watch_group_pick_votes?${votesParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+
+  const voteByPick = new Map<string, { up: number; down: number; mine: -1 | 0 | 1 }>();
+  for (const vote of Array.isArray(votes) ? votes : []) {
+    const entry = voteByPick.get(vote.pick_id) ?? { up: 0, down: 0, mine: 0 };
+    if (vote.vote_value === 1) entry.up += 1;
+    if (vote.vote_value === -1) entry.down += 1;
+    if (vote.user_id === currentUserId) entry.mine = vote.vote_value;
+    voteByPick.set(vote.pick_id, entry);
+  }
+
+  return picks
+    .map((pick) => {
+      const sender = userMap.get(pick.sender_id);
+      const vote = voteByPick.get(pick.id) ?? { up: 0, down: 0, mine: 0 };
+      return {
+        id: pick.id,
+        groupId: pick.group_id,
+        senderId: pick.sender_id,
+        senderName: sender?.name || 'Member',
+        senderAvatar: sender?.avatar ?? null,
+        mediaType: pick.media_type,
+        tmdbId: pick.tmdb_id,
+        title: pick.title,
+        poster: pick.poster,
+        releaseYear: pick.release_year,
+        note: pick.note,
+        createdAt: pick.created_at,
+        upvotes: vote.up,
+        downvotes: vote.down,
+        score: vote.up - vote.down,
+        myVote: vote.mine,
+      } satisfies WatchGroupPick;
+    })
+    .sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score;
+      return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+    });
+}
+
+export async function voteOnWatchGroupPick(
+  pickId: string,
+  userId: string,
+  voteValue: -1 | 1,
+): Promise<void> {
+  const token = ensureAuthedToken();
+  const params = new URLSearchParams({ on_conflict: 'pick_id,user_id' });
+  await supabaseRestRequest(
+    `watch_group_pick_votes?${params.toString()}`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({
+        pick_id: pickId,
+        user_id: userId,
+        vote_value: voteValue,
+        updated_at: new Date().toISOString(),
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
+
+export async function clearWatchGroupPickVote(
+  pickId: string,
+  userId: string,
+): Promise<void> {
+  const token = ensureAuthedToken();
+  const params = new URLSearchParams({
+    pick_id: `eq.${pickId}`,
+    user_id: `eq.${userId}`,
+  });
+  await supabaseRestRequest(
+    `watch_group_pick_votes?${params.toString()}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Prefer: 'return=minimal',
+      },
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
