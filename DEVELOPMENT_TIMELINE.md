@@ -1,8 +1,8 @@
 # 🍿 Binge It Bro - Development Timeline & Hours Tracking
 
-## ⏱️ **Total Development Time: ~56 Hours**
+## ⏱️ **Total Development Time: ~62 Hours**
 
-Built over **15 days** (approximately **7 full work days**)
+Built over **16 days** (approximately **8 full work days**)
 
 ---
 
@@ -11,14 +11,14 @@ Built over **15 days** (approximately **7 full work days**)
 | Metric | Value |
 |--------|-------|
 | **First Commit** | January 31, 2026 at 3:18 PM |
-| **Latest Commit** | February 15, 2026 at 12:40 AM |
-| **Total Duration** | 14 days (2 weeks) |
+| **Latest Commit** | February 15, 2026 at 7:30 PM |
+| **Total Duration** | 16 days (2+ weeks) |
 | **Days Actually Worked** | 15 days |
-| **Total Commits** | 165 commits |
-| **Estimated Hours** | ~56.3 hours |
-| **Average Hours/Day** | 3.8 hours |
-| **Average Commits/Day** | 11 commits |
-| **Equivalent Work Days** | ~7 full days (8-hour days) |
+| **Total Commits** | 177 commits |
+| **Estimated Hours** | ~62 hours |
+| **Average Hours/Day** | 4.1 hours |
+| **Average Commits/Day** | 12 commits |
+| **Equivalent Work Days** | ~8 full days (8-hour days) |
 
 ---
 
