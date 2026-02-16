@@ -55,7 +55,15 @@ function getProxyUrl(url: string): string {
   return `/api/tmdb/${pathKey}?u=${encoded}&pv=5`;
 }
 
-export async function fetchTmdbWithProxy(url: string, init?: RequestInit): Promise<Response> {
+type FetchTmdbOptions = {
+  // When running server-side, provide the request origin (ex: https://bingeitbro.com)
+  // so we can still use the same-origin TMDB proxy (Cloudflare cache + dedupe).
+  origin?: string;
+  // Prefer the proxy even server-side. Falls back to direct TMDB if proxy fails.
+  preferProxy?: boolean;
+};
+
+export async function fetchTmdbWithProxy(url: string, init?: RequestInit, opts?: FetchTmdbOptions): Promise<Response> {
   const isTmdbUrl = isTmdbV3Url(url);
   const isBrowser = typeof window !== 'undefined';
 
@@ -63,21 +71,20 @@ export async function fetchTmdbWithProxy(url: string, init?: RequestInit): Promi
     return fetch(url, init);
   }
 
-  if (!isBrowser) {
-    // Server-side environments can generally reach TMDB directly.
-    return fetch(url, init);
-  }
-
   let proxyResponse: Response | null = null;
 
   try {
-    // Browser clients in some regions (for example, India ISPs) can have
-    // unstable direct access to TMDB. Hit our same-origin proxy first.
-    proxyResponse = await fetch(getProxyUrl(url), init);
-    if (proxyResponse.ok) return proxyResponse;
+    // Use our same-origin proxy first (helps reliability + enables edge caching).
+    if (isBrowser) {
+      proxyResponse = await fetch(getProxyUrl(url), init);
+    } else if (opts?.preferProxy && opts.origin) {
+      const origin = opts.origin.replace(/\/+$/, '');
+      proxyResponse = await fetch(`${origin}${getProxyUrl(url)}`, init);
+    }
+    if (proxyResponse && proxyResponse.ok) return proxyResponse;
 
     // For deterministic non-server errors (401/403/404), don't retry direct.
-    if (proxyResponse.status < 500) return proxyResponse;
+    if (proxyResponse && proxyResponse.status < 500) return proxyResponse;
   } catch {
     // Fall through to direct TMDB request.
   }
