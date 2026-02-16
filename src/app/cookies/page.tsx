@@ -8,7 +8,7 @@ export default function CookiePolicy() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Cookie Policy</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 6, 2025</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 16, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -85,6 +85,16 @@ export default function CookiePolicy() {
                     <td className="py-3 px-2">Remembers when you last saw the new releases popup.</td>
                     <td className="py-3 px-2">Functional</td>
                   </tr>
+                  <tr>
+                    <td className="py-3 px-2 font-mono text-xs">bib-trivia-*</td>
+                    <td className="py-3 px-2">Stores your Weekly Trivia progress, scores, and streak data.</td>
+                    <td className="py-3 px-2">Functional</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-2 font-mono text-xs">bib-group-watch-*</td>
+                    <td className="py-3 px-2">Tracks Group Watch session state and voting preferences.</td>
+                    <td className="py-3 px-2">Functional</td>
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -98,6 +108,7 @@ export default function CookiePolicy() {
               <li>No analytics cookies (e.g., Google Analytics)</li>
               <li>No social media tracking pixels</li>
               <li>No fingerprinting technologies</li>
+              <li>No cross-site tracking of any kind</li>
             </ul>
           </section>
 

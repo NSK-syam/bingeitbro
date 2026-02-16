@@ -8,7 +8,7 @@ export default function Copyright() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Copyright Policy &amp; DMCA</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 6, 2025</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 16, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -38,13 +38,14 @@ export default function Copyright() {
               </li>
               <li>
                 <strong>Streaming Platform Logos &amp; Names:</strong> Netflix, Amazon Prime Video,
-                Disney+ Hotstar, SonyLiv, Zee5, Jio Cinema, Apple TV+, and YouTube are trademarks
-                of their respective owners. BiB is not affiliated with, endorsed by, or sponsored
-                by any of these platforms.
+                Disney+ Hotstar, SonyLiv, Zee5, Jio Cinema, Apple TV+, YouTube, Aha, and other
+                OTT platforms (20+) are trademarks of their respective owners. BiB is not affiliated
+                with, endorsed by, or sponsored by any of these platforms.
               </li>
               <li>
-                <strong>User Content:</strong> Recommendations, personal notes, and reviews submitted
-                by users remain the intellectual property of the respective users.
+                <strong>User Content:</strong> Recommendations, personal notes, reviews, trivia scores,
+                and Group Watch picks submitted by users remain the intellectual property of the
+                respective users.
               </li>
             </ul>
           </section>
@@ -127,9 +128,9 @@ export default function Copyright() {
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">7. Fair Use</h2>
             <p>
               BiB displays movie metadata and poster images for the purpose of enabling user
-              recommendations and reviews. We believe this constitutes fair use under applicable
-              copyright law, as it is transformative, non-commercial in nature, and does not serve
-              as a substitute for the original works.
+              recommendations, reviews, Group Watch voting, and Weekly Trivia. We believe this
+              constitutes fair use under applicable copyright law, as it is transformative,
+              non-commercial in nature, and does not serve as a substitute for the original works.
             </p>
           </section>
 

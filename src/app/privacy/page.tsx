@@ -8,7 +8,7 @@ export default function PrivacyPolicy() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Privacy Policy</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 6, 2025</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 16, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -30,6 +30,9 @@ export default function PrivacyPolicy() {
               <li><strong>Profile Information:</strong> Your chosen avatar (emoji) and display name.</li>
               <li><strong>Recommendations:</strong> Movies and series you recommend, including personal notes, mood tags, ratings, and watch context.</li>
               <li><strong>Social Data:</strong> Your friends list, nudges sent and received, and friend-to-friend recommendations.</li>
+              <li><strong>Group Watch:</strong> Groups you create or join, voting picks, and group activity.</li>
+              <li><strong>Scheduled Watchlist:</strong> Movies and series you schedule to watch, including reminder preferences.</li>
+              <li><strong>Trivia Data:</strong> Your Weekly Trivia scores, answers, and leaderboard rankings.</li>
               <li><strong>Watchlist:</strong> Movies and series you save to your watchlist.</li>
             </ul>
 
@@ -53,7 +56,10 @@ export default function PrivacyPolicy() {
               <li>Create and manage your account</li>
               <li>Display your movie recommendations to your friends and the community</li>
               <li>Enable the friends and social features of the platform</li>
+              <li>Facilitate Group Watch sessions, voting, and group picks</li>
               <li>Send nudge notifications between friends</li>
+              <li>Send email notifications for scheduled reminders, friend activity, and group invites</li>
+              <li>Power the Weekly Trivia feature and maintain leaderboards</li>
               <li>Show relevant streaming availability for recommended titles</li>
               <li>Improve and maintain the Service</li>
               <li>Communicate with you about your account or the Service</li>
@@ -79,7 +85,8 @@ export default function PrivacyPolicy() {
             <ul className="list-disc pl-6 space-y-1 mt-2">
               <li><strong>Public Recommendations:</strong> Your movie recommendations, username, and avatar are visible to other users of the Service.</li>
               <li><strong>Friends:</strong> Your friends can see your recommendations and send you nudges.</li>
-              <li><strong>Service Providers:</strong> We use Supabase for database hosting, Vercel for website hosting, and TMDB for movie data. These providers process data as necessary to provide their services.</li>
+              <li><strong>Service Providers:</strong> We use Supabase for database hosting, Vercel for website hosting, Cloudflare for CDN and edge caching, and TMDB for movie data. These providers process data as necessary to provide their services.</li>
+              <li><strong>Email Notifications:</strong> Your email address is used to send scheduled watch reminders, friend recommendations, group invites, and birthday celebrations. You can manage notification preferences in your profile settings.</li>
               <li><strong>Legal Requirements:</strong> We may disclose your information if required by law, regulation, or legal process.</li>
             </ul>
           </section>

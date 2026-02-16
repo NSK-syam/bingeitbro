@@ -8,7 +8,7 @@ export default function Disclaimer() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Disclaimer</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 6, 2025</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 16, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -16,8 +16,9 @@ export default function Disclaimer() {
             <p>
               The information provided on BiB (&quot;Binge it bro&quot;) at bingeitbro.com is for general
               informational and entertainment purposes only. All content on the Service, including movie
-              recommendations, ratings, and reviews, represents the personal opinions of individual users
-              and should not be construed as professional advice.
+              recommendations, ratings, reviews, Group Watch picks, and Weekly Trivia questions, represents
+              the personal opinions of individual users or auto-generated content and should not be construed
+              as professional advice.
             </p>
           </section>
 
@@ -37,6 +38,8 @@ export default function Disclaimer() {
               <li>Jio Cinema (Reliance Industries)</li>
               <li>Apple TV+ (Apple Inc.)</li>
               <li>YouTube (Google LLC / Alphabet Inc.)</li>
+              <li>Aha (Arha Media &amp; Broadcasting Pvt Ltd)</li>
+              <li>And other OTT platforms (20+ total)</li>
             </ul>
             <p className="mt-2">
               All product names, logos, and brands are property of their respective owners. Use of these
@@ -61,10 +64,10 @@ export default function Disclaimer() {
           <section>
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">4. User-Generated Content</h2>
             <p>
-              Recommendations, reviews, ratings, and notes on BiB are submitted by users and represent
-              their personal opinions. BiB does not endorse, verify, or guarantee the accuracy of any
-              user-generated content. Users should exercise their own judgment when following
-              recommendations.
+              Recommendations, reviews, ratings, notes, Group Watch picks, and trivia scores on BiB are
+              submitted by users and represent their personal opinions. BiB does not endorse, verify, or
+              guarantee the accuracy of any user-generated content. Users should exercise their own judgment
+              when following recommendations.
             </p>
           </section>
 
@@ -89,7 +92,27 @@ export default function Disclaimer() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">7. No Warranty</h2>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">7. Weekly Trivia</h2>
+            <p>
+              The Weekly Trivia feature generates questions based on movie and series data. Questions are
+              auto-generated and may occasionally contain inaccuracies. Trivia scores and leaderboard
+              rankings are for entertainment purposes only and do not represent any form of competition
+              with prizes or rewards.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">8. Email Notifications</h2>
+            <p>
+              BiB sends email notifications for scheduled watch reminders, friend recommendations, group
+              invites, and birthday celebrations. These emails are transactional in nature and are sent
+              based on your activity and preferences. You can manage your notification settings through
+              your profile.
+            </p>
+          </section>
+
+          <section>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">9. No Warranty</h2>
             <p>
               THE SERVICE IS PROVIDED ON AN &quot;AS IS&quot; AND &quot;AS AVAILABLE&quot; BASIS.
               WE MAKE NO REPRESENTATIONS OR WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, REGARDING
@@ -100,7 +123,7 @@ export default function Disclaimer() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">8. Limitation of Liability</h2>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">10. Limitation of Liability</h2>
             <p>
               BiB and its operators will not be liable for any damages of any kind arising from the
               use of the Service, including but not limited to direct, indirect, incidental, punitive,
@@ -111,7 +134,7 @@ export default function Disclaimer() {
           </section>
 
           <section>
-            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">9. Contact Us</h2>
+            <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">11. Contact Us</h2>
             <p>
               If you have any questions about this Disclaimer, please contact us at:
             </p>
