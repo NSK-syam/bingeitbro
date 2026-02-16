@@ -893,6 +893,31 @@ export default function MoviesHome() {
                 )}
               </button>
 
+              {/* Weekly Trivia */}
+              <Link
+                href="/trivia"
+                className={[
+                  'h-11 px-5 rounded-full inline-flex items-center gap-2',
+                  'text-sm font-semibold',
+                  'transition-all select-none',
+                  'bg-gradient-to-r from-emerald-500/40 to-lime-500/35 text-emerald-50 border border-emerald-200/30 backdrop-blur-xl shadow-[0_10px_30px_rgba(16,185,129,0.22)]',
+                  'hover:from-emerald-400/50 hover:to-lime-400/45 hover:text-white hover:border-emerald-100/55',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                  'active:scale-[0.99]',
+                ].join(' ')}
+                title="Weekly trivia (10 questions)"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M8 10a4 4 0 118 0c0 2-2 2-2 4m-4 0h4m-6 6h8"
+                  />
+                </svg>
+                Weekly Trivia
+              </Link>
+
               {isValentinesDay && (
                 <button
                   onClick={() => {
