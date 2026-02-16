@@ -1123,7 +1123,9 @@ export async function submitTriviaAttempt(input: {
   durationMs: number;
 }): Promise<string> {
   const token = ensureAuthedToken();
-  const rows = await supabaseRestRequest<Array<{ submit_trivia_attempt: string }>>(
+  const payload = await supabaseRestRequest<
+    Array<{ submit_trivia_attempt?: string }> | { submit_trivia_attempt?: string } | string
+  >(
     'rpc/submit_trivia_attempt',
     {
       method: 'POST',
@@ -1138,8 +1140,21 @@ export async function submitTriviaAttempt(input: {
     },
     token,
   );
-  const first = Array.isArray(rows) ? rows[0] : null;
-  const id = first ? String(first.submit_trivia_attempt || '').trim() : '';
+
+  // Supabase/PostgREST can return RPC scalar values in different shapes:
+  // 1) "uuid-string"
+  // 2) { submit_trivia_attempt: "uuid-string" }
+  // 3) [{ submit_trivia_attempt: "uuid-string" }]
+  let id = '';
+  if (typeof payload === 'string') {
+    id = payload.trim();
+  } else if (Array.isArray(payload)) {
+    const first = payload[0];
+    id = first ? String(first.submit_trivia_attempt || '').trim() : '';
+  } else if (payload && typeof payload === 'object') {
+    id = String(payload.submit_trivia_attempt || '').trim();
+  }
+
   if (!id) throw new Error('Failed to submit trivia attempt.');
   return id;
 }
