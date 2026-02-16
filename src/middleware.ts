@@ -44,7 +44,7 @@ function getRateLimitRule(request: NextRequest): RateLimitRule | null {
   if (method === 'OPTIONS') return null;
 
   if (method === 'POST' && pathname === '/api/signup') {
-    return { key: 'signup', limit: 10, windowMs: 10 * 60 * 1000 };
+    return { key: 'signup', limit: 5, windowMs: 10 * 60 * 1000 };
   }
 
   if (method === 'GET' && pathname === '/api/username-available') {

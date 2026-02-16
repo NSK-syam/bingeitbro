@@ -1,8 +1,54 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: string | HTMLElement,
+        options: {
+          sitekey: string;
+          theme?: 'light' | 'dark' | 'auto';
+          callback?: (token: string) => void;
+          'expired-callback'?: () => void;
+          'error-callback'?: () => void;
+        },
+      ) => string;
+      reset?: (widgetId: string) => void;
+    };
+  }
+}
+
+let turnstileScriptPromise: Promise<void> | null = null;
+
+function loadTurnstileScript(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+  if (window.turnstile) return Promise.resolve();
+  if (turnstileScriptPromise) return turnstileScriptPromise;
+
+  turnstileScriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById('cf-turnstile-script') as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Turnstile failed to load')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'cf-turnstile-script';
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Turnstile failed to load'));
+    document.head.appendChild(script);
+  });
+
+  return turnstileScriptPromise;
+}
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -26,6 +72,11 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
   const [birthMonth, setBirthMonth] = useState('');
   const [birthYear, setBirthYear] = useState('');
   const [inAppBrowser, setInAppBrowser] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+  const [captchaError, setCaptchaError] = useState('');
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
   const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
 
@@ -38,6 +89,47 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
       setMode(initialMode);
     }
   }, [isOpen, initialMode]);
+
+  useEffect(() => {
+    if (!isOpen || mode !== 'signup' || !turnstileSiteKey || typeof window === 'undefined') {
+      setCaptchaToken('');
+      setCaptchaError('');
+      turnstileWidgetIdRef.current = null;
+      return;
+    }
+    const mount = async () => {
+      setCaptchaLoading(true);
+      setCaptchaError('');
+      try {
+        await loadTurnstileScript();
+        if (!isOpen || mode !== 'signup') return;
+        const container = document.getElementById('signup-turnstile');
+        if (!container || !window.turnstile) return;
+        if (!turnstileWidgetIdRef.current) {
+          turnstileWidgetIdRef.current = window.turnstile.render(container, {
+            sitekey: turnstileSiteKey,
+            theme: 'dark',
+            callback: (token) => {
+              setCaptchaToken(token);
+              setCaptchaError('');
+            },
+            'expired-callback': () => setCaptchaToken(''),
+            'error-callback': () => {
+              setCaptchaToken('');
+              setCaptchaError('Verification failed. Please retry.');
+            },
+          });
+        } else if (window.turnstile.reset && turnstileWidgetIdRef.current) {
+          window.turnstile.reset(turnstileWidgetIdRef.current);
+        }
+      } catch {
+        setCaptchaError('Unable to load verification challenge. Refresh and try again.');
+      } finally {
+        setCaptchaLoading(false);
+      }
+    };
+    void mount();
+  }, [isOpen, mode, turnstileSiteKey]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -119,7 +211,13 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
         }
         const birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
-        const { error } = await signUp(email, password, name, username, birthdate);
+        if (turnstileSiteKey && !captchaToken) {
+          setError('Please complete the verification challenge.');
+          setLoading(false);
+          return;
+        }
+
+        const { error } = await signUp(email, password, name, username, birthdate, captchaToken);
         if (error) {
           setError(error.message);
         } else {
@@ -348,6 +446,21 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
                   </select>
                 </div>
               </div>
+
+              {turnstileSiteKey && (
+                <div>
+                  <label className="block text-sm text-[var(--text-muted)] mb-2">Verification</label>
+                  <div className="rounded-xl border border-white/10 bg-[var(--bg-secondary)] p-3">
+                    <div id="signup-turnstile" className="min-h-[65px]" />
+                    {captchaLoading && (
+                      <p className="text-xs text-[var(--text-muted)] mt-2">Loading verification…</p>
+                    )}
+                    {captchaError && (
+                      <p className="text-xs text-red-400 mt-2">{captchaError}</p>
+                    )}
+                  </div>
+                </div>
+              )}
             </>
           )}
 

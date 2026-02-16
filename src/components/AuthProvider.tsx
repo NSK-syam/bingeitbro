@@ -16,7 +16,14 @@ interface AuthContextType {
   session: Session | null;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
-  signUp: (email: string, password: string, name: string, username: string, birthdate: string | null) => Promise<{ error: Error | null }>;
+  signUp: (
+    email: string,
+    password: string,
+    name: string,
+    username: string,
+    birthdate: string | null,
+    captchaToken?: string,
+  ) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
   checkUsernameAvailable: (username: string) => Promise<boolean>;
   signOut: () => Promise<void>;
@@ -221,7 +228,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const signUp = async (email: string, password: string, name: string, username: string, birthdate: string | null) => {
+  const signUp = async (
+    email: string,
+    password: string,
+    name: string,
+    username: string,
+    birthdate: string | null,
+    captchaToken?: string,
+  ) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
 
     try {
@@ -234,6 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           name,
           username: username.toLowerCase(),
           birthdate: birthdate || null,
+          captchaToken: captchaToken || null,
         }),
       });
       const payload = (await resp.json().catch(() => ({}))) as { ok?: boolean; error?: string; message?: string; needsEmailConfirmation?: boolean };

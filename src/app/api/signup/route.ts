@@ -8,9 +8,50 @@ type SignupBody = {
   name?: unknown;
   username?: unknown;
   birthdate?: unknown; // YYYY-MM-DD
+  captchaToken?: unknown;
 };
 
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/i;
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  '10minutemail.com',
+  'dispostable.com',
+  'emailondeck.com',
+  'fakeinbox.com',
+  'guerrillamail.com',
+  'maildrop.cc',
+  'mailinator.com',
+  'mintemail.com',
+  'sharklasers.com',
+  'temp-mail.org',
+  'tempmail.com',
+  'tempmailo.com',
+  'throwawaymail.com',
+  'trashmail.com',
+  'yopmail.com',
+]);
+const SIGNUP_IP_LIMIT = 5;
+const SIGNUP_IP_WINDOW_MS = 10 * 60 * 1000;
+const SIGNUP_EMAIL_LIMIT = 4;
+const SIGNUP_EMAIL_WINDOW_MS = 60 * 60 * 1000;
+const SIGNUP_EMAIL_COOLDOWN_MS = 90 * 1000;
+
+type FixedWindowBucket = {
+  count: number;
+  resetAt: number;
+};
+
+const signupStoresGlobal = globalThis as typeof globalThis & {
+  __bibSignupIpRateStore?: Map<string, FixedWindowBucket>;
+  __bibSignupEmailRateStore?: Map<string, FixedWindowBucket>;
+  __bibSignupEmailCooldownStore?: Map<string, number>;
+};
+
+const signupIpRateStore = signupStoresGlobal.__bibSignupIpRateStore ?? new Map<string, FixedWindowBucket>();
+const signupEmailRateStore = signupStoresGlobal.__bibSignupEmailRateStore ?? new Map<string, FixedWindowBucket>();
+const signupEmailCooldownStore = signupStoresGlobal.__bibSignupEmailCooldownStore ?? new Map<string, number>();
+signupStoresGlobal.__bibSignupIpRateStore = signupIpRateStore;
+signupStoresGlobal.__bibSignupEmailRateStore = signupEmailRateStore;
+signupStoresGlobal.__bibSignupEmailCooldownStore = signupEmailCooldownStore;
 
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === 'string' && value.trim().length > 0;
@@ -22,6 +63,51 @@ function normalizeEmail(email: string) {
 
 function normalizeUsername(username: string) {
   return username.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+}
+
+function getClientIp(req: Request): string {
+  const cfIp = req.headers.get('cf-connecting-ip')?.trim();
+  if (cfIp) return cfIp;
+  const xff = req.headers.get('x-forwarded-for');
+  if (xff) {
+    const ip = xff.split(',')[0]?.trim();
+    if (ip) return ip;
+  }
+  return 'unknown';
+}
+
+function consumeFixedWindow(
+  store: Map<string, FixedWindowBucket>,
+  key: string,
+  limit: number,
+  windowMs: number,
+): { allowed: boolean; retryAfterSec: number } {
+  const now = Date.now();
+  const current = store.get(key);
+  const bucket =
+    !current || current.resetAt <= now
+      ? { count: 1, resetAt: now + windowMs }
+      : { count: current.count + 1, resetAt: current.resetAt };
+  store.set(key, bucket);
+
+  if (store.size > 5000) {
+    for (const [k, v] of store) {
+      if (v.resetAt <= now) store.delete(k);
+      if (store.size <= 3000) break;
+    }
+  }
+
+  if (bucket.count <= limit) return { allowed: true, retryAfterSec: 0 };
+  return {
+    allowed: false,
+    retryAfterSec: Math.max(1, Math.ceil((bucket.resetAt - now) / 1000)),
+  };
+}
+
+function getEmailDomain(email: string): string {
+  const at = email.lastIndexOf('@');
+  if (at < 0) return '';
+  return email.slice(at + 1).toLowerCase();
 }
 
 function isValidBirthdate(birthdate: string) {
@@ -59,6 +145,7 @@ export async function POST(req: Request) {
       process.env.SUPABASE_SERVICE_ROLE ||
       ''
     ).trim();
+  const turnstileSecret = (process.env.TURNSTILE_SECRET_KEY || '').trim();
 
   if (!url || (!serviceRole && !anonKey)) {
     const missing: string[] = [];
@@ -84,12 +171,42 @@ export async function POST(req: Request) {
   const name = isNonEmptyString(body.name) ? body.name.trim() : '';
   const username = isNonEmptyString(body.username) ? normalizeUsername(body.username) : '';
   const birthdate = isNonEmptyString(body.birthdate) ? body.birthdate.trim() : '';
+  const captchaToken = isNonEmptyString(body.captchaToken) ? body.captchaToken.trim() : '';
+  const clientIp = getClientIp(req);
+
+  const ipLimit = consumeFixedWindow(signupIpRateStore, clientIp, SIGNUP_IP_LIMIT, SIGNUP_IP_WINDOW_MS);
+  if (!ipLimit.allowed) {
+    return NextResponse.json(
+      { error: `Too many signup attempts from this network. Try again in ${ipLimit.retryAfterSec}s.` },
+      { status: 429, headers: { 'Retry-After': String(ipLimit.retryAfterSec) } },
+    );
+  }
 
   if (!email || !password || !name || !username) {
     return NextResponse.json({ error: 'Missing required fields.' }, { status: 400 });
   }
   if (!EMAIL_RE.test(email) || email.length > 254) {
     return NextResponse.json({ error: 'Invalid email address.' }, { status: 400 });
+  }
+  const emailDomain = getEmailDomain(email);
+  if (emailDomain && DISPOSABLE_EMAIL_DOMAINS.has(emailDomain)) {
+    return NextResponse.json({ error: 'Temporary/disposable emails are not allowed.' }, { status: 400 });
+  }
+  const emailLimit = consumeFixedWindow(signupEmailRateStore, email, SIGNUP_EMAIL_LIMIT, SIGNUP_EMAIL_WINDOW_MS);
+  if (!emailLimit.allowed) {
+    return NextResponse.json(
+      { error: `Too many signup attempts for this email. Try again in ${emailLimit.retryAfterSec}s.` },
+      { status: 429, headers: { 'Retry-After': String(emailLimit.retryAfterSec) } },
+    );
+  }
+  const now = Date.now();
+  const nextAllowed = signupEmailCooldownStore.get(email) || 0;
+  if (nextAllowed > now) {
+    const retryAfterSec = Math.max(1, Math.ceil((nextAllowed - now) / 1000));
+    return NextResponse.json(
+      { error: `Please wait ${retryAfterSec}s before trying again.` },
+      { status: 429, headers: { 'Retry-After': String(retryAfterSec) } },
+    );
   }
   if (password.length < 8) {
     return NextResponse.json({ error: 'Password must be at least 8 characters.' }, { status: 400 });
@@ -105,6 +222,34 @@ export async function POST(req: Request) {
   }
   if (birthdate && !isValidBirthdate(birthdate)) {
     return NextResponse.json({ error: 'Invalid birthdate.' }, { status: 400 });
+  }
+
+  if (turnstileSecret) {
+    if (!captchaToken) {
+      return NextResponse.json({ error: 'Please complete verification challenge.' }, { status: 400 });
+    }
+    try {
+      const payload = new URLSearchParams();
+      payload.set('secret', turnstileSecret);
+      payload.set('response', captchaToken);
+      if (clientIp !== 'unknown') payload.set('remoteip', clientIp);
+
+      const verifyRes = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+        body: payload.toString(),
+      });
+
+      type TurnstileVerifyResponse = {
+        success?: boolean;
+      };
+      const verifyJson = (await verifyRes.json().catch(() => ({}))) as TurnstileVerifyResponse;
+      if (!verifyRes.ok || !verifyJson?.success) {
+        return NextResponse.json({ error: 'Verification failed. Please try again.' }, { status: 400 });
+      }
+    } catch {
+      return NextResponse.json({ error: 'Verification service unavailable. Please retry.' }, { status: 503 });
+    }
   }
 
   const lookupClient = createClient(url, serviceRole || anonKey, {
@@ -144,6 +289,7 @@ export async function POST(req: Request) {
     avatar: getRandomMovieAvatar(),
     birthdate: birthdate || null,
   };
+  signupEmailCooldownStore.set(email, Date.now() + SIGNUP_EMAIL_COOLDOWN_MS);
 
   if (serviceRole) {
     const admin = createClient(url, serviceRole, {
