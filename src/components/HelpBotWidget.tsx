@@ -2,32 +2,36 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
+import { HELP_UPDATES, HELP_UPDATES_VERSION, type HelpUpdateTone } from '@/lib/help-updates';
 
-const UPDATE_VERSION = '2026-02-email-primary-tip';
 const STORAGE_KEY = 'bib-helpbot-last-seen-update';
 
-type HelpUpdate = {
-  id: string;
-  title: string;
-  detail: string;
-  tag: string;
-};
+function getToneClasses(tone?: HelpUpdateTone): string {
+  if (tone === 'cyan') return 'border-cyan-300/30 bg-cyan-500/10';
+  if (tone === 'emerald') return 'border-emerald-300/30 bg-emerald-500/10';
+  if (tone === 'amber') return 'border-amber-300/30 bg-amber-500/10';
+  if (tone === 'indigo') return 'border-indigo-300/30 bg-indigo-500/10';
+  return 'border-rose-300/30 bg-rose-500/10';
+}
 
-const HELP_UPDATES: HelpUpdate[] = [
-  {
-    id: UPDATE_VERSION,
-    tag: 'New update',
-    title: 'Email delivery tip',
-    detail:
-      'If friend recommendations or schedule reminders land in Spam, open the mail and click "Report not spam" so future BiB emails reach Primary.',
-  },
-];
+function getTagClasses(tone?: HelpUpdateTone): string {
+  if (tone === 'cyan') return 'border-cyan-200/45 bg-cyan-500/20 text-cyan-100';
+  if (tone === 'emerald') return 'border-emerald-200/45 bg-emerald-500/20 text-emerald-100';
+  if (tone === 'amber') return 'border-amber-200/45 bg-amber-500/20 text-amber-100';
+  if (tone === 'indigo') return 'border-indigo-200/45 bg-indigo-500/20 text-indigo-100';
+  return 'border-rose-200/45 bg-rose-500/20 text-rose-100';
+}
 
 export function HelpBotWidget() {
   const [isOpen, setIsOpen] = useState(false);
+  const [showAll, setShowAll] = useState(false);
   const [hasUnseen, setHasUnseen] = useState(true);
 
-  const latestUpdateId = useMemo(() => HELP_UPDATES[0]?.id ?? '', []);
+  const latestUpdateId = useMemo(() => HELP_UPDATES_VERSION, []);
+  const visibleUpdates = useMemo(
+    () => (showAll ? HELP_UPDATES : HELP_UPDATES.slice(0, 6)),
+    [showAll],
+  );
 
   useEffect(() => {
     const seen = safeLocalStorageGet(STORAGE_KEY);
@@ -52,7 +56,10 @@ export function HelpBotWidget() {
           <div className="flex items-start justify-between gap-3 p-4 border-b border-white/10">
             <div>
               <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">BiB Helpbot</p>
-              <h3 className="text-base font-semibold text-[var(--text-primary)] mt-1">New updates</h3>
+              <h3 className="text-base font-semibold text-[var(--text-primary)] mt-1">All updates</h3>
+              <p className="text-xs text-[var(--text-muted)] mt-1">
+                Product changelog inside BiB ({HELP_UPDATES.length} updates)
+              </p>
             </div>
             <button
               type="button"
@@ -64,16 +71,29 @@ export function HelpBotWidget() {
             </button>
           </div>
 
-          <div className="p-4 space-y-3">
-            {HELP_UPDATES.map((item) => (
-              <article key={item.id} className="rounded-xl border border-rose-300/30 bg-rose-500/10 p-3">
-                <div className="inline-flex items-center rounded-full border border-rose-200/45 bg-rose-500/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-rose-100">
-                  {item.tag}
+          <div className="p-4 space-y-3 max-h-[62vh] overflow-y-auto">
+            {visibleUpdates.map((item) => (
+              <article key={item.id} className={`rounded-xl border p-3 ${getToneClasses(item.tone)}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] ${getTagClasses(item.tone)}`}>
+                    {item.tag}
+                  </div>
+                  <span className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">{item.date}</span>
                 </div>
                 <h4 className="mt-2 text-sm font-semibold text-[var(--text-primary)]">{item.title}</h4>
                 <p className="mt-1 text-sm text-[var(--text-secondary)] leading-relaxed">{item.detail}</p>
               </article>
             ))}
+
+            {HELP_UPDATES.length > 6 && (
+              <button
+                type="button"
+                onClick={() => setShowAll((v) => !v)}
+                className="w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-white/30 transition-colors"
+              >
+                {showAll ? 'Show less' : `Show all (${HELP_UPDATES.length})`}
+              </button>
+            )}
           </div>
         </div>
       )}
