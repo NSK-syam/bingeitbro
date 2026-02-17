@@ -1,4 +1,8 @@
-const API_KEY = '***REMOVED***';
+const API_KEY = (process.env.TMDB_API_KEY || '').trim();
+
+if (!API_KEY) {
+  throw new Error('Missing TMDB_API_KEY env var');
+}
 
 const movies = [
   { id: "1", title: "Baahubali The Beginning", year: 2015 },
