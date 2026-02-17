@@ -57,6 +57,12 @@ export default function HomeGate() {
                 <p className="bib-guest-subtitle">
                   Skip the endless scroll. BiB is where friends drop their best picks and you binge with confidence.
                 </p>
+                <div className="bib-guest-trust-note" role="note" aria-label="Platform policy">
+                  <span className="bib-guest-trust-note__badge">Recommendations only</span>
+                  <p>
+                    BiB does not host or stream movies, shows, or songs. We only help you discover picks and point you to legal OTT or official platforms.
+                  </p>
+                </div>
                 <div className="bib-guest-actions">
                   <Link href="/signup" className="bib-guest-primary">
                     Join BiB

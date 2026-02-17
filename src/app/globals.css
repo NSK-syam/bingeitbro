@@ -448,6 +448,40 @@ body {
   max-width: 520px;
 }
 
+.bib-guest-trust-note {
+  max-width: 620px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  background:
+    linear-gradient(120deg, rgba(146, 64, 14, 0.24), rgba(113, 63, 18, 0.12)),
+    rgba(28, 16, 4, 0.35);
+  display: grid;
+  gap: 8px;
+}
+
+.bib-guest-trust-note__badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(251, 191, 36, 0.45);
+  background: rgba(245, 158, 11, 0.22);
+  color: #fef3c7;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.bib-guest-trust-note p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #fde68a;
+}
+
 .bib-guest-actions {
   display: flex;
   gap: 12px;
