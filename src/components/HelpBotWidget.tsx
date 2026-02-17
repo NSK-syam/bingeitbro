@@ -56,9 +56,9 @@ export function HelpBotWidget() {
           <div className="flex items-start justify-between gap-3 p-4 border-b border-white/10">
             <div>
               <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-200/70">BiB Helpbot</p>
-              <h3 className="text-base font-semibold text-[var(--text-primary)] mt-1">All updates</h3>
+              <h3 className="text-base font-semibold text-[var(--text-primary)] mt-1">Feature updates</h3>
               <p className="text-xs text-[var(--text-muted)] mt-1">
-                Product changelog inside BiB ({HELP_UPDATES.length} updates)
+                Only user-facing features ({HELP_UPDATES.length} updates)
               </p>
             </div>
             <button
