@@ -50,3 +50,14 @@ If sign-in redirects to `/?error=auth`:
      - `NEXT_PUBLIC_SUPABASE_URL` = your Supabase project URL  
      - `NEXT_PUBLIC_SUPABASE_ANON_KEY` = your Supabase anon key  
    - Re-run a build after saving so the built app has these values.
+
+## Security Guardrails
+
+1. Copy env template and fill real values in local/deployment secret stores:
+   - `cp .env.example .env.local`
+2. Install local pre-commit hooks (runs secret scan on staged files):
+   - `npm run security:hooks`
+3. Run full repository secret scan on demand:
+   - `npm run security:secrets`
+
+This repo also runs GitHub Actions secret scanning (`.github/workflows/secret-scan.yml`) on every push and pull request.

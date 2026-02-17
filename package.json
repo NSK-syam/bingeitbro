@@ -9,7 +9,9 @@
     "cf:deploy": "npm run cf:build && opennextjs-cloudflare deploy",
     "start": "next start",
     "lint": "eslint",
-    "prelaunch": "node scripts/prelaunch.mjs"
+    "prelaunch": "node scripts/prelaunch.mjs",
+    "security:secrets": "bash scripts/secret-scan.sh --all",
+    "security:hooks": "bash scripts/install-git-hooks.sh"
   },
   "dependencies": {
     "@supabase/ssr": "^0.8.0",
