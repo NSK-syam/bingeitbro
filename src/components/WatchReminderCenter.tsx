@@ -5,7 +5,6 @@ import { useEffect, useRef, useState } from 'react';
 import { useAuth } from './AuthProvider';
 import {
   pollDueWatchReminders,
-  triggerWatchReminderEmailDispatch,
   type WatchReminder,
 } from '@/lib/supabase-rest';
 import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
@@ -24,13 +23,11 @@ export function WatchReminderCenter() {
   const [toasts, setToasts] = useState<ToastReminder[]>([]);
   const seenIdsRef = useRef<Set<string>>(new Set());
   const permissionRequestedRef = useRef(false);
-  const lastEmailDispatchMsRef = useRef(0);
 
   useEffect(() => {
     setToasts([]);
     seenIdsRef.current = new Set();
     permissionRequestedRef.current = false;
-    lastEmailDispatchMsRef.current = 0;
   }, [user?.id]);
 
   useEffect(() => {
@@ -87,12 +84,6 @@ export function WatchReminderCenter() {
 
     const poll = async () => {
       try {
-        const now = Date.now();
-        if (now - lastEmailDispatchMsRef.current > 2 * 60_000) {
-          lastEmailDispatchMsRef.current = now;
-          await triggerWatchReminderEmailDispatch(25);
-        }
-
         const due = await pollDueWatchReminders(5);
         if (cancelled || due.length === 0) return;
         pushToast(due);

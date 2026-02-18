@@ -95,7 +95,7 @@ export const RADIO_STATIONS: RadioStation[] = [
     country: 'United States',
     language: 'English',
     bitrate: '128 kbps',
-    streamUrl: 'https://live.wostreaming.net/direct/ppm-jazz24mp3-ibc1',
+    streamUrl: 'https://knkx-live-a.edge.audiocdn.com/6285_128k?aw_0_1st.playerid=jazz24.org',
     websiteUrl: 'https://www.jazz24.org/',
     description: 'Straight-ahead jazz, contemporary sets, and timeless classics.',
   },
