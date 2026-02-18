@@ -68,6 +68,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
+      <head>
+        <script
+          defer
+          data-website-id="dfid_5dfjhZbPNJbwF86tPGjDs"
+          data-domain="bingeitbro.com"
+          src="https://datafa.st/js/script.js"
+        />
+      </head>
       <body className={fontClass}>
         <AuthProvider>{children}</AuthProvider>
       </body>
