@@ -8,7 +8,7 @@ export default function Disclaimer() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Disclaimer</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 16, 2026</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 18, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -78,6 +78,11 @@ export default function Disclaimer() {
               movie databases. These links are provided for convenience only. We do not control the
               content of external sites and are not responsible for their content, privacy practices,
               or availability.
+            </p>
+            <p className="mt-2">
+              The Radio feature is link-only. BiB does not host, retransmit, record, or alter radio
+              broadcasts. Playback happens only on third-party station websites, and all rights remain
+              with the relevant broadcasters and rights holders.
             </p>
           </section>
 

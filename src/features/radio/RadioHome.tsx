@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { AuthModal } from '@/components/AuthModal';
 import { BibSplash } from '@/components/BibSplash';
 import { Header } from '@/components/Header';
@@ -12,7 +12,6 @@ import { RADIO_STATIONS, type RadioStation } from '@/data/radio-stations';
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 
 const LAST_STATION_KEY = 'bib-radio-last-station';
-const LAST_VOLUME_KEY = 'bib-radio-volume';
 const FAVORITES_KEY = 'bib-radio-favorites';
 
 function parseFavorites(raw: string | null): string[] {
@@ -34,26 +33,13 @@ export default function RadioHome() {
   const [genreFilter, setGenreFilter] = useState('all');
   const [countryFilter, setCountryFilter] = useState('all');
   const [selectedStationId, setSelectedStationId] = useState(RADIO_STATIONS[0]?.id ?? '');
-  const [pendingAutoPlayId, setPendingAutoPlayId] = useState<string | null>(null);
   const [favoriteIds, setFavoriteIds] = useState<string[]>([]);
-  const [volume, setVolume] = useState(0.8);
-  const [isPlaying, setIsPlaying] = useState(false);
-  const [isBuffering, setIsBuffering] = useState(false);
-  const [streamError, setStreamError] = useState('');
-
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const savedStation = (safeLocalStorageGet(LAST_STATION_KEY) || '').trim();
     if (savedStation && RADIO_STATIONS.some((s) => s.id === savedStation)) {
       setSelectedStationId(savedStation);
     }
-
-    const savedVolume = Number(safeLocalStorageGet(LAST_VOLUME_KEY) || '');
-    if (!Number.isNaN(savedVolume) && savedVolume >= 0 && savedVolume <= 1) {
-      setVolume(savedVolume);
-    }
-
     setFavoriteIds(parseFavorites(safeLocalStorageGet(FAVORITES_KEY)));
   }, []);
 
@@ -63,19 +49,12 @@ export default function RadioHome() {
   }, [selectedStationId]);
 
   useEffect(() => {
-    safeLocalStorageSet(LAST_VOLUME_KEY, String(volume));
-    if (audioRef.current) {
-      audioRef.current.volume = volume;
-    }
-  }, [volume]);
-
-  useEffect(() => {
     safeLocalStorageSet(FAVORITES_KEY, JSON.stringify(favoriteIds));
   }, [favoriteIds]);
 
   const selectedStation = useMemo(
     () => RADIO_STATIONS.find((station) => station.id === selectedStationId) ?? null,
-    [selectedStationId]
+    [selectedStationId],
   );
 
   const genres = useMemo(() => {
@@ -116,70 +95,6 @@ export default function RadioHome() {
     });
   }, [query, genreFilter, countryFilter, favoriteIds]);
 
-  const pauseCurrent = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.pause();
-    setIsPlaying(false);
-    setIsBuffering(false);
-  }, []);
-
-  const playCurrent = useCallback(async () => {
-    if (!selectedStation) return;
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    setStreamError('');
-    setIsBuffering(true);
-
-    try {
-      audio.volume = volume;
-      const maybePromise = audio.play();
-      if (maybePromise) {
-        await maybePromise;
-      }
-      setIsPlaying(true);
-      setIsBuffering(false);
-    } catch {
-      setIsPlaying(false);
-      setIsBuffering(false);
-      setStreamError('Playback was blocked or the stream is unavailable. Please try another station.');
-    }
-  }, [selectedStation, volume]);
-
-  const stopCurrent = useCallback(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-    audio.pause();
-    audio.currentTime = 0;
-    setIsPlaying(false);
-    setIsBuffering(false);
-  }, []);
-
-  useEffect(() => {
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    audio.pause();
-    audio.load();
-    setIsPlaying(false);
-    setIsBuffering(false);
-    setStreamError('');
-  }, [selectedStationId]);
-
-  useEffect(() => {
-    if (!pendingAutoPlayId) return;
-    if (pendingAutoPlayId !== selectedStationId) return;
-
-    setPendingAutoPlayId(null);
-    void playCurrent();
-  }, [pendingAutoPlayId, selectedStationId, playCurrent]);
-
-  const handlePlayStation = (stationId: string) => {
-    setPendingAutoPlayId(stationId);
-    setSelectedStationId(stationId);
-  };
-
   const toggleFavorite = (stationId: string) => {
     setFavoriteIds((prev) => {
       if (prev.includes(stationId)) {
@@ -206,7 +121,7 @@ export default function RadioHome() {
           <div>
             <p className="text-sm font-semibold text-[var(--text-primary)]">{station.name}</p>
             <p className="text-xs text-[var(--text-muted)] mt-1">
-              {station.genre} • {station.country} • {station.bitrate}
+              {station.genre} • {station.country} • {station.language}
             </p>
           </div>
           <button
@@ -221,13 +136,15 @@ export default function RadioHome() {
         <p className="text-sm text-[var(--text-secondary)] mt-3">{station.description}</p>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={() => handlePlayStation(station.id)}
+          <a
+            href={station.websiteUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={() => setSelectedStationId(station.id)}
             className="px-3 py-1.5 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] text-sm font-semibold hover:opacity-90 transition-opacity"
           >
-            Play
-          </button>
+            Open station
+          </a>
 
           <button
             type="button"
@@ -236,15 +153,6 @@ export default function RadioHome() {
           >
             Select
           </button>
-
-          <a
-            href={station.websiteUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-3 py-1.5 rounded-full border border-white/15 text-sm text-[var(--text-secondary)] hover:border-white/35"
-          >
-            Website
-          </a>
         </div>
       </div>
     );
@@ -271,16 +179,23 @@ export default function RadioHome() {
             <div className="max-w-3xl">
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Radio</p>
               <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-[var(--text-primary)]">
-                Live radio streams for every mood.
+                Discover stations and open them on official websites.
               </h1>
               <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                Pick a station, press play, and keep browsing BiB while audio continues in the background tab.
+                BiB only provides station discovery and external links. We do not host, retransmit, or record audio.
               </p>
             </div>
 
+            <section className="mt-6 rounded-2xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-100">
+              <p className="font-semibold">Radio compliance notice</p>
+              <p className="mt-1 text-amber-100/90">
+                Playback happens on third-party station websites under their own terms, licenses, and regional rules.
+              </p>
+            </section>
+
             <div className="mt-8 grid grid-cols-1 lg:grid-cols-3 gap-4">
               <section className="lg:col-span-1 bg-[var(--bg-card)] border border-white/10 rounded-3xl p-4 sm:p-6">
-                <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Now Playing</p>
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Featured Station</p>
                 <h2 className="mt-2 text-xl font-semibold text-[var(--text-primary)]">
                   {selectedStation?.name ?? 'No station selected'}
                 </h2>
@@ -288,77 +203,19 @@ export default function RadioHome() {
                   <p className="text-sm text-[var(--text-secondary)] mt-2">{selectedStation.description}</p>
                 )}
 
-                <div className="mt-5 flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => void playCurrent()}
-                    disabled={!selectedStation || isBuffering}
-                    className="px-4 py-2 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] text-sm font-semibold hover:opacity-90 disabled:opacity-60"
-                  >
-                    {isBuffering ? 'Loading...' : 'Play'}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={pauseCurrent}
-                    disabled={!isPlaying}
-                    className="px-4 py-2 rounded-full border border-white/15 text-sm text-[var(--text-secondary)] hover:border-white/35 disabled:opacity-60"
-                  >
-                    Pause
-                  </button>
-                  <button
-                    type="button"
-                    onClick={stopCurrent}
-                    className="px-4 py-2 rounded-full border border-white/15 text-sm text-[var(--text-secondary)] hover:border-white/35"
-                  >
-                    Stop
-                  </button>
-                </div>
-
-                <div className="mt-5">
-                  <label className="text-xs text-[var(--text-muted)]">Volume</label>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={volume}
-                    onChange={(e) => setVolume(Number(e.target.value))}
-                    className="w-full mt-2"
-                  />
-                </div>
-
-                <p className="text-xs text-[var(--text-muted)] mt-4">
-                  {isPlaying ? 'Status: playing' : 'Status: idle'}
-                </p>
-
-                {streamError && (
-                  <div className="mt-4 p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm">
-                    {streamError}
-                  </div>
-                )}
-
                 {selectedStation && (
-                  <audio
-                    ref={audioRef}
-                    src={selectedStation.streamUrl}
-                    preload="none"
-                    onCanPlay={() => setIsBuffering(false)}
-                    onPlaying={() => {
-                      setIsPlaying(true);
-                      setIsBuffering(false);
-                      setStreamError('');
-                    }}
-                    onPause={() => setIsPlaying(false)}
-                    onError={() => {
-                      setIsPlaying(false);
-                      setIsBuffering(false);
-                      setStreamError('Unable to load this stream right now. Please choose another station.');
-                    }}
-                  />
+                  <a
+                    href={selectedStation.websiteUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-5 inline-flex items-center rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--bg-primary)] hover:opacity-90"
+                  >
+                    Open station website
+                  </a>
                 )}
 
                 <p className="text-[11px] text-[var(--text-muted)] mt-4">
-                  Station availability can vary by region and broadcaster uptime.
+                  BiB does not stream audio directly. Station availability and rights are managed by each broadcaster.
                 </p>
               </section>
 
