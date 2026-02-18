@@ -27,8 +27,7 @@ export default function TermsOfService() {
               and track OTT (Over-The-Top) streaming content recommendations from friends. The Service
               includes features such as movie recommendations, friend connections, watchlists, nudges,
               streaming availability information, Group Watch with voting, scheduled watch reminders,
-              email notifications, Weekly Trivia with leaderboards, multi-language support, and a Radio
-              directory that links users to third-party station websites.
+              email notifications, Weekly Trivia with leaderboards, and multi-language support.
             </p>
           </section>
 
@@ -95,17 +94,12 @@ export default function TermsOfService() {
             <ul className="list-disc pl-6 space-y-1 mt-2">
               <li><strong>TMDB (The Movie Database):</strong> For movie and series metadata. BiB is not endorsed or certified by TMDB.</li>
               <li><strong>Streaming Platforms:</strong> We display links to streaming services (Netflix, Prime Video, Disney+ Hotstar, Aha, and 20+ others). We are not affiliated with these platforms and do not guarantee content availability.</li>
-              <li><strong>Radio Broadcasters and Aggregators:</strong> BiB provides outbound links to station pages. BiB does not host, retransmit, record, or modify radio streams.</li>
               <li><strong>Google:</strong> For OAuth authentication.</li>
               <li><strong>Cloudflare:</strong> For CDN, edge caching, and TMDB proxy services to improve global performance.</li>
               <li><strong>Supabase:</strong> For database hosting, authentication, and real-time features.</li>
             </ul>
             <p className="mt-2">
               We are not responsible for the content, privacy policies, or practices of third-party services.
-            </p>
-            <p className="mt-2">
-              You are responsible for complying with the applicable terms and local laws of any linked station
-              or broadcaster you access through the Radio directory.
             </p>
           </section>
 

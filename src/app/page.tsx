@@ -1,10 +1,10 @@
 'use client';
 
-import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { AuthModal, BibSplash, Header, MovieBackground, useAuth } from '@/components';
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
+import { trackFunnelEvent } from '@/lib/funnel';
 
 type Hub = 'movies' | 'shows' | 'songs';
 
@@ -16,11 +16,17 @@ function readDefaultHub(): Hub | null {
 
 export default function HomeGate() {
   const router = useRouter();
-  const { user, loading } = useAuth();
+  const { user, loading, signInWithGoogle } = useAuth();
   const [mounted, setMounted] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
+  const [authMode, setAuthMode] = useState<'login' | 'signup'>('login');
+  const [googleBusy, setGoogleBusy] = useState(false);
+  const [ctaError, setCtaError] = useState('');
 
-  useEffect(() => setMounted(true), []);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setMounted(true);
+  }, []);
 
   const defaultHub = useMemo(() => (mounted ? readDefaultHub() : null), [mounted]);
 
@@ -35,6 +41,34 @@ export default function HomeGate() {
     router.replace(`/${hubToOpen}`);
   }, [mounted, loading, user, defaultHub, router]);
 
+  useEffect(() => {
+    if (!mounted) return;
+    if (user) return;
+    trackFunnelEvent('landing_view', { page: 'home_gate' });
+  }, [mounted, user]);
+
+  const openAuth = (mode: 'login' | 'signup', source: string) => {
+    setCtaError('');
+    setAuthMode(mode);
+    setShowAuth(true);
+    trackFunnelEvent('auth_modal_open', { mode, source });
+  };
+
+  const continueWithGoogle = async (source: string) => {
+    setCtaError('');
+    setGoogleBusy(true);
+    trackFunnelEvent('oauth_start', { source, location: 'landing' });
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setGoogleBusy(false);
+      setCtaError(error.message);
+      trackFunnelEvent('oauth_error', { source, location: 'landing', message: error.message.slice(0, 120) });
+      return;
+    }
+    trackFunnelEvent('oauth_redirect_started', { source, location: 'landing' });
+    window.setTimeout(() => setGoogleBusy(false), 4000);
+  };
+
   // Public marketing home.
   if (!mounted || loading || !user) {
     return (
@@ -42,9 +76,13 @@ export default function HomeGate() {
         <MovieBackground />
         <BibSplash />
 
-        <Header searchMode="off" onLoginClick={() => setShowAuth(true)} />
+        <Header searchMode="off" onLoginClick={() => openAuth('login', 'header')} />
 
-        <AuthModal isOpen={showAuth} onClose={() => setShowAuth(false)} />
+        <AuthModal
+          isOpen={showAuth}
+          initialMode={authMode}
+          onClose={() => setShowAuth(false)}
+        />
 
         <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 relative z-10">
           <section className="bib-guest-hero">
@@ -52,10 +90,10 @@ export default function HomeGate() {
               <div className="bib-guest-copy">
                 <span className="bib-guest-kicker">BiB · Binge it bro</span>
                 <h1 className="bib-guest-title">
-                  Your movie night, curated by people who actually know you.
+                  Find your next watch in 30 seconds, using friend taste not random feeds.
                 </h1>
                 <p className="bib-guest-subtitle">
-                  Skip the endless scroll. BiB is where friends drop their best picks and you binge with confidence.
+                  BiB turns your group chat taste into watch picks. Save good recommendations, skip bad scroll loops, and binge with confidence.
                 </p>
                 <div className="bib-guest-trust-note" role="note" aria-label="Platform policy">
                   <span className="bib-guest-trust-note__badge">Recommendations only</span>
@@ -64,21 +102,38 @@ export default function HomeGate() {
                   </p>
                 </div>
                 <div className="bib-guest-actions">
-                  <Link href="/signup" className="bib-guest-primary">
-                    Join BiB
-                  </Link>
                   <button
                     type="button"
-                    onClick={() => setShowAuth(true)}
+                    onClick={() => void continueWithGoogle('hero_primary')}
+                    className="bib-guest-primary"
+                    disabled={googleBusy}
+                  >
+                    {googleBusy ? 'Connecting...' : 'Continue with Google'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAuth('signup', 'hero_email_signup')}
                     className="bib-guest-secondary"
                   >
-                    Sign in
+                    Use email instead
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openAuth('login', 'hero_signin')}
+                    className="bib-guest-secondary"
+                  >
+                    Already a member? Sign in
                   </button>
                 </div>
+                {ctaError ? (
+                  <div className="p-3 rounded-xl border border-red-500/30 bg-red-500/10 text-red-300 text-sm max-w-xl">
+                    {ctaError}
+                  </div>
+                ) : null}
                 <div className="bib-guest-badges">
-                  <span>🚫 No algorithms</span>
-                  <span>👥 Friends only</span>
-                  <span>🎬 Built for binges</span>
+                  <span>100+ members already signed in</span>
+                  <span>No third-party tracking pixels</span>
+                  <span>Works best in under 30 seconds with Google sign-in</span>
                 </div>
               </div>
 
@@ -104,16 +159,16 @@ export default function HomeGate() {
 
           <section className="bib-guest-steps">
             <div className="bib-guest-step">
-              <h3>Share your taste</h3>
-              <p>Drop what you actually loved. Your friends see what’s real.</p>
+              <h3>Browse first, sign in on intent</h3>
+              <p>You only sign in when you want to save, share, follow friends, or set reminders.</p>
             </div>
             <div className="bib-guest-step">
-              <h3>Follow the vibe</h3>
-              <p>Discover picks by language, mood, and the people you trust.</p>
+              <h3>One-tap onboarding</h3>
+              <p>Google gets you in fast. Email signup stays available if you prefer manual setup.</p>
             </div>
             <div className="bib-guest-step">
-              <h3>Start the binge</h3>
-              <p>Pick a rec, hit play, and let the night unfold.</p>
+              <h3>Private by design</h3>
+              <p>No ad network trackers. No spam feed. Just recommendations from people you trust.</p>
             </div>
           </section>
         </main>

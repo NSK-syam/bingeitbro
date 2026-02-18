@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { safeLocalStorageSet } from '@/lib/safe-storage';
 
-type HubKey = 'movies' | 'shows' | 'songs' | 'radio';
+type HubKey = 'movies' | 'shows' | 'songs';
 type Placement = 'top' | 'center';
 type Size = 'md' | 'lg';
 
@@ -12,7 +12,6 @@ const HUBS: Array<{ key: HubKey; label: string; href: string }> = [
   { key: 'movies', label: 'Movies', href: '/movies' },
   { key: 'shows', label: 'Shows', href: '/shows' },
   { key: 'songs', label: 'Songs', href: '/songs' },
-  { key: 'radio', label: 'Radio', href: '/radio' },
 ];
 
 const TAB_STYLES: Record<
@@ -40,12 +39,6 @@ const TAB_STYLES: Record<
     idle:
       'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5',
   },
-  radio: {
-    active:
-      'bg-[#34d399] text-[#06261f]',
-    idle:
-      'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-white/5',
-  },
 };
 
 export function HubTabs({
@@ -57,7 +50,6 @@ export function HubTabs({
 }) {
   const pathname = usePathname();
   const active = ((): HubKey => {
-    if (pathname?.startsWith('/radio')) return 'radio';
     if (pathname?.startsWith('/shows')) return 'shows';
     if (pathname?.startsWith('/songs')) return 'songs';
     return 'movies';

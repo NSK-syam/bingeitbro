@@ -59,10 +59,6 @@ function getRateLimitRule(request: NextRequest): RateLimitRule | null {
     return { key: 'friend-mail', limit: 40, windowMs: 60 * 1000 };
   }
 
-  if (method === 'POST' && pathname === '/api/notifications/radio-launch') {
-    return { key: 'radio-launch-mail', limit: 4, windowMs: 60 * 60 * 1000 };
-  }
-
   if (method === 'POST' && pathname === '/api/watch-reminders/dispatch-emails') {
     return { key: 'dispatch-emails', limit: 30, windowMs: 5 * 60 * 1000 };
   }

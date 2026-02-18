@@ -79,11 +79,6 @@ export default function Disclaimer() {
               content of external sites and are not responsible for their content, privacy practices,
               or availability.
             </p>
-            <p className="mt-2">
-              The Radio feature is link-only. BiB does not host, retransmit, record, or alter radio
-              broadcasts. Playback happens only on third-party station websites, and all rights remain
-              with the relevant broadcasters and rights holders.
-            </p>
           </section>
 
           <section>
