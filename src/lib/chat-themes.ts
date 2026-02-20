@@ -10,146 +10,153 @@ export type ChatTheme = {
 
 export const ENGLISH_THEMES: ChatTheme[] = [
   {
+    id: 'friends',
+    label: 'Friends',
+    bg: 'linear-gradient(160deg, rgba(8,0,16,0.6) 0%, rgba(10,0,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/ykDYy50mHU52PqYEu4xiFFOw5mw.jpg") center/cover no-repeat',
+    bubble: 'rgba(239,68,68,0.3)',
+    bubbleBorder: 'rgba(248,113,113,0.5)',
+  },
+  {
     id: 'default',
     label: 'Cinema Night',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1280&auto=format&fit=crop") center/cover no-repeat',
     bubble: 'rgba(6,182,212,0.25)',
     bubbleBorder: 'rgba(103,232,249,0.45)',
   },
-{
+  {
     id: 'interstellar',
     label: 'Interstellar',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/2ssWTSVklAEc98frZUQhgtGHx7s.jpg") center/cover no-repeat',
     bubble: 'rgba(139,92,246,0.35)',
     bubbleBorder: 'rgba(196,181,253,0.55)',
   },
-{
+  {
     id: 'the-matrix',
     label: 'The Matrix',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/tlm8UkiQsitc8rSuIAscQDCnP8d.jpg") center/cover no-repeat',
     bubble: 'rgba(0,180,60,0.30)',
     bubbleBorder: 'rgba(34,197,94,0.65)',
   },
-{
+  {
     id: 'dune',
     label: 'Dune',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/wYMbnrdRCREjNLwFlG5SLWzBjui.jpg") center/cover no-repeat',
     bubble: 'rgba(217,119,6,0.35)',
     bubbleBorder: 'rgba(251,191,36,0.65)',
   },
-{
+  {
     id: 'blade-runner-2049',
     label: 'Blade Runner 2049',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/ilRyazdMJwN05exqhwK4tMKBYZs.jpg") center/cover no-repeat',
     bubble: 'rgba(236,72,153,0.35)',
     bubbleBorder: 'rgba(244,114,182,0.65)',
   },
-{
+  {
     id: 'game-of-thrones',
     label: 'Game of Thrones',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/zZqpAXxVSBtxV9qPBcscfXBcL2w.jpg") center/cover no-repeat',
     bubble: 'rgba(147,210,240,0.25)',
     bubbleBorder: 'rgba(186,230,253,0.55)',
   },
-{
+  {
     id: 'avatar',
     label: 'Avatar',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/vL5LR6WdxWPjLPFRLe133jXWsh5.jpg") center/cover no-repeat',
     bubble: 'rgba(52,211,153,0.30)',
     bubbleBorder: 'rgba(110,231,183,0.60)',
   },
-{
+  {
     id: 'the-lord-of-the-rings-the-return-of-the-king',
     label: 'The Lord of the Rings: The Return of the King',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/2u7zbn8EudG6kLlBzUYqP8RyFU4.jpg") center/cover no-repeat',
     bubble: 'rgba(239,68,68,0.30)',
     bubbleBorder: 'rgba(252,165,165,0.55)',
   },
-{
+  {
     id: 'stranger-things',
     label: 'Stranger Things',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/8zbAoryWbtH0DKdev8abFAjdufy.jpg") center/cover no-repeat',
     bubble: 'rgba(217,70,239,0.35)',
     bubbleBorder: 'rgba(232,121,249,0.60)',
   },
-{
+  {
     id: 'breaking-bad',
     label: 'Breaking Bad',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg") center/cover no-repeat',
     bubble: 'rgba(34,197,94,0.30)',
     bubbleBorder: 'rgba(134,239,172,0.60)',
   },
-{
+  {
     id: 'the-dark-knight',
     label: 'The Dark Knight',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/dqK9Hag1054tghRQSqLSfrkvQnA.jpg") center/cover no-repeat',
     bubble: 'rgba(200,200,200,0.25)',
     bubbleBorder: 'rgba(240,240,240,0.45)',
   },
-{
+  {
     id: 'inception',
     label: 'Inception',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/8ZTVqvKDQ8emSGUEMjsS4yHAwrp.jpg") center/cover no-repeat',
     bubble: 'rgba(100,100,100,0.3)',
     bubbleBorder: 'rgba(180,180,180,0.5)',
   },
-{
+  {
     id: 'avengers-endgame',
     label: 'Avengers: Endgame',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/7RyHsO4yDXtBv1zUU3mTpHeQ0d5.jpg") center/cover no-repeat',
     bubble: 'rgba(147,51,234,0.3)',
     bubbleBorder: 'rgba(192,132,252,0.5)',
   },
-{
+  {
     id: 'spider-man-into-the-spider-verse',
     label: 'Spider-Man: Into the Spider-Verse',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/8mnXR9rey5uQ08rZAvzojKWbDQS.jpg") center/cover no-repeat',
     bubble: 'rgba(239,68,68,0.3)',
     bubbleBorder: 'rgba(248,113,113,0.5)',
   },
-{
+  {
     id: 'gladiator',
     label: 'Gladiator',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/jhk6D8pim3yaByu1801kMoxXFaX.jpg") center/cover no-repeat',
     bubble: 'rgba(217,119,6,0.3)',
     bubbleBorder: 'rgba(251,191,36,0.5)',
   },
-{
+  {
     id: 'fight-club',
     label: 'Fight Club',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/5TiwfWEaPSwD20uwXjCTUqpQX70.jpg") center/cover no-repeat',
     bubble: 'rgba(236,72,153,0.3)',
     bubbleBorder: 'rgba(244,114,182,0.5)',
   },
-{
+  {
     id: 'oppenheimer',
     label: 'Oppenheimer',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/ycnO0cjsAROSGJKuMODgRtWsHQw.jpg") center/cover no-repeat',
     bubble: 'rgba(245,158,11,0.3)',
     bubbleBorder: 'rgba(252,211,77,0.5)',
   },
-{
+  {
     id: 'the-office',
     label: 'The Office',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/bY2J2Jq8rSrKm5xCFtzYzqFh44o.jpg") center/cover no-repeat',
     bubble: 'rgba(59,130,246,0.3)',
     bubbleBorder: 'rgba(96,165,250,0.5)',
   },
-{
+  {
     id: 'better-call-saul',
     label: 'Better Call Saul',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/t15KHp3iNfHVQBNIaqUGW12xQA4.jpg") center/cover no-repeat',
     bubble: 'rgba(234,179,8,0.3)',
     bubbleBorder: 'rgba(250,204,21,0.5)',
   },
-{
+  {
     id: 'the-mandalorian',
     label: 'The Mandalorian',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/9zcbqSxdsRMZWHYtyCd1nXPr2xq.jpg") center/cover no-repeat',
     bubble: 'rgba(74,222,128,0.3)',
     bubbleBorder: 'rgba(134,239,172,0.5)',
   },
-{
+  {
     id: 'succession',
     label: 'Succession',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/bcdUYUFk8GdpZJPiSAas9UeocLH.jpg") center/cover no-repeat',
@@ -159,140 +166,147 @@ export const ENGLISH_THEMES: ChatTheme[] = [
 ];
 
 export const TELUGU_THEMES: ChatTheme[] = [
-{
+  {
+    id: 'they-call-him-og',
+    label: 'They Call Him OG',
+    bg: 'linear-gradient(160deg, rgba(8,0,0,0.6) 0%, rgba(10,0,0,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/hgo9gS4le0J12tTbmgiu9Z2ckmh.jpg") center/cover no-repeat',
+    bubble: 'rgba(239,68,68,0.3)',
+    bubbleBorder: 'rgba(248,113,113,0.5)',
+  },
+  {
     id: 'baahubali-the-conclusion',
     label: 'Baahubali: The Conclusion',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/whNjsTOUVg2lZLCKgGhnACnmV8E.jpg") center/cover no-repeat',
     bubble: 'rgba(217,119,6,0.3)',
     bubbleBorder: 'rgba(251,191,36,0.5)',
   },
-{
+  {
     id: 'rrr',
     label: 'RRR',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/i0Y0wP8H6SRgjr6QmuwbtQbS24D.jpg") center/cover no-repeat',
     bubble: 'rgba(239,68,68,0.3)',
     bubbleBorder: 'rgba(248,113,113,0.5)',
   },
-{
+  {
     id: 'pushpa-the-rise',
     label: 'Pushpa: The Rise',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/jQIcn51nsvMrpB9NFwEOb9QHhFt.jpg") center/cover no-repeat',
     bubble: 'rgba(180,83,9,0.3)',
     bubbleBorder: 'rgba(217,119,6,0.5)',
   },
-{
+  {
     id: 'arjun-reddy',
     label: 'Arjun Reddy',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/rhPJSfpy7s0x9jQPCGkqD2kvXAC.jpg") center/cover no-repeat',
     bubble: 'rgba(153,27,27,0.3)',
     bubbleBorder: 'rgba(220,38,38,0.5)',
   },
-{
+  {
     id: 'mahanati',
     label: 'Mahanati',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/ankByTJkkTVGYRBZuHcW9SXoFU1.jpg") center/cover no-repeat',
     bubble: 'rgba(202,138,4,0.3)',
     bubbleBorder: 'rgba(234,179,8,0.5)',
   },
-{
+  {
     id: 'jersey',
     label: 'Jersey',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/7z95S3AWTrhaEclV5bxzB3YJFJ1.jpg") center/cover no-repeat',
     bubble: 'rgba(59,130,246,0.3)',
     bubbleBorder: 'rgba(96,165,250,0.5)',
   },
-{
+  {
     id: 'rangasthalam',
     label: 'Rangasthalam',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/6JdOkSgd8wkAQbT6Ncib4DrnyiS.jpg") center/cover no-repeat',
     bubble: 'rgba(21,128,61,0.3)',
     bubbleBorder: 'rgba(34,197,94,0.5)',
   },
-{
+  {
     id: 'ala-vaikunthapurramuloo',
     label: 'Ala Vaikunthapurramuloo',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/5SDMPORslLXaYPx7S1kRqsBJYI3.jpg") center/cover no-repeat',
     bubble: 'rgba(168,85,247,0.3)',
     bubbleBorder: 'rgba(192,132,252,0.5)',
   },
-{
+  {
     id: 'sita-ramam',
     label: 'Sita Ramam',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/h5UfNqTtbupJLu6Y2kZs59dzG2D.jpg") center/cover no-repeat',
     bubble: 'rgba(236,72,153,0.3)',
     bubbleBorder: 'rgba(244,114,182,0.5)',
   },
-{
+  {
     id: 'eega',
     label: 'Eega',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/fuCfQ0D2HtNa7kRLFDkPWl87Zs9.jpg") center/cover no-repeat',
     bubble: 'rgba(250,204,21,0.3)',
     bubbleBorder: 'rgba(253,224,71,0.5)',
   },
-{
+  {
     id: 'magadheera',
     label: 'Magadheera',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/p2SvjtejMgiBDCLL3ugOmCxk3sY.jpg") center/cover no-repeat',
     bubble: 'rgba(161,98,7,0.3)',
     bubbleBorder: 'rgba(202,138,4,0.5)',
   },
-{
+  {
     id: 'kalki-2898-ad',
     label: 'Kalki 2898 AD',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/o8XSR1SONnjcsv84NRu6Mwsl5io.jpg") center/cover no-repeat',
     bubble: 'rgba(147,51,234,0.3)',
     bubbleBorder: 'rgba(192,132,252,0.5)',
   },
-{
+  {
     id: 'salaar-part-1-ceasefire',
     label: 'Salaar: Part 1 - Ceasefire',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/xtOCTmGemASooRkAxRorYODig1p.jpg") center/cover no-repeat',
     bubble: 'rgba(63,63,70,0.4)',
     bubbleBorder: 'rgba(113,113,122,0.6)',
   },
-{
+  {
     id: 'athadu',
     label: 'Athadu',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/ikflDnSujh5VTmPEBF2YdUERQDJ.jpg") center/cover no-repeat',
     bubble: 'rgba(96,165,250,0.3)',
     bubbleBorder: 'rgba(147,197,253,0.5)',
   },
-{
+  {
     id: 'pokiri',
     label: 'Pokiri',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/z3mlTunM7Ck7WB6inIuKJ6b8hjb.jpg") center/cover no-repeat',
     bubble: 'rgba(59,130,246,0.3)',
     bubbleBorder: 'rgba(96,165,250,0.5)',
   },
-{
+  {
     id: 'mathu-vadalara',
     label: 'Mathu Vadalara',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/iEIQlhT9AZhMPVsCd8aoxIOfMiE.jpg") center/cover no-repeat',
     bubble: 'rgba(16,185,129,0.3)',
     bubbleBorder: 'rgba(52,211,153,0.5)',
   },
-{
+  {
     id: 'c-o-kancharapalem',
     label: 'C/o Kancharapalem',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/sJPdMcYbHok3ay8dcCTo8vTRCrO.jpg") center/cover no-repeat',
     bubble: 'rgba(156,163,175,0.3)',
     bubbleBorder: 'rgba(209,213,219,0.5)',
   },
-{
+  {
     id: 'kantara',
     label: 'Kantara',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/w57nxiBIODAYHLRs1xmrCY9zEFe.jpg") center/cover no-repeat',
     bubble: 'rgba(220,38,38,0.3)',
     bubbleBorder: 'rgba(248,113,113,0.5)',
   },
-{
+  {
     id: 'hi-nanna',
     label: 'Hi Nanna',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/2vxKa3gMHc84O1iHRkslqeHSsxE.jpg") center/cover no-repeat',
     bubble: 'rgba(244,114,182,0.3)',
     bubbleBorder: 'rgba(249,168,212,0.5)',
   },
-{
+  {
     id: 'devara-part-1',
     label: 'Devara: Part 1',
     bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/hAQnXxOwCjgYcKRgTdYPRC8neqL.jpg") center/cover no-repeat',
