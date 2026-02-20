@@ -122,7 +122,7 @@ export function HelpBotWidget() {
     return 'global';
   }, [tab, directConversationOpen, selectedDirectUserId, selectedGroupId, user?.id]);
 
-  const activeThemeId = themeMap[currentChatKey] || themeMap['global'] || 'default';
+  const activeThemeId = themeMap[currentChatKey] || 'default';
   const activeTheme = CHAT_THEMES.find((t) => t.id === activeThemeId) ?? ENGLISH_THEMES[0];
 
   // Fetch the synchronized theme from Supabase when the chat key changes
@@ -149,7 +149,11 @@ export function HelpBotWidget() {
     }
 
     fetchDatabaseTheme();
-    return () => { isActive = false; };
+    const intervalId = window.setInterval(fetchDatabaseTheme, 12000);
+    return () => {
+      isActive = false;
+      window.clearInterval(intervalId);
+    };
   }, [currentChatKey]);
 
   const selectTheme = async (themeId: string) => {
@@ -632,94 +636,98 @@ export function HelpBotWidget() {
               </div>
 
               <div className="relative" onClick={(e) => e.stopPropagation()}>
-                <button
-                  type="button"
-                  onClick={() => setShowThemePicker((prev) => !prev)}
-                  className="h-8 px-2 rounded-full border border-cyan-300/50 bg-cyan-500/15 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300/80 hover:bg-cyan-500/25 transition-colors flex items-center gap-1 text-[11px] font-semibold tracking-wide"
-                  aria-label="Change chat theme"
-                  title="Change theme"
-                >
-                  <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5">
-                    <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.7" />
-                    <circle cx="7" cy="8" r="1.1" fill="currentColor" />
-                    <circle cx="12.8" cy="7.2" r="1.1" fill="currentColor" />
-                    <circle cx="12.2" cy="12.4" r="1.1" fill="currentColor" />
-                  </svg>
-                  Theme
-                </button>
+                {currentChatKey !== 'global' && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => setShowThemePicker((prev) => !prev)}
+                      className="h-8 px-2 rounded-full border border-cyan-300/50 bg-cyan-500/15 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300/80 hover:bg-cyan-500/25 transition-colors flex items-center gap-1 text-[11px] font-semibold tracking-wide"
+                      aria-label="Change chat theme"
+                      title="Change theme"
+                    >
+                      <svg viewBox="0 0 20 20" fill="none" className="h-3.5 w-3.5">
+                        <circle cx="10" cy="10" r="7" stroke="currentColor" strokeWidth="1.7" />
+                        <circle cx="7" cy="8" r="1.1" fill="currentColor" />
+                        <circle cx="12.8" cy="7.2" r="1.1" fill="currentColor" />
+                        <circle cx="12.2" cy="12.4" r="1.1" fill="currentColor" />
+                      </svg>
+                      Theme
+                    </button>
 
-                {showThemePicker && (
-                  <div className="absolute right-0 top-10 z-50 w-[min(90vw,420px)] rounded-2xl border border-white/15 bg-[#090d19]/98 backdrop-blur-3xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] p-3 overflow-hidden flex flex-col max-h-[60vh]">
-                    <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
-                      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Chat Theme Filter</p>
-                      <div className="flex bg-[#050917]/80 rounded-lg p-0.5 border border-white/10">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setThemeLang('English');
-                            if (typeof window !== 'undefined') localStorage.setItem(THEME_LANG_STORAGE_KEY, 'English');
-                          }}
-                          className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-colors ${themeLang === 'English' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-300/30' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-transparent'
-                            }`}
-                        >
-                          English (20)
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setThemeLang('Telugu');
-                            if (typeof window !== 'undefined') localStorage.setItem(THEME_LANG_STORAGE_KEY, 'Telugu');
-                          }}
-                          className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-colors ${themeLang === 'Telugu' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-300/30' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-transparent'
-                            }`}
-                        >
-                          Telugu (20)
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="overflow-y-auto pr-1 pb-1 space-y-2 flex-1 min-h-0 custom-scrollbar">
-                      <div className="grid grid-cols-2 gap-2">
-                        {(themeLang === 'English' ? ENGLISH_THEMES : TELUGU_THEMES).map((theme) => {
-                          const isActive = theme.id === activeThemeId;
-                          const swatchBg = theme.bg === 'transparent'
-                            ? 'linear-gradient(135deg,#0f172a 0%,#1e293b 100%)'
-                            : theme.bg;
-                          return (
+                    {showThemePicker && (
+                      <div className="absolute right-0 top-10 z-50 w-[min(90vw,420px)] rounded-2xl border border-white/15 bg-[#090d19]/98 backdrop-blur-3xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] p-3 overflow-hidden flex flex-col max-h-[60vh]">
+                        <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
+                          <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Chat Theme Filter</p>
+                          <div className="flex bg-[#050917]/80 rounded-lg p-0.5 border border-white/10">
                             <button
-                              key={theme.id}
                               type="button"
-                              onClick={() => selectTheme(theme.id)}
-                              aria-label={`${theme.label} theme${isActive ? ' (active)' : ''}`}
-                              className={`relative overflow-hidden rounded-xl border transition-all text-left ${isActive
-                                ? 'border-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.5)]'
-                                : 'border-white/15 hover:border-white/45'
+                              onClick={() => {
+                                setThemeLang('English');
+                                if (typeof window !== 'undefined') localStorage.setItem(THEME_LANG_STORAGE_KEY, 'English');
+                              }}
+                              className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-colors ${themeLang === 'English' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-300/30' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-transparent'
                                 }`}
                             >
-                              <div className="h-10 w-full bg-cover bg-center" style={{ background: swatchBg }} />
-                              <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-[#050917]/95">
-                                <span className="text-[10px] font-medium text-[var(--text-primary)] line-clamp-1">{theme.label}</span>
-                                {isActive && (
-                                  <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-cyan-300">On</span>
-                                )}
-                              </div>
-                              {isActive && (
-                                <span className="absolute right-1 top-1 rounded-full border border-cyan-200/80 bg-cyan-500/25 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-cyan-100 backdrop-blur-sm">
-                                  Active
-                                </span>
-                              )}
+                              English (20)
                             </button>
-                          );
-                        })}
-                      </div>
-                    </div>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setThemeLang('Telugu');
+                                if (typeof window !== 'undefined') localStorage.setItem(THEME_LANG_STORAGE_KEY, 'Telugu');
+                              }}
+                              className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-colors ${themeLang === 'Telugu' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-300/30' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-transparent'
+                                }`}
+                            >
+                              Telugu (20)
+                            </button>
+                          </div>
+                        </div>
 
-                    <div className="mt-2 border-t border-white/10 pt-2 shrink-0">
-                      <p className="text-[10px] text-[var(--text-muted)] text-center">
-                        Current: <span className="text-cyan-200/90 font-medium">{activeTheme.label}</span>
-                      </p>
-                    </div>
-                  </div>
+                        <div className="overflow-y-auto pr-1 pb-1 space-y-2 flex-1 min-h-0 custom-scrollbar">
+                          <div className="grid grid-cols-2 gap-2">
+                            {(themeLang === 'English' ? ENGLISH_THEMES : TELUGU_THEMES).map((theme) => {
+                              const isActive = theme.id === activeThemeId;
+                              const swatchBg = theme.bg === 'transparent'
+                                ? 'linear-gradient(135deg,#0f172a 0%,#1e293b 100%)'
+                                : theme.bg;
+                              return (
+                                <button
+                                  key={theme.id}
+                                  type="button"
+                                  onClick={() => selectTheme(theme.id)}
+                                  aria-label={`${theme.label} theme${isActive ? ' (active)' : ''}`}
+                                  className={`relative overflow-hidden rounded-xl border transition-all text-left ${isActive
+                                    ? 'border-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.5)]'
+                                    : 'border-white/15 hover:border-white/45'
+                                    }`}
+                                >
+                                  <div className="h-10 w-full bg-cover bg-center" style={{ background: swatchBg }} />
+                                  <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-[#050917]/95">
+                                    <span className="text-[10px] font-medium text-[var(--text-primary)] line-clamp-1">{theme.label}</span>
+                                    {isActive && (
+                                      <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-cyan-300">On</span>
+                                    )}
+                                  </div>
+                                  {isActive && (
+                                    <span className="absolute right-1 top-1 rounded-full border border-cyan-200/80 bg-cyan-500/25 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-cyan-100 backdrop-blur-sm">
+                                      Active
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+
+                        <div className="mt-2 border-t border-white/10 pt-2 shrink-0">
+                          <p className="text-[10px] text-[var(--text-muted)] text-center">
+                            Current: <span className="text-cyan-200/90 font-medium">{activeTheme.label}</span>
+                          </p>
+                        </div>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
