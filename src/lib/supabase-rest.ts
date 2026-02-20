@@ -93,6 +93,49 @@ export interface FriendForSelect extends DBUser {
   friendshipId?: string;
 }
 
+// ─── Chat Themes ─────────────────────────────────────────────────────────────
+export async function getChatTheme(chatId: string): Promise<string | null> {
+  const url = `${supabaseUrl}/rest/v1/chat_themes?chat_id=eq.${chatId}&select=theme_id`;
+  const response = await fetch(url, {
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!response.ok) return null;
+  const data = await response.json();
+  if (!data || data.length === 0) return null;
+  return data[0].theme_id;
+}
+
+export async function setChatTheme(chatId: string, themeId: string): Promise<void> {
+  const url = `${supabaseUrl}/rest/v1/chat_themes`;
+
+  // Upsert the theme for this chat
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      apikey: supabaseAnonKey,
+      Authorization: `Bearer ${supabaseAnonKey}`,
+      'Content-Type': 'application/json',
+      'Prefer': 'resolution=merge-duplicates',
+    },
+    body: JSON.stringify({
+      chat_id: chatId,
+      theme_id: themeId,
+    }),
+  });
+
+  if (!response.ok) {
+    const errorBody = await response.text();
+    console.error('Failed to set chat theme:', errorBody);
+    throw new Error('Could not synchronize chat theme');
+  }
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 /**
  * Fetch a single user by ID (for profile page). Uses token-based REST so RLS sees the session.
  * Returns null if not found or on error.
@@ -2137,12 +2180,12 @@ export async function sendWatchGroupMessage(input: {
   const body = input.body.trim();
   const sharedMovie = input.sharedMovie
     ? {
-        mediaType: input.sharedMovie.mediaType,
-        tmdbId: input.sharedMovie.tmdbId.trim().slice(0, 64),
-        title: input.sharedMovie.title.trim().slice(0, 200),
-        poster: input.sharedMovie.poster?.trim().slice(0, 500) ?? null,
-        releaseYear: input.sharedMovie.releaseYear ?? null,
-      }
+      mediaType: input.sharedMovie.mediaType,
+      tmdbId: input.sharedMovie.tmdbId.trim().slice(0, 64),
+      title: input.sharedMovie.title.trim().slice(0, 200),
+      poster: input.sharedMovie.poster?.trim().slice(0, 500) ?? null,
+      releaseYear: input.sharedMovie.releaseYear ?? null,
+    }
     : null;
   if (!body && !sharedMovie) {
     throw new Error('Message cannot be empty.');
@@ -2265,12 +2308,12 @@ export async function getWatchGroupMessages(
       const sharedMovie =
         msg.shared_media_type && msg.shared_tmdb_id && msg.shared_title
           ? {
-              mediaType: msg.shared_media_type,
-              tmdbId: msg.shared_tmdb_id,
-              title: msg.shared_title,
-              poster: msg.shared_poster ?? null,
-              releaseYear: msg.shared_release_year ?? null,
-            }
+            mediaType: msg.shared_media_type,
+            tmdbId: msg.shared_tmdb_id,
+            title: msg.shared_title,
+            poster: msg.shared_poster ?? null,
+            releaseYear: msg.shared_release_year ?? null,
+          }
           : null;
       return {
         id: msg.id,

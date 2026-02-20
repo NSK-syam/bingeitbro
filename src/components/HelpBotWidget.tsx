@@ -10,6 +10,8 @@ import {
   getWatchGroupMessages,
   sendDirectMessage,
   sendWatchGroupMessage,
+  getChatTheme,
+  setChatTheme,
   type DirectMessage,
   type DirectMessageThread,
   type FriendForSelect,
@@ -109,19 +111,48 @@ export function HelpBotWidget() {
   const [showThemePicker, setShowThemePicker] = useState(false);
 
   const currentChatKey = useMemo(() => {
-    if (tab === 'direct' && directConversationOpen && selectedDirectUserId) {
-      return `direct:${selectedDirectUserId}`;
+    if (tab === 'direct' && directConversationOpen && selectedDirectUserId && user?.id) {
+      // Sort IDs alphabetically to ensure both users have the exact same chat key
+      const sorted = [user.id, selectedDirectUserId].sort();
+      return `direct:${sorted[0]}_${sorted[1]}`;
     }
     if (tab === 'groups' && selectedGroupId) {
       return `group:${selectedGroupId}`;
     }
     return 'global';
-  }, [tab, directConversationOpen, selectedDirectUserId, selectedGroupId]);
+  }, [tab, directConversationOpen, selectedDirectUserId, selectedGroupId, user?.id]);
 
   const activeThemeId = themeMap[currentChatKey] || themeMap['global'] || 'default';
   const activeTheme = CHAT_THEMES.find((t) => t.id === activeThemeId) ?? ENGLISH_THEMES[0];
 
-  const selectTheme = (themeId: string) => {
+  // Fetch the synchronized theme from Supabase when the chat key changes
+  useEffect(() => {
+    if (currentChatKey === 'global') return;
+    let isActive = true;
+
+    async function fetchDatabaseTheme() {
+      try {
+        const themeId = await getChatTheme(currentChatKey);
+        if (themeId && isActive) {
+          setThemeMap((prev) => {
+            if (prev[currentChatKey] === themeId) return prev;
+            const next = { ...prev, [currentChatKey]: themeId };
+            if (typeof window !== 'undefined') {
+              localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next));
+            }
+            return next;
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching theme from database', err);
+      }
+    }
+
+    fetchDatabaseTheme();
+    return () => { isActive = false; };
+  }, [currentChatKey]);
+
+  const selectTheme = async (themeId: string) => {
     setThemeMap((prev) => {
       const next = { ...prev, [currentChatKey]: themeId };
       if (typeof window !== 'undefined') {
@@ -130,6 +161,15 @@ export function HelpBotWidget() {
       return next;
     });
     setShowThemePicker(false);
+
+    // Asynchronously push to database if it's a specific conversation
+    if (currentChatKey !== 'global') {
+      try {
+        await setChatTheme(currentChatKey, themeId);
+      } catch (err) {
+        console.error('Failed to sync theme to database:', err);
+      }
+    }
   };
 
   const knownLatestByThreadRef = useRef<Record<string, string>>({});
