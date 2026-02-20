@@ -502,6 +502,13 @@ body {
   transform: translateY(-2px);
 }
 
+.bib-guest-primary:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
 .bib-guest-primary--small {
   padding: 10px 16px;
   font-size: 13px;

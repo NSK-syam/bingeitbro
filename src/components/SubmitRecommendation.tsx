@@ -280,7 +280,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess, defaultType =
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-2xl">🎬</div>
+                        <div className="w-full h-full flex items-center justify-center text-2xl"></div>
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
@@ -291,7 +291,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess, defaultType =
                         {'release_date' in item
                           ? (item.release_date ? new Date(item.release_date).getFullYear() : 'Unknown')
                           : (item.first_air_date ? new Date(item.first_air_date).getFullYear() : 'Unknown')}{' '}
-                        • {(item.vote_average ?? 0).toFixed(1)} ★
+                        • {(item.vote_average ?? 0).toFixed(1)} 
                       </p>
                     </div>
                   </button>
@@ -327,7 +327,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess, defaultType =
                     className="w-full h-full object-cover"
                   />
                 ) : (
-                  <div className="w-full h-full bg-[var(--bg-primary)] flex items-center justify-center text-2xl">🎬</div>
+                  <div className="w-full h-full bg-[var(--bg-primary)] flex items-center justify-center text-2xl"></div>
                 )}
               </div>
               <div className="flex-1">
@@ -338,7 +338,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess, defaultType =
                   {defaultType === 'series'
                     ? ((selectedItem as TMDBTVDetails).first_air_date ? new Date((selectedItem as TMDBTVDetails).first_air_date).getFullYear() : 'Unknown')
                     : ((selectedItem as TMDBMovieDetails).release_date ? new Date((selectedItem as TMDBMovieDetails).release_date).getFullYear() : 'Unknown')}{' '}
-                  • {((selectedItem as TMDBMovieDetails | TMDBTVDetails).vote_average ?? 0).toFixed(1)} ★
+                  • {((selectedItem as TMDBMovieDetails | TMDBTVDetails).vote_average ?? 0).toFixed(1)} 
                 </p>
                 <button
                   onClick={() => { setStep(1); setSelectedItem(null); setOttLinks([]); }}

@@ -94,7 +94,7 @@ export default function AddMoviePage() {
 
     const recommendation = tmdbToRecommendation(
       selectedMovie,
-      { id: recommender.id, name: recommender.name, avatar: recommender.avatar ?? '🎬' },
+      { id: recommender.id, name: recommender.name, avatar: recommender.avatar ?? '' },
       personalNote,
       ottLinks.filter((link) => link.url.trim())
     );
@@ -138,7 +138,7 @@ export default function AddMoviePage() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {!tmdbConfigured ? (
           <div className="bg-[var(--bg-card)] rounded-2xl p-8 border border-white/5 text-center">
-            <div className="text-5xl mb-4">🔑</div>
+            <div className="text-5xl mb-4"></div>
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
               TMDB API Key Required
             </h2>
@@ -206,13 +206,13 @@ export default function AddMoviePage() {
                             className="w-full h-full object-cover"
                           />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-2xl">🎬</div>
+                          <div className="w-full h-full flex items-center justify-center text-2xl"></div>
                         )}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="font-medium text-[var(--text-primary)] truncate">{movie.title}</p>
                         <p className="text-sm text-[var(--text-muted)]">
-                          {movie.release_date ? new Date(movie.release_date).getFullYear() : 'Unknown'} • {movie.vote_average.toFixed(1)} ★
+                          {movie.release_date ? new Date(movie.release_date).getFullYear() : 'Unknown'} • {movie.vote_average.toFixed(1)} 
                         </p>
                       </div>
                     </button>
@@ -237,7 +237,7 @@ export default function AddMoviePage() {
                         className="w-full h-full object-cover"
                       />
                     ) : (
-                      <div className="w-full h-full bg-[var(--bg-primary)] flex items-center justify-center text-3xl">🎬</div>
+                      <div className="w-full h-full bg-[var(--bg-primary)] flex items-center justify-center text-3xl"></div>
                     )}
                   </div>
                   <div className="flex-1">
@@ -248,7 +248,7 @@ export default function AddMoviePage() {
                     <p className="text-sm text-[var(--text-secondary)] mt-1">
                       {new Date(selectedMovie.release_date).getFullYear()} •{' '}
                       {selectedMovie.runtime}m •{' '}
-                      {selectedMovie.vote_average.toFixed(1)} ★
+                      {selectedMovie.vote_average.toFixed(1)} 
                     </p>
                     <div className="flex flex-wrap gap-1 mt-2">
                       {selectedMovie.genres.slice(0, 4).map((g) => (

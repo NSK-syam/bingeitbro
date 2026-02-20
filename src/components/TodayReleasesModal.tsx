@@ -108,7 +108,7 @@ export function TodayReleasesModal({ manualOpen, onClose }: TodayReleasesModalPr
             </div>
           ) : releases.length === 0 ? (
             <div className="text-center py-12 text-[var(--text-muted)] flex-shrink-0">
-              <div className="text-4xl mb-2">🎬</div>
+              <div className="text-4xl mb-2"></div>
               <p>No new releases for today or the last 3 days</p>
             </div>
           ) : (
@@ -130,7 +130,7 @@ export function TodayReleasesModal({ manualOpen, onClose }: TodayReleasesModalPr
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-4xl">
-                        🎬
+                        
                       </div>
                     )}
 
@@ -146,7 +146,7 @@ export function TodayReleasesModal({ manualOpen, onClose }: TodayReleasesModalPr
                     {/* Rating badge */}
                     {movie.vote_average > 0 && (
                       <div className="absolute top-2 right-2 bg-black/70 px-2 py-1 rounded-full text-xs font-medium text-yellow-400">
-                        ⭐ {movie.vote_average.toFixed(1)}
+                         {movie.vote_average.toFixed(1)}
                       </div>
                     )}
 

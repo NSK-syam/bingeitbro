@@ -47,12 +47,57 @@ CREATE TABLE IF NOT EXISTS public.watch_group_picks (
   CONSTRAINT watch_group_picks_unique_pick UNIQUE (group_id, media_type, tmdb_id)
 );
 
+CREATE TABLE IF NOT EXISTS public.watch_group_messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  group_id UUID NOT NULL REFERENCES public.watch_groups(id) ON DELETE CASCADE,
+  sender_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  body TEXT,
+  shared_media_type TEXT CHECK (shared_media_type IN ('movie', 'show')),
+  shared_tmdb_id TEXT,
+  shared_title TEXT,
+  shared_poster TEXT,
+  shared_release_year INTEGER,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT watch_group_messages_body_or_share CHECK (
+    (
+      body IS NOT NULL
+      AND char_length(trim(body)) BETWEEN 1 AND 1200
+    )
+    OR (
+      shared_media_type IS NOT NULL
+      AND shared_tmdb_id IS NOT NULL
+      AND shared_title IS NOT NULL
+    )
+  ),
+  CONSTRAINT watch_group_messages_shared_fields_consistent CHECK (
+    (
+      shared_media_type IS NULL
+      AND shared_tmdb_id IS NULL
+      AND shared_title IS NULL
+      AND shared_poster IS NULL
+      AND shared_release_year IS NULL
+    )
+    OR (
+      shared_media_type IN ('movie', 'show')
+      AND char_length(trim(shared_tmdb_id)) > 0
+      AND char_length(trim(shared_title)) > 0
+    )
+  )
+);
+
 CREATE TABLE IF NOT EXISTS public.watch_group_pick_votes (
   pick_id UUID NOT NULL REFERENCES public.watch_group_picks(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
   vote_value SMALLINT NOT NULL CHECK (vote_value IN (-1, 1)),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (pick_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS public.watch_group_pick_watches (
+  pick_id UUID NOT NULL REFERENCES public.watch_group_picks(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  watched_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (pick_id, user_id)
 );
 
@@ -163,6 +208,38 @@ AS $$
     AND m.user_id = auth.uid();
 $$;
 
+CREATE OR REPLACE FUNCTION public.rename_watch_group(
+  p_group_id UUID,
+  p_name TEXT
+)
+RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  v_name TEXT;
+BEGIN
+  v_name := btrim(COALESCE(p_name, ''));
+  IF char_length(v_name) < 2 OR char_length(v_name) > 60 THEN
+    RAISE EXCEPTION 'Group name must be between 2 and 60 characters.';
+  END IF;
+
+  IF NOT public.is_watch_group_member(p_group_id) THEN
+    RAISE EXCEPTION 'Not allowed to rename this group.';
+  END IF;
+
+  UPDATE public.watch_groups
+  SET name = v_name,
+      updated_at = NOW()
+  WHERE id = p_group_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Group not found.';
+  END IF;
+END;
+$$;
+
 CREATE OR REPLACE FUNCTION public.get_watch_group_unseen_counts(p_group_ids UUID[] DEFAULT NULL)
 RETURNS TABLE (
   group_id UUID,
@@ -195,7 +272,9 @@ ALTER TABLE public.watch_groups ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.watch_group_members ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.watch_group_invites ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.watch_group_picks ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.watch_group_messages ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.watch_group_pick_votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.watch_group_pick_watches ENABLE ROW LEVEL SECURITY;
 
 DO $$ BEGIN
   IF NOT EXISTS (
@@ -424,6 +503,55 @@ END $$;
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
+    WHERE tablename = 'watch_group_messages'
+      AND policyname = 'watch_group_messages_select_member'
+  ) THEN
+    CREATE POLICY watch_group_messages_select_member
+      ON public.watch_group_messages
+      FOR SELECT
+      USING (public.is_watch_group_member(group_id));
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'watch_group_messages'
+      AND policyname = 'watch_group_messages_insert_member'
+  ) THEN
+    CREATE POLICY watch_group_messages_insert_member
+      ON public.watch_group_messages
+      FOR INSERT
+      WITH CHECK (
+        auth.uid() = sender_id
+        AND public.is_watch_group_member(group_id)
+      );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'watch_group_messages'
+      AND policyname = 'watch_group_messages_delete_sender_or_owner'
+  ) THEN
+    CREATE POLICY watch_group_messages_delete_sender_or_owner
+      ON public.watch_group_messages
+      FOR DELETE
+      USING (
+        auth.uid() = sender_id OR
+        auth.uid() = (
+          SELECT g.owner_id
+          FROM public.watch_groups g
+          WHERE g.id = group_id
+        )
+      );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
     WHERE tablename = 'watch_group_pick_votes'
       AND policyname = 'watch_group_pick_votes_select_member'
   ) THEN
@@ -479,6 +607,60 @@ END $$;
 DO $$ BEGIN
   IF NOT EXISTS (
     SELECT 1 FROM pg_policies
+    WHERE tablename = 'watch_group_pick_watches'
+      AND policyname = 'watch_group_pick_watches_select_member'
+  ) THEN
+    CREATE POLICY watch_group_pick_watches_select_member
+      ON public.watch_group_pick_watches
+      FOR SELECT
+      USING (
+        EXISTS (
+          SELECT 1
+          FROM public.watch_group_picks p
+          WHERE p.id = pick_id
+            AND public.is_watch_group_member(p.group_id)
+        )
+      );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'watch_group_pick_watches'
+      AND policyname = 'watch_group_pick_watches_insert_self'
+  ) THEN
+    CREATE POLICY watch_group_pick_watches_insert_self
+      ON public.watch_group_pick_watches
+      FOR INSERT
+      WITH CHECK (
+        auth.uid() = user_id
+        AND EXISTS (
+          SELECT 1
+          FROM public.watch_group_picks p
+          WHERE p.id = pick_id
+            AND public.is_watch_group_member(p.group_id)
+        )
+      );
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
+    WHERE tablename = 'watch_group_pick_watches'
+      AND policyname = 'watch_group_pick_watches_delete_self'
+  ) THEN
+    CREATE POLICY watch_group_pick_watches_delete_self
+      ON public.watch_group_pick_watches
+      FOR DELETE
+      USING (auth.uid() = user_id);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_policies
     WHERE tablename = 'watch_group_pick_votes'
       AND policyname = 'watch_group_pick_votes_delete_self'
   ) THEN
@@ -520,11 +702,20 @@ GRANT EXECUTE ON FUNCTION public.respond_watch_group_invite(UUID, TEXT) TO authe
 REVOKE ALL ON FUNCTION public.mark_watch_group_seen(UUID) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.mark_watch_group_seen(UUID) TO authenticated;
 
+REVOKE ALL ON FUNCTION public.rename_watch_group(UUID, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.rename_watch_group(UUID, TEXT) TO authenticated;
+
 REVOKE ALL ON FUNCTION public.get_watch_group_unseen_counts(UUID[]) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_watch_group_unseen_counts(UUID[]) TO authenticated;
 
 CREATE INDEX IF NOT EXISTS idx_watch_group_picks_group_created
   ON public.watch_group_picks (group_id, created_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_watch_group_messages_group_created
+  ON public.watch_group_messages (group_id, created_at DESC);
+
 CREATE INDEX IF NOT EXISTS idx_watch_group_pick_votes_pick
   ON public.watch_group_pick_votes (pick_id);
+
+CREATE INDEX IF NOT EXISTS idx_watch_group_pick_watches_pick
+  ON public.watch_group_pick_watches (pick_id);

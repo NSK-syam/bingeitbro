@@ -403,7 +403,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                                 </svg>
                             </div>
-                            <p className="text-lg font-medium text-[var(--text-primary)]">Recommendation sent! 🎬</p>
+                            <p className="text-lg font-medium text-[var(--text-primary)]">Recommendation sent! </p>
                             {statusMessage && (
                                 <p className="text-sm text-[var(--text-muted)] mt-2 text-center">{statusMessage}</p>
                             )}

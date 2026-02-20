@@ -96,7 +96,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
             mood: rec.mood ?? [],
             watchWith: rec.watch_with ?? undefined,
             ottLinks: (rec.ott_links ?? []) as OTTLink[],
-            recommendedBy: { id: rec.user_id, name: 'User', avatar: '🎬' },
+            recommendedBy: { id: rec.user_id, name: 'User', avatar: '' },
             addedOn: rec.created_at,
           };
 
@@ -144,7 +144,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
           mood: [],
           watchWith: undefined,
           ottLinks: links,
-          recommendedBy: { id: 'tmdb', name: 'TMDB', avatar: '📺' },
+          recommendedBy: { id: 'tmdb', name: 'TMDB', avatar: '' },
           addedOn: new Date().toISOString(),
         };
 
@@ -249,7 +249,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
   if (error || !show) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center gap-4">
-        <div className="text-6xl">😕</div>
+        <div className="text-6xl"></div>
         <h1 className="text-2xl font-bold text-[var(--text-primary)]">Show not found</h1>
         <Link href={backUrl} className="text-[var(--accent)] hover:underline">
           Back to Shows
@@ -285,7 +285,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
         <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Series</p>
         <h1 className="mt-2 text-3xl font-bold text-[var(--text-primary)]">{title}</h1>
         <p className="mt-2 text-sm text-[var(--text-muted)]">
-          {year ?? '—'} • {show.language || '—'} {show.rating ? `• ${Number(show.rating).toFixed(1)} ★` : ''}
+          {year ?? '—'} • {show.language || '—'} {show.rating ? `• ${Number(show.rating).toFixed(1)} ` : ''}
         </p>
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[220px_minmax(0,1.8fr)_minmax(0,0.8fr)] items-start">
@@ -373,7 +373,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
                 className="inline-flex items-center gap-2 text-[var(--accent)] hover:underline text-sm"
               >
                 Search on JustWatch
-                <span aria-hidden="true">↗</span>
+                <span aria-hidden="true"></span>
               </a>
             </div>
           </div>

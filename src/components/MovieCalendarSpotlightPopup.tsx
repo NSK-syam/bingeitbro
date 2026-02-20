@@ -349,7 +349,7 @@ export function MovieCalendarSpotlightPopup({
                           <div className="p-2.5">
                             <p className="text-xs font-semibold text-[var(--text-primary)] line-clamp-2">{movie.title}</p>
                             <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                              {toYear(movie.releaseDate)} · ★ {movie.voteAverage.toFixed(1)}
+                              {toYear(movie.releaseDate)} ·  {movie.voteAverage.toFixed(1)}
                             </p>
                           </div>
                         </Link>
@@ -379,7 +379,7 @@ export function MovieCalendarSpotlightPopup({
                           <div className="p-2.5">
                             <p className="text-xs font-semibold text-[var(--text-primary)] line-clamp-2">{movie.title}</p>
                             <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                              {toYear(movie.releaseDate)} · ★ {movie.voteAverage.toFixed(1)}
+                              {toYear(movie.releaseDate)} ·  {movie.voteAverage.toFixed(1)}
                             </p>
                           </div>
                         </Link>
@@ -408,7 +408,7 @@ export function MovieCalendarSpotlightPopup({
                       <div className="p-2.5">
                         <p className="text-xs font-semibold text-[var(--text-primary)] line-clamp-2">{movie.title}</p>
                         <p className="text-[11px] text-[var(--text-muted)] mt-1">
-                          {toYear(movie.releaseDate)} · ★ {movie.voteAverage.toFixed(1)}
+                          {toYear(movie.releaseDate)} ·  {movie.voteAverage.toFixed(1)}
                         </p>
                       </div>
                     </Link>

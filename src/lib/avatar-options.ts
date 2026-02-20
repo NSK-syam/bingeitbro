@@ -10,50 +10,50 @@ export interface AvatarOption {
 
 /** Classic cinema & film */
 const CLASSIC_CINEMA: AvatarOption[] = [
-  { emoji: '🎬', label: 'Clapper' },
-  { emoji: '🎭', label: 'Theater' },
-  { emoji: '🎪', label: 'Circus' },
-  { emoji: '🎯', label: 'Target' },
-  { emoji: '📽️', label: 'Projector' },
-  { emoji: '🎞️', label: 'Film' },
-  { emoji: '📼', label: 'VHS' },
-  { emoji: '🎥', label: 'Movie camera' },
+  { emoji: '', label: 'Clapper' },
+  { emoji: '', label: 'Theater' },
+  { emoji: '', label: 'Circus' },
+  { emoji: '', label: 'Target' },
+  { emoji: '', label: 'Projector' },
+  { emoji: '', label: 'Film' },
+  { emoji: '', label: 'VHS' },
+  { emoji: '', label: 'Movie camera' },
 ];
 
 /** Snacks & watch vibes */
 const SNACKS_AND_VIBES: AvatarOption[] = [
-  { emoji: '🍿', label: 'Popcorn' },
-  { emoji: '🥤', label: 'Drink' },
-  { emoji: '🍫', label: 'Chocolate' },
-  { emoji: '🍕', label: 'Pizza' },
-  { emoji: '🛋️', label: 'Couch' },
-  { emoji: '🌙', label: 'Night' },
-  { emoji: '⭐', label: 'Star' },
-  { emoji: '🌟', label: 'Glow' },
+  { emoji: '', label: 'Popcorn' },
+  { emoji: '', label: 'Drink' },
+  { emoji: '', label: 'Chocolate' },
+  { emoji: '', label: 'Pizza' },
+  { emoji: '', label: 'Couch' },
+  { emoji: '', label: 'Night' },
+  { emoji: '', label: 'Star' },
+  { emoji: '', label: 'Glow' },
 ];
 
 /** Music & drama */
 const MUSIC_AND_DRAMA: AvatarOption[] = [
-  { emoji: '🎸', label: 'Guitar' },
-  { emoji: '🎹', label: 'Piano' },
-  { emoji: '🎤', label: 'Mic' },
-  { emoji: '🎧', label: 'Headphones' },
-  { emoji: '🎵', label: 'Music' },
-  { emoji: '🎶', label: 'Notes' },
-  { emoji: '🎺', label: 'Trumpet' },
-  { emoji: '🎻', label: 'Violin' },
+  { emoji: '', label: 'Guitar' },
+  { emoji: '', label: 'Piano' },
+  { emoji: '', label: 'Mic' },
+  { emoji: '', label: 'Headphones' },
+  { emoji: '', label: 'Music' },
+  { emoji: '', label: 'Notes' },
+  { emoji: '', label: 'Trumpet' },
+  { emoji: '', label: 'Violin' },
 ];
 
 /** Fun & celebration */
 const FUN_AND_CELEBRATION: AvatarOption[] = [
-  { emoji: '🎉', label: 'Party' },
-  { emoji: '🎊', label: 'Confetti' },
-  { emoji: '🎲', label: 'Dice' },
-  { emoji: '🔥', label: 'Fire' },
-  { emoji: '💫', label: 'Dizzy' },
-  { emoji: '✨', label: 'Sparkle' },
-  { emoji: '🌈', label: 'Rainbow' },
-  { emoji: '🎁', label: 'Gift' },
+  { emoji: '', label: 'Party' },
+  { emoji: '', label: 'Confetti' },
+  { emoji: '', label: 'Dice' },
+  { emoji: '', label: 'Fire' },
+  { emoji: '', label: 'Dizzy' },
+  { emoji: '', label: 'Sparkle' },
+  { emoji: '', label: 'Rainbow' },
+  { emoji: '', label: 'Gift' },
 ];
 
 export const AVATAR_THEMES = [

@@ -147,7 +147,7 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
             className={`absolute inset-0 flex flex-col items-center justify-center p-4 ${watched ? 'opacity-60' : ''}`}
             style={{ backgroundColor: getPlaceholderColor(title) }}
           >
-            <span className="text-4xl mb-2">🎬</span>
+            <span className="text-4xl mb-2"></span>
             <span className="text-white text-sm font-semibold text-center line-clamp-3">{title}</span>
           </div>
         )}
@@ -228,7 +228,7 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
         <div className="absolute bottom-3 left-3 right-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-lg">{recommendedBy?.avatar ?? '🎬'}</span>
+              <span className="text-lg">{recommendedBy?.avatar ?? ''}</span>
               <div className="flex flex-col">
                 <span className="text-xs text-[var(--text-secondary)]">
                   {recommendedBy?.name ?? 'Anonymous'}

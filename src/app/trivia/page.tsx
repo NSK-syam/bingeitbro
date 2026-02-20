@@ -39,9 +39,9 @@ function formatMs(ms: number): string {
 }
 
 function medal(rank: number) {
-  if (rank === 1) return '🥇';
-  if (rank === 2) return '🥈';
-  if (rank === 3) return '🥉';
+  if (rank === 1) return '';
+  if (rank === 2) return '';
+  if (rank === 3) return '';
   return '';
 }
 
@@ -392,7 +392,7 @@ export default function TriviaPage() {
                   <div className="py-16 text-center">
                     <div className="mx-auto max-w-md">
                       <div className={`h-20 w-20 mx-auto rounded-3xl bg-gradient-to-br ${activeLangMeta.glow} shadow-[0_30px_80px_rgba(0,0,0,0.4)] flex items-center justify-center text-3xl`}>
-                        🎬
+                        
                       </div>
                       <h2 className="mt-5 text-2xl font-extrabold">Ready for this week&apos;s 10?</h2>
                       <p className="mt-2 text-sm text-[var(--text-muted)]">
@@ -424,7 +424,7 @@ export default function TriviaPage() {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={q.poster} alt={q.title} className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-xl">🎞️</div>
+                          <div className="w-full h-full flex items-center justify-center text-xl"></div>
                         )}
                       </div>
                       <div className="flex-1">

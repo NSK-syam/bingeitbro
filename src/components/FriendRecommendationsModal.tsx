@@ -79,7 +79,7 @@ export function FriendRecommendationsModal({
                 email: '',
                 name: 'Anonymous',
                 username: '',
-                avatar: '🎬',
+                avatar: '',
                 created_at: '',
             };
             const mapped: FriendRecommendation[] = rows.map(rec => ({
@@ -90,7 +90,7 @@ export function FriendRecommendationsModal({
                           email: rec.sender.email ?? '',
                           name: rec.sender.name ?? 'Anonymous',
                           username: '',
-                          avatar: rec.sender.avatar ?? '🎬',
+                          avatar: rec.sender.avatar ?? '',
                           created_at: '',
                       }
                     : defaultSender,
@@ -127,7 +127,7 @@ export function FriendRecommendationsModal({
                 email: '',
                 name: 'Friend',
                 username: '',
-                avatar: '🎬',
+                avatar: '',
                 created_at: '',
             };
             const mapped: SentRecommendation[] = rows.map(rec => ({
@@ -138,7 +138,7 @@ export function FriendRecommendationsModal({
                           email: rec.recipient.email ?? '',
                           name: rec.recipient.name ?? 'Friend',
                           username: '',
-                          avatar: rec.recipient.avatar ?? '🎬',
+                          avatar: rec.recipient.avatar ?? '',
                           created_at: '',
                       }
                     : defaultRecipient,
@@ -343,7 +343,7 @@ export function FriendRecommendationsModal({
                         </div>
                     ) : filteredRecommendations.length === 0 ? (
                         <div className="text-center py-12">
-                            <div className="text-6xl mb-4">📬</div>
+                            <div className="text-6xl mb-4"></div>
                             <p className="text-lg text-[var(--text-primary)] font-medium">
                                 {filter === 'unread' ? 'No new recommendations' : 'No recommendations yet'}
                             </p>
@@ -478,7 +478,7 @@ export function FriendRecommendationsModal({
                                 </div>
                             ) : sentRecommendations.length === 0 ? (
                                 <div className="text-center py-12">
-                                    <div className="text-6xl mb-4">📤</div>
+                                    <div className="text-6xl mb-4"></div>
                                     <p className="text-lg text-[var(--text-primary)] font-medium">
                                         No sent recommendations yet
                                     </p>

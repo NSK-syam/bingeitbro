@@ -397,7 +397,7 @@ export default function SongsHome() {
                 grouped.map((g) => {
                   const u = g.user;
                   const name = u?.name || 'User';
-                  const avatar = u?.avatar || '🎵';
+                  const avatar = u?.avatar || '';
                   const stats = ratingByUser[g.userId] ?? { avg: 0, count: 0, mine: 0 };
                   const isMe = Boolean(user?.id && user.id === g.userId);
                   return (
@@ -462,7 +462,7 @@ export default function SongsHome() {
                                   {p.platform}
                                 </div>
                               </div>
-                              <span className="text-[var(--accent)] text-sm">↗</span>
+                              <span className="text-[var(--accent)] text-sm"></span>
                             </div>
                           </a>
                         ))}

@@ -110,14 +110,14 @@ export function NudgesModal({ isOpen, onClose }: NudgesModalProps) {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-2xl">🎬</div>
+                        <div className="w-full h-full flex items-center justify-center text-2xl"></div>
                       )}
                     </div>
 
                     {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="text-lg">{nudge.from_user?.avatar || '👤'}</span>
+                        <span className="text-lg">{nudge.from_user?.avatar || ''}</span>
                         <span className="font-medium text-[var(--text-primary)] truncate">
                           {nudge.from_user?.name || 'Someone'}
                         </span>
@@ -177,7 +177,7 @@ export function NudgesModal({ isOpen, onClose }: NudgesModalProps) {
             </div>
           ) : (
             <div className="text-center py-12 px-6">
-              <div className="text-5xl mb-4">🔔</div>
+              <div className="text-5xl mb-4"></div>
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
                 No nudges yet
               </h3>

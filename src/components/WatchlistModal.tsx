@@ -148,7 +148,7 @@ export function WatchlistModal({ isOpen, onClose }: WatchlistModalProps) {
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-4xl">
-                        🎬
+                        
                       </div>
                     )}
                     {/* Remove button */}
@@ -175,7 +175,7 @@ export function WatchlistModal({ isOpen, onClose }: WatchlistModalProps) {
             </div>
           ) : (
             <div className="text-center py-12">
-              <div className="text-5xl mb-4">📑</div>
+              <div className="text-5xl mb-4"></div>
               <h3 className="text-lg font-semibold text-[var(--text-primary)] mb-2">
                 Your watchlist is empty
               </h3>

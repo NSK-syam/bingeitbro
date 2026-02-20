@@ -10,7 +10,7 @@ CREATE TABLE users (
   email TEXT NOT NULL,
   name TEXT NOT NULL,
   username TEXT UNIQUE,
-  avatar TEXT DEFAULT '🎬',
+  avatar TEXT DEFAULT '',
   theme TEXT DEFAULT 'gold',
   birthdate DATE,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
+import { trackFunnelEvent } from '@/lib/funnel';
 
 declare global {
   interface Window {
@@ -59,6 +60,7 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login' }: AuthModalProps) {
   const [mode, setMode] = useState<'login' | 'signup' | 'reset'>(initialMode);
+  const [showEmailSignup, setShowEmailSignup] = useState(initialMode !== 'signup');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -87,6 +89,8 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
   useEffect(() => {
     if (isOpen) {
       setMode(initialMode);
+      setShowEmailSignup(initialMode !== 'signup');
+      trackFunnelEvent('auth_modal_view', { mode: initialMode });
     }
   }, [isOpen, initialMode]);
 
@@ -159,13 +163,16 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
     setError('');
     setSuccess('');
     setLoading(true);
+    trackFunnelEvent('email_auth_submit', { mode });
 
     try {
       if (mode === 'login') {
         const { error } = await signIn(email, password);
         if (error) {
           setError(error.message);
+          trackFunnelEvent('email_auth_error', { mode, message: error.message.slice(0, 120) });
         } else {
+          trackFunnelEvent('email_auth_success', { mode });
           onClose();
         }
       } else {
@@ -220,12 +227,15 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
         const { error } = await signUp(email, password, name, username, birthdate, captchaToken);
         if (error) {
           setError(error.message);
+          trackFunnelEvent('email_auth_error', { mode, message: error.message.slice(0, 120) });
         } else {
+          trackFunnelEvent('email_auth_success', { mode });
           onClose();
         }
       }
     } catch {
       setError('Something went wrong');
+      trackFunnelEvent('email_auth_error', { mode, message: 'unexpected_error' });
     } finally {
       setLoading(false);
     }
@@ -234,10 +244,14 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
   const handleGoogleSignIn = async () => {
     setError('');
     setLoading(true);
+    trackFunnelEvent('oauth_start', { source: 'auth_modal', mode });
     const { error } = await signInWithGoogle();
     if (error) {
       setError(error.message);
       setLoading(false);
+      trackFunnelEvent('oauth_error', { source: 'auth_modal', mode, message: error.message.slice(0, 120) });
+    } else {
+      trackFunnelEvent('oauth_redirect_started', { source: 'auth_modal', mode });
     }
   };
 
@@ -270,6 +284,7 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
         setSuccess('Check your email (and spam folder) for a password reset link!');
         setTimeout(() => {
           setMode('login');
+          setShowEmailSignup(true);
           setSuccess('');
         }, 3000);
       }
@@ -279,6 +294,8 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
       setLoading(false);
     }
   };
+
+  const showCredentialForm = mode === 'reset' || mode === 'login' || (mode === 'signup' && showEmailSignup);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -344,8 +361,40 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
                 <span className="px-4 text-[var(--text-muted)] bg-[var(--bg-card)]">or</span>
               </div>
             </div>
+
+            {mode === 'signup' && !showEmailSignup && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEmailSignup(true);
+                  setError('');
+                  setSuccess('');
+                  trackFunnelEvent('email_signup_unlocked', { source: 'auth_modal' });
+                }}
+                className="w-full mb-4 py-3 px-4 rounded-xl border border-white/15 text-[var(--text-primary)] hover:border-white/35 transition-colors"
+              >
+                Use email and password instead
+              </button>
+            )}
           </>
         )}
+        {(error || success) && (
+          <div className="space-y-3 mb-4">
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 text-sm space-y-2">
+                <div>{success}</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {showCredentialForm && (
         <form onSubmit={mode === 'reset' ? handlePasswordReset : handleSubmit} className="space-y-4">
           {mode === 'signup' && (
             <>
@@ -533,18 +582,6 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
             </div>
           )}
 
-          {error && (
-            <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
-              {error}
-            </div>
-          )}
-
-          {success && (
-            <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 text-sm space-y-2">
-              <div>{success}</div>
-            </div>
-          )}
-
           <button
             type="submit"
             disabled={loading || (mode === 'signup' && usernameStatus === 'taken')}
@@ -553,14 +590,18 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
             {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
           </button>
         </form>
+        )}
 
         <div className="mt-6 text-center">
           <button
             onClick={() => {
               if (mode === 'reset') {
                 setMode('login');
+                setShowEmailSignup(true);
               } else {
-                setMode(mode === 'login' ? 'signup' : 'login');
+                const nextMode = mode === 'login' ? 'signup' : 'login';
+                setMode(nextMode);
+                setShowEmailSignup(nextMode !== 'signup');
               }
               setError('');
               setSuccess('');

@@ -258,7 +258,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             email: user.email ?? '',
             name,
             username: user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user',
-            avatar: '🎬',
+            avatar: '',
             theme: serializeLightingTheme(DEFAULT_LIGHTING),
             created_at: new Date().toISOString(),
           } as DBUser;
@@ -302,7 +302,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             recommendedBy: {
               id: userData.id,
               name: userData.name,
-              avatar: userData.avatar ?? '🎬',
+              avatar: userData.avatar ?? '',
             },
             addedOn: rec.created_at,
           }));
@@ -411,7 +411,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             user.email?.split('@')[0] ||
             'User',
           username: user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user',
-          avatar: '🎬',
+          avatar: '',
           theme: serializeLightingTheme(DEFAULT_LIGHTING),
           created_at: new Date().toISOString(),
         }
@@ -876,7 +876,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
           recommendedBy: {
             id: profileUser.id,
             name: profileUser.name,
-            avatar: profileUser.avatar ?? '🎬',
+            avatar: profileUser.avatar ?? '',
           },
           addedOn: rec.created_at,
         }));
@@ -1269,7 +1269,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   if (!displayUser) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center gap-4">
-        <div className="text-6xl">😕</div>
+        <div className="text-6xl"></div>
         <h1 className="text-2xl font-bold text-[var(--text-primary)]">User not found</h1>
         <Link href="/" className="text-[var(--accent)] hover:underline">
           Go back home
@@ -1613,7 +1613,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-4xl">
-                                  🎬
+                                  
                                 </div>
                               )}
                             </div>
@@ -1723,7 +1723,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-4xl">
-                          🎬
+                          
                         </div>
                       )}
                     </div>
@@ -1775,7 +1775,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             )
           ) : (
             <div className="text-center py-10 text-[var(--text-muted)]">
-              <div className="text-3xl mb-2">🎞️</div>
+              <div className="text-3xl mb-2"></div>
               <p>No picks yet for this language</p>
             </div>
           )}
@@ -1817,7 +1817,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                   </div>
                 ) : watchedItems.length === 0 ? (
                   <div className="py-14 text-center text-[var(--text-muted)]">
-                    <div className="text-3xl mb-2">🎬</div>
+                    <div className="text-3xl mb-2"></div>
                     <p>No watched movies yet.</p>
                   </div>
                 ) : (
@@ -1836,7 +1836,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-4xl">🎬</div>
+                            <div className="w-full h-full flex items-center justify-center text-4xl"></div>
                           )}
                         </div>
                         <div className="p-2.5">
@@ -1932,13 +1932,13 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                                 {movie.poster_path ? (
                                   <img src={getImageUrl(movie.poster_path)} alt="" className="w-full h-full object-cover" />
                                 ) : (
-                                  <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
+                                  <div className="w-full h-full flex items-center justify-center text-lg"></div>
                                 )}
                               </div>
                               <div className="min-w-0 flex-1">
                                 <p className="font-medium text-[var(--text-primary)] truncate text-sm">{movie.title}</p>
                                 <p className="text-xs text-[var(--text-muted)]">
-                                  {movie.release_date ? new Date(movie.release_date).getFullYear() : ''} • {(movie.vote_average ?? 0).toFixed(1)} ★
+                                  {movie.release_date ? new Date(movie.release_date).getFullYear() : ''} • {(movie.vote_average ?? 0).toFixed(1)} 
                                 </p>
                               </div>
                             </button>

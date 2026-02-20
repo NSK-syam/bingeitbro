@@ -849,7 +849,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                       </h2>
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
                         <span className="px-2.5 py-1 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] font-semibold">
-                          {movie.vote_average > 0 ? `★ ${movie.vote_average.toFixed(1)}` : 'Unrated'}
+                          {movie.vote_average > 0 ? ` ${movie.vote_average.toFixed(1)}` : 'Unrated'}
                         </span>
                         <span className="px-2.5 py-1 rounded-full bg-white/15 text-white">{releaseYear}</span>
                         <span className="px-2.5 py-1 rounded-full bg-white/15 text-white">{langInfo.name}</span>
@@ -931,7 +931,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             <div key={`coming-soon-${lang.code}`}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold text-[var(--text-primary)] flex items-center gap-2">
-                  <span className="text-purple-400">🎬 Coming Soon</span>
+                  <span className="text-purple-400"> Coming Soon</span>
                   <span className="text-[var(--text-muted)]">•</span>
                   <span>{lang.name}</span>
                   <span className="text-xs font-normal text-[var(--text-muted)]">(Streaming soon)</span>
@@ -968,7 +968,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                             />
                           ) : (
                             <div className="absolute inset-0 bg-[var(--bg-secondary)] flex items-center justify-center">
-                              <span className="text-3xl">🎬</span>
+                              <span className="text-3xl"></span>
                             </div>
                           )}
 
@@ -1023,13 +1023,13 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         <h3 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
           {searchQuery ? (
             <>
-              🔍 <span>Search: &quot;{searchQuery}&quot;</span>
+               <span>Search: &quot;{searchQuery}&quot;</span>
             </>
           ) : currentLang ? (
             <span>{currentLang.name} Movies</span>
           ) : (
             <>
-              🔥 <span>Latest & Trending</span>
+               <span>Latest & Trending</span>
             </>
           )}
         </h3>
@@ -1070,7 +1070,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                     />
                   ) : (
                     <div className="absolute inset-0 bg-[var(--bg-secondary)] flex items-center justify-center">
-                      <span className="text-4xl">🎬</span>
+                      <span className="text-4xl"></span>
                     </div>
                   )}
 
@@ -1174,7 +1174,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         </div>
       ) : (
         <div className="text-center py-20">
-          <div className="text-6xl mb-4">🎬</div>
+          <div className="text-6xl mb-4"></div>
           <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
             No movies found
           </h3>

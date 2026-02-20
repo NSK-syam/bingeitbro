@@ -59,5 +59,7 @@ If sign-in redirects to `/?error=auth`:
    - `npm run security:hooks`
 3. Run full repository secret scan on demand:
    - `npm run security:secrets`
+4. Optional conversion funnel logging (first-party only, disabled by default):
+   - Set `NEXT_PUBLIC_ENABLE_FUNNEL_METRICS=true` in your environment.
 
 This repo also runs GitHub Actions secret scanning (`.github/workflows/secret-scan.yml`) on every push and pull request.

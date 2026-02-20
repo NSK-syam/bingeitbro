@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components";
+import { HelpBotWidget } from "@/components/HelpBotWidget";
 
 // System font stack so build works without network (no Google Fonts fetch)
 const fontClass = "font-sans antialiased";
@@ -77,7 +78,10 @@ export default function RootLayout({
         />
       </head>
       <body className={fontClass}>
-        <AuthProvider>{children}</AuthProvider>
+        <AuthProvider>
+          {children}
+          <HelpBotWidget />
+        </AuthProvider>
       </body>
     </html>
   );

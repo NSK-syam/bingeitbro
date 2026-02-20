@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import Link from 'next/link';
+import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthProvider';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import {
@@ -8,23 +9,29 @@ import {
   clearWatchGroupPickVote,
   createWatchGroup,
   fetchFriendsList,
+  getWatchGroupMessages,
   getIncomingWatchGroupInvites,
   getMyWatchGroups,
   markWatchGroupSeen,
+  markWatchGroupPickWatched,
   getWatchGroupMembers,
   getPendingWatchGroupInvites,
   getWatchGroupPicks,
   leaveWatchGroup,
   respondToWatchGroupInvite,
+  renameWatchGroup,
+  sendWatchGroupMessage,
   sendWatchGroupInvite,
   updateWatchGroup,
   voteOnWatchGroupPick,
   type FriendForSelect,
   type WatchGroup,
   type WatchGroupIncomingInvite,
+  type WatchGroupMessage,
   type WatchGroupMember,
   type WatchGroupPendingInvite,
   type WatchGroupPick,
+  type WatchGroupSharedMovie,
 } from '@/lib/supabase-rest';
 
 type SearchMediaResult = {
@@ -35,6 +42,8 @@ type SearchMediaResult = {
   rating: number;
   language: string;
 };
+
+const GROUP_PICK_DRAG_MIME = 'application/x-bib-watch-group-pick';
 
 function parseYear(value?: string): number | null {
   if (!value) return null;
@@ -73,6 +82,12 @@ export function GroupWatchModal({
   const [membersLoading, setMembersLoading] = useState(false);
   const [picks, setPicks] = useState<WatchGroupPick[]>([]);
   const [picksLoading, setPicksLoading] = useState(false);
+  const [chatMessages, setChatMessages] = useState<WatchGroupMessage[]>([]);
+  const [chatLoading, setChatLoading] = useState(false);
+  const [chatMessage, setChatMessage] = useState('');
+  const [chatSharedPick, setChatSharedPick] = useState<WatchGroupPick | null>(null);
+  const [chatDropActive, setChatDropActive] = useState(false);
+  const [sendingChatMessage, setSendingChatMessage] = useState(false);
   const [friends, setFriends] = useState<FriendForSelect[]>([]);
   const [incomingInvites, setIncomingInvites] = useState<WatchGroupIncomingInvite[]>([]);
   const [incomingInvitesLoading, setIncomingInvitesLoading] = useState(false);
@@ -99,9 +114,12 @@ export function GroupWatchModal({
   const [searchLoading, setSearchLoading] = useState(false);
   const [addingPickId, setAddingPickId] = useState<number | null>(null);
   const [votingPickId, setVotingPickId] = useState<string | null>(null);
+  const [markingWatchedPickId, setMarkingWatchedPickId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
+  const chatInputRef = useRef<HTMLInputElement>(null);
+  const chatContainerRef = useRef<HTMLDivElement>(null);
 
   const activeGroup = useMemo(
     () => groups.find((group) => group.id === activeGroupId) ?? null,
@@ -187,13 +205,16 @@ export function GroupWatchModal({
     if (!user) return;
     setMembersLoading(true);
     setPicksLoading(true);
+    setChatLoading(true);
     try {
-      const [memberRows, pickRows] = await Promise.all([
+      const [memberRows, pickRows, chatRows] = await Promise.all([
         getWatchGroupMembers(groupId),
         getWatchGroupPicks(groupId, user.id),
+        getWatchGroupMessages(groupId, user.id).catch(() => []),
       ]);
       setMembers(memberRows);
       setPicks(pickRows);
+      setChatMessages(chatRows);
       // Mark group as seen after successfully loading picks.
       void markWatchGroupSeen(groupId).then(() => {
         setGroups((prev) =>
@@ -207,6 +228,7 @@ export function GroupWatchModal({
     } finally {
       setMembersLoading(false);
       setPicksLoading(false);
+      setChatLoading(false);
     }
   }, [user]);
 
@@ -222,6 +244,27 @@ export function GroupWatchModal({
     if (!isOpen || !activeGroupId) return;
     void loadActiveGroupData(activeGroupId);
   }, [isOpen, activeGroupId, loadActiveGroupData]);
+
+  useEffect(() => {
+    setChatSharedPick(null);
+    setChatDropActive(false);
+  }, [activeGroupId]);
+
+  useEffect(() => {
+    if (!isOpen || !activeGroupId || !user?.id) return;
+    const intervalId = window.setInterval(() => {
+      void getWatchGroupMessages(activeGroupId, user.id)
+        .then((rows) => setChatMessages(rows))
+        .catch(() => undefined);
+    }, 12000);
+    return () => window.clearInterval(intervalId);
+  }, [isOpen, activeGroupId, user?.id]);
+
+  useEffect(() => {
+    const el = chatContainerRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
+  }, [chatMessages, activeGroupId]);
 
   useEffect(() => {
     if (!activeGroup) {
@@ -251,7 +294,11 @@ export function GroupWatchModal({
       setInviteUserId('');
       setPickQuery('');
       setPickNote('');
+      setChatMessage('');
+      setChatSharedPick(null);
+      setChatDropActive(false);
       setSearchResults([]);
+      setChatMessages([]);
       setError('');
       setSuccess('');
       setMediaType('movie');
@@ -260,6 +307,7 @@ export function GroupWatchModal({
       setLeavingGroup(false);
       setAddingPickId(null);
       setVotingPickId(null);
+      setMarkingWatchedPickId(null);
       setRespondingInviteId(null);
       setPendingInvites([]);
       setIncomingInvites([]);
@@ -326,8 +374,6 @@ export function GroupWatchModal({
     };
   }, [isOpen, tmdbApiKey, mediaType, pickQuery]);
 
-  if (!isOpen) return null;
-
   const handleCreateGroup = async () => {
     if (!user) return;
     const name = groupName.trim();
@@ -355,7 +401,7 @@ export function GroupWatchModal({
   };
 
   const handleSaveGroupSettings = async () => {
-    if (!activeGroup || !isActiveGroupOwner) return;
+    if (!activeGroup) return;
     const name = editingGroupName.trim();
     if (name.length < 2) {
       setError('Group name must be at least 2 characters.');
@@ -365,14 +411,24 @@ export function GroupWatchModal({
     setError('');
     setSuccess('');
     try {
-      await updateWatchGroup(activeGroup.id, {
-        name,
-        description: editingGroupDescription,
-      });
-      setSuccess('Group settings updated.');
+      if (isActiveGroupOwner) {
+        await updateWatchGroup(activeGroup.id, {
+          name,
+          description: editingGroupDescription,
+        });
+        setSuccess('Group settings updated.');
+      } else {
+        await renameWatchGroup(activeGroup.id, name);
+        setSuccess('Group name updated.');
+      }
       await loadGroups(activeGroup.id);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update group settings.');
+      const message = err instanceof Error ? err.message : 'Failed to update group settings.';
+      if (message.toLowerCase().includes('rename_watch_group')) {
+        setError('Group rename migration is not enabled yet. Run rename migration SQL first.');
+      } else {
+        setError(message);
+      }
     } finally {
       setSavingGroupSettings(false);
     }
@@ -499,6 +555,142 @@ export function GroupWatchModal({
       setVotingPickId(null);
     }
   };
+
+  const handleMarkWatched = async (pick: WatchGroupPick) => {
+    if (!user || pick.watchedByMe) return;
+    setMarkingWatchedPickId(pick.id);
+    setError('');
+    try {
+      await markWatchGroupPickWatched(pick.id, user.id);
+      if (activeGroupId) {
+        await loadActiveGroupData(activeGroupId);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to mark as watched.';
+      if (message.toLowerCase().includes('watch_group_pick_watches')) {
+        setError('Group watched migration is not enabled yet. Run watched migration SQL first.');
+      } else {
+        setError(message);
+      }
+    } finally {
+      setMarkingWatchedPickId(null);
+    }
+  };
+
+  const toSharedMovie = useCallback((pick: WatchGroupPick): WatchGroupSharedMovie => {
+    return {
+      mediaType: pick.mediaType,
+      tmdbId: pick.tmdbId,
+      title: pick.title,
+      poster: pick.poster,
+      releaseYear: pick.releaseYear,
+    };
+  }, []);
+
+  const handleAttachPickToChat = useCallback((pick: WatchGroupPick) => {
+    setChatSharedPick(pick);
+    setChatDropActive(false);
+    setTimeout(() => chatInputRef.current?.focus(), 0);
+  }, []);
+
+  const handlePickDragStart = useCallback((event: DragEvent<HTMLElement>, pick: WatchGroupPick) => {
+    event.dataTransfer.effectAllowed = 'copy';
+    event.dataTransfer.setData(
+      GROUP_PICK_DRAG_MIME,
+      JSON.stringify({
+        id: pick.id,
+        mediaType: pick.mediaType,
+        tmdbId: pick.tmdbId,
+        title: pick.title,
+        poster: pick.poster,
+        releaseYear: pick.releaseYear,
+      }),
+    );
+  }, []);
+
+  const handleChatDrop = useCallback((event: DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    setChatDropActive(false);
+    const raw = event.dataTransfer.getData(GROUP_PICK_DRAG_MIME);
+    if (!raw) return;
+    try {
+      const parsed = JSON.parse(raw) as Partial<WatchGroupPick>;
+      if (
+        !parsed ||
+        (parsed.mediaType !== 'movie' && parsed.mediaType !== 'show') ||
+        typeof parsed.tmdbId !== 'string' ||
+        typeof parsed.title !== 'string'
+      ) {
+        return;
+      }
+      setChatSharedPick({
+        id: String(parsed.id ?? ''),
+        groupId: activeGroupId ?? '',
+        senderId: user?.id ?? '',
+        senderName: 'Member',
+        senderAvatar: null,
+        mediaType: parsed.mediaType,
+        tmdbId: parsed.tmdbId,
+        title: parsed.title,
+        poster: typeof parsed.poster === 'string' ? parsed.poster : null,
+        releaseYear: typeof parsed.releaseYear === 'number' ? parsed.releaseYear : null,
+        note: null,
+        createdAt: new Date().toISOString(),
+        upvotes: 0,
+        downvotes: 0,
+        score: 0,
+        myVote: 0,
+        watchedCount: 0,
+        memberCount: 1,
+        watchedByMe: false,
+      });
+      setTimeout(() => chatInputRef.current?.focus(), 0);
+    } catch {
+      return;
+    }
+  }, [activeGroupId, user?.id]);
+
+  const handleSendChatMessage = async () => {
+    if (!activeGroupId || !user) return;
+    const body = chatMessage.trim();
+    const sharedMovie = chatSharedPick ? toSharedMovie(chatSharedPick) : null;
+    if (!body && !sharedMovie) return;
+    setSendingChatMessage(true);
+    setError('');
+    try {
+      await sendWatchGroupMessage({
+        groupId: activeGroupId,
+        senderId: user.id,
+        body,
+        sharedMovie,
+      });
+      setChatMessage('');
+      setChatSharedPick(null);
+      const rows = await getWatchGroupMessages(activeGroupId, user.id);
+      setChatMessages(rows);
+      void markWatchGroupSeen(activeGroupId).then(() => {
+        setGroups((prev) =>
+          prev.map((g) => (g.id === activeGroupId ? { ...g, unseenCount: 0 } : g)),
+        );
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to send message.';
+      if (message.toLowerCase().includes('watch_group_messages')) {
+        setError('Group chat migration is not enabled yet. Run chat migration SQL first.');
+      } else if (
+        message.toLowerCase().includes('shared_media_type') ||
+        message.toLowerCase().includes('shared_tmdb_id')
+      ) {
+        setError('Movie-share chat migration is not enabled yet. Run movie-share migration SQL first.');
+      } else {
+        setError(message);
+      }
+    } finally {
+      setSendingChatMessage(false);
+    }
+  };
+
+  if (!isOpen) return null;
 
   return (
     <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6">
@@ -681,16 +873,16 @@ export function GroupWatchModal({
                     <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">
                       Group settings
                     </p>
-                    {isActiveGroupOwner ? (
-                      <div className="rounded-xl border border-white/10 bg-[var(--bg-primary)] p-3 space-y-2">
-                        <input
-                          type="text"
-                          value={editingGroupName}
-                          onChange={(e) => setEditingGroupName(e.target.value)}
-                          maxLength={60}
-                          className="w-full rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
-                          placeholder="Group name"
-                        />
+                    <div className="rounded-xl border border-white/10 bg-[var(--bg-primary)] p-3 space-y-2">
+                      <input
+                        type="text"
+                        value={editingGroupName}
+                        onChange={(e) => setEditingGroupName(e.target.value)}
+                        maxLength={60}
+                        className="w-full rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
+                        placeholder="Group name"
+                      />
+                      {isActiveGroupOwner && (
                         <textarea
                           value={editingGroupDescription}
                           onChange={(e) => setEditingGroupDescription(e.target.value)}
@@ -699,28 +891,34 @@ export function GroupWatchModal({
                           className="w-full rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55 resize-none"
                           placeholder="Group description"
                         />
-                        <button
-                          type="button"
-                          onClick={handleSaveGroupSettings}
-                          disabled={savingGroupSettings}
-                          className="rounded-lg bg-indigo-400/90 px-3 py-2 text-sm font-semibold text-[#0b1327] disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {savingGroupSettings ? 'Saving…' : 'Save settings'}
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="rounded-xl border border-white/10 bg-[var(--bg-primary)] p-3">
-                        <p className="text-sm text-[var(--text-muted)]">
-                          Don&apos;t want this group anymore? You can leave anytime.
-                        </p>
-                        <button
-                          type="button"
-                          onClick={handleLeaveGroup}
-                          disabled={leavingGroup}
-                          className="mt-2 rounded-lg border border-rose-300/40 bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {leavingGroup ? 'Leaving…' : 'Leave group'}
-                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={handleSaveGroupSettings}
+                        disabled={savingGroupSettings}
+                        className="rounded-lg bg-indigo-400/90 px-3 py-2 text-sm font-semibold text-[#0b1327] disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {savingGroupSettings ? 'Saving…' : isActiveGroupOwner ? 'Save settings' : 'Save group name'}
+                      </button>
+                      {!isActiveGroupOwner && (
+                        <div className="pt-2 border-t border-white/10">
+                          <p className="text-sm text-[var(--text-muted)]">
+                            Don&apos;t want this group anymore? You can leave anytime.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={handleLeaveGroup}
+                            disabled={leavingGroup}
+                            className="mt-2 rounded-lg border border-rose-300/40 bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {leavingGroup ? 'Leaving…' : 'Leave group'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    {!isActiveGroupOwner && (
+                      <div className="mt-2 rounded-lg border border-indigo-300/20 bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-100/90">
+                        All members in this group can rename the group.
                       </div>
                     )}
                   </div>
@@ -736,7 +934,7 @@ export function GroupWatchModal({
                             key={member.userId}
                             className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[var(--bg-primary)] px-2.5 py-1 text-xs text-[var(--text-secondary)]"
                           >
-                            <span>{member.avatar || '🎬'}</span>
+                            <span>{member.avatar || ''}</span>
                             <span>{member.name}</span>
                             {member.role === 'owner' && <span className="text-indigo-200">• owner</span>}
                           </span>
@@ -801,7 +999,7 @@ export function GroupWatchModal({
                                 key={invite.id}
                                 className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[var(--bg-card)] px-2.5 py-1 text-xs text-[var(--text-secondary)]"
                               >
-                                <span>{invite.inviteeAvatar || '🎬'}</span>
+                                <span>{invite.inviteeAvatar || ''}</span>
                                 <span>{invite.inviteeName}</span>
                                 <span className="text-amber-200">• pending</span>
                               </span>
@@ -865,13 +1063,13 @@ export function GroupWatchModal({
                             {result.poster ? (
                               <img src={result.poster} alt={result.title} className="w-full h-full object-cover" />
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center text-xs">🎬</div>
+                              <div className="w-full h-full flex items-center justify-center text-xs"></div>
                             )}
                           </div>
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-[var(--text-primary)] truncate">{result.title}</p>
                             <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                              {result.year ?? 'Unknown'} · {result.language} · ★ {result.rating.toFixed(1)}
+                              {result.year ?? 'Unknown'} · {result.language} ·  {result.rating.toFixed(1)}
                             </p>
                           </div>
                           <button
@@ -901,20 +1099,31 @@ export function GroupWatchModal({
                       {picks.map((pick) => (
                         <article
                           key={pick.id}
-                          className="rounded-xl border border-white/10 bg-[var(--bg-primary)]/85 p-3"
+                          draggable
+                          onDragStart={(event) => handlePickDragStart(event, pick)}
+                          className="rounded-xl border border-white/10 bg-[var(--bg-primary)]/85 p-3 cursor-grab active:cursor-grabbing"
                         >
                           <div className="flex gap-3">
-                            <div className="w-14 h-20 rounded-md overflow-hidden bg-black/30 flex-shrink-0">
+                            <Link
+                              href={pick.mediaType === 'movie' ? `/movie/${pick.tmdbId}` : `/show/${pick.tmdbId}`}
+                              className="w-14 h-20 rounded-md overflow-hidden bg-black/30 flex-shrink-0"
+                              title={`Open ${pick.title}`}
+                            >
                               {pick.poster ? (
                                 <img src={pick.poster} alt={pick.title} className="w-full h-full object-cover" />
                               ) : (
-                                <div className="w-full h-full flex items-center justify-center text-sm">🎬</div>
+                                <div className="w-full h-full flex items-center justify-center text-sm"></div>
                               )}
-                            </div>
+                            </Link>
                             <div className="min-w-0 flex-1">
                               <div className="flex items-start justify-between gap-2">
                                 <div>
-                                  <p className="text-sm font-semibold text-[var(--text-primary)] line-clamp-1">{pick.title}</p>
+                                  <Link
+                                    href={pick.mediaType === 'movie' ? `/movie/${pick.tmdbId}` : `/show/${pick.tmdbId}`}
+                                    className="text-sm font-semibold text-[var(--text-primary)] line-clamp-1 hover:underline"
+                                  >
+                                    {pick.title}
+                                  </Link>
                                   <p className="text-xs text-[var(--text-muted)] mt-0.5">
                                     {pick.mediaType === 'movie' ? 'Movie' : 'Show'} · {pick.releaseYear ?? 'Unknown'} · by {pick.senderName}
                                   </p>
@@ -926,7 +1135,17 @@ export function GroupWatchModal({
                               {pick.note && (
                                 <p className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-2">{pick.note}</p>
                               )}
+                              <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                                Watched {pick.watchedCount}/{pick.memberCount}
+                              </p>
                               <div className="mt-2 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleAttachPickToChat(pick)}
+                                  className="px-2.5 py-1 rounded-lg text-xs font-semibold border border-indigo-300/30 bg-indigo-500/10 text-indigo-100 hover:border-indigo-200/50 transition-colors"
+                                >
+                                  Share to chat
+                                </button>
                                 <button
                                   type="button"
                                   onClick={() => void handleVote(pick, 1)}
@@ -943,13 +1162,198 @@ export function GroupWatchModal({
                                 >
                                   ▼ {pick.downvotes}
                                 </button>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleMarkWatched(pick)}
+                                  disabled={pick.watchedByMe || markingWatchedPickId === pick.id}
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
+                                    pick.watchedByMe
+                                      ? 'bg-sky-500/20 border-sky-300/40 text-sky-100'
+                                      : 'bg-transparent border-white/15 text-[var(--text-secondary)] hover:border-sky-300/30 hover:text-sky-100'
+                                  }`}
+                                >
+                                  {pick.watchedByMe ? 'Watched' : markingWatchedPickId === pick.id ? 'Saving...' : 'Mark watched'}
+                                </button>
                               </div>
+                              <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+                                Drag this card into group chat to share it.
+                              </p>
                             </div>
                           </div>
                         </article>
                       ))}
                     </div>
                   )}
+                </div>
+
+                <div className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
+                  <div className="flex items-center justify-between mb-3 gap-2">
+                    <p className="text-sm font-semibold text-[var(--text-primary)]">Group chat</p>
+                    {chatLoading && <span className="text-xs text-[var(--text-muted)]">Loading...</span>}
+                  </div>
+
+                  <div
+                    onDragOver={(event) => {
+                      if (!Array.from(event.dataTransfer.types).includes(GROUP_PICK_DRAG_MIME)) return;
+                      event.preventDefault();
+                      if (!chatDropActive) setChatDropActive(true);
+                    }}
+                    onDragLeave={() => setChatDropActive(false)}
+                    onDrop={handleChatDrop}
+                    className={`mb-3 rounded-2xl border p-3 transition-colors ${
+                      chatDropActive
+                        ? 'border-indigo-300/55 bg-indigo-500/12'
+                        : 'border-white/10 bg-[var(--bg-primary)]/70'
+                    }`}
+                  >
+                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <input
+                        ref={chatInputRef}
+                        type="text"
+                        value={chatMessage}
+                        onChange={(e) => setChatMessage(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey) {
+                            e.preventDefault();
+                            void handleSendChatMessage();
+                          }
+                        }}
+                        maxLength={1200}
+                        placeholder="Write a message, or drag a movie from picks into this box..."
+                        className="rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleSendChatMessage()}
+                        disabled={sendingChatMessage || (!chatMessage.trim() && !chatSharedPick)}
+                        className="rounded-lg bg-indigo-400/90 px-4 py-2 text-sm font-semibold text-[#0b1327] disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {sendingChatMessage ? 'Sending...' : 'Send'}
+                      </button>
+                    </div>
+                    {chatSharedPick && (
+                      <div className="mt-3 rounded-xl border border-indigo-300/35 bg-indigo-500/10 p-2.5">
+                        <div className="flex items-center gap-2.5">
+                          <Link
+                            href={chatSharedPick.mediaType === 'movie' ? `/movie/${chatSharedPick.tmdbId}` : `/show/${chatSharedPick.tmdbId}`}
+                            className="h-14 w-10 rounded-md overflow-hidden bg-black/25 shrink-0"
+                            title={`Open ${chatSharedPick.title}`}
+                          >
+                            {chatSharedPick.poster ? (
+                              <img src={chatSharedPick.poster} alt={chatSharedPick.title} className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full" />
+                            )}
+                          </Link>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-[11px] uppercase tracking-[0.12em] text-indigo-100/80">Attached movie</p>
+                            <Link
+                              href={chatSharedPick.mediaType === 'movie' ? `/movie/${chatSharedPick.tmdbId}` : `/show/${chatSharedPick.tmdbId}`}
+                              className="text-sm font-semibold text-[var(--text-primary)] line-clamp-1 hover:underline"
+                            >
+                              {chatSharedPick.title}
+                            </Link>
+                            <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                              {chatSharedPick.mediaType === 'movie' ? 'Movie' : 'Show'} · {chatSharedPick.releaseYear ?? 'Unknown'}
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setChatSharedPick(null)}
+                            className="rounded-lg border border-white/15 bg-[var(--bg-card)] px-2.5 py-1 text-xs text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+                      Drop a pick here to share it in chat. Mobile users can use Share to chat.
+                    </p>
+                  </div>
+
+                  {chatMessages.length === 0 ? (
+                    <p className="text-sm text-[var(--text-muted)]">No messages yet. Start the conversation.</p>
+                  ) : (
+                    <div
+                      ref={chatContainerRef}
+                      className="max-h-[26rem] overflow-y-auto pr-1 space-y-2.5"
+                    >
+                      {chatMessages.map((message) => {
+                        const showBody =
+                          message.body.trim().length > 0 &&
+                          !(
+                            message.sharedMovie &&
+                            message.body.toLowerCase().startsWith('shared movie:')
+                          );
+                        return (
+                          <div
+                            key={message.id}
+                            className={`flex items-end gap-2 ${message.mine ? 'justify-end' : 'justify-start'}`}
+                          >
+                            {!message.mine && (
+                              <div className="h-7 w-7 shrink-0 rounded-full border border-white/15 bg-[var(--bg-primary)] flex items-center justify-center text-[11px] font-semibold text-[var(--text-secondary)]">
+                                {(message.senderName || 'M').slice(0, 1).toUpperCase()}
+                              </div>
+                            )}
+                            <article
+                              className={`max-w-[86%] rounded-2xl border px-3 py-2.5 ${
+                                message.mine
+                                  ? 'border-indigo-300/45 bg-gradient-to-b from-indigo-500/25 to-indigo-500/12'
+                                  : 'border-white/10 bg-[var(--bg-primary)]'
+                              }`}
+                            >
+                              {!message.mine && (
+                                <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                                  {message.senderName}
+                                </p>
+                              )}
+                              {message.sharedMovie && (
+                                <Link
+                                  href={message.sharedMovie.mediaType === 'movie' ? `/movie/${message.sharedMovie.tmdbId}` : `/show/${message.sharedMovie.tmdbId}`}
+                                  className="mb-2 block rounded-xl border border-white/10 bg-[var(--bg-card)]/90 p-2 hover:border-indigo-300/45 transition-colors"
+                                  title={`Open ${message.sharedMovie.title}`}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="h-14 w-10 rounded-md overflow-hidden bg-black/20 shrink-0">
+                                      {message.sharedMovie.poster ? (
+                                        <img src={message.sharedMovie.poster} alt={message.sharedMovie.title} className="w-full h-full object-cover" />
+                                      ) : (
+                                        <div className="w-full h-full" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-[11px] uppercase tracking-[0.12em] text-indigo-200/75">Shared pick</p>
+                                      <p className="text-sm font-semibold text-[var(--text-primary)] line-clamp-1">
+                                        {message.sharedMovie.title}
+                                      </p>
+                                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                                        {message.sharedMovie.mediaType === 'movie' ? 'Movie' : 'Show'} · {message.sharedMovie.releaseYear ?? 'Unknown'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </Link>
+                              )}
+                              {showBody && (
+                                <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">
+                                  {message.body}
+                                </p>
+                              )}
+                              <p className="mt-1 text-[10px] text-[var(--text-muted)] text-right">
+                                {new Date(message.createdAt).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </p>
+                            </article>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="mt-2 text-[11px] text-[var(--text-muted)]">
+                    Only accepted members in this group can read and send chat messages.
+                  </p>
                 </div>
               </>
             )}

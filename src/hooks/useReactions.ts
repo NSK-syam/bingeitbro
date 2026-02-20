@@ -6,11 +6,11 @@ import { useCallback } from 'react';
 export type ReactionType = 'fire' | 'heart' | 'mindblown' | 'crying' | 'clap';
 
 export const REACTIONS: { type: ReactionType; emoji: string; label: string }[] = [
-  { type: 'fire', emoji: '🔥', label: 'Fire' },
-  { type: 'heart', emoji: '❤️', label: 'Love' },
-  { type: 'mindblown', emoji: '🤯', label: 'Mind Blown' },
-  { type: 'crying', emoji: '😭', label: 'Made Me Cry' },
-  { type: 'clap', emoji: '👏', label: 'Must Watch' },
+  { type: 'fire', emoji: '', label: 'Fire' },
+  { type: 'heart', emoji: '', label: 'Love' },
+  { type: 'mindblown', emoji: '', label: 'Mind Blown' },
+  { type: 'crying', emoji: '', label: 'Made Me Cry' },
+  { type: 'clap', emoji: '', label: 'Must Watch' },
 ];
 
 interface ReactionsState {

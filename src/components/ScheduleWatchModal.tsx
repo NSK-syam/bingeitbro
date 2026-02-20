@@ -353,13 +353,13 @@ export function ScheduleWatchModal({
                       {poster ? (
                         <img src={poster} alt={movie.title} className="w-full h-full object-cover" />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-lg">🎬</div>
+                        <div className="w-full h-full flex items-center justify-center text-lg"></div>
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-medium text-[var(--text-primary)] truncate">{movie.title}</p>
                       <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                        {year ?? 'Unknown'} · {flagFromLanguage(movie.original_language)} · ★ {(movie.vote_average ?? 0).toFixed(1)}
+                        {year ?? 'Unknown'} · {flagFromLanguage(movie.original_language)} ·  {(movie.vote_average ?? 0).toFixed(1)}
                       </p>
                     </div>
                   </button>
@@ -375,7 +375,7 @@ export function ScheduleWatchModal({
               <img src={selectedPoster} alt={selected?.title || 'Selected movie'} className="w-full h-full object-cover" />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)] text-xs">
-                <span className="text-2xl mb-2">🎞️</span>
+                <span className="text-2xl mb-2"></span>
                 Select movie
               </div>
             )}
@@ -448,7 +448,7 @@ export function ScheduleWatchModal({
                     {item.moviePoster ? (
                       <img src={item.moviePoster} alt={item.movieTitle} className="w-full h-full object-cover" />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center text-sm">🎬</div>
+                      <div className="w-full h-full flex items-center justify-center text-sm"></div>
                     )}
                   </div>
                   <div className="min-w-0 flex-1">

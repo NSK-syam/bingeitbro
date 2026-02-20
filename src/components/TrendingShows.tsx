@@ -688,7 +688,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
 
                       <div className="mt-3 flex flex-wrap items-center gap-2 text-xs sm:text-sm">
                         <span className="px-2.5 py-1 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] font-semibold">
-                          {show.vote_average > 0 ? `★ ${show.vote_average.toFixed(1)}` : 'Unrated'}
+                          {show.vote_average > 0 ? ` ${show.vote_average.toFixed(1)}` : 'Unrated'}
                         </span>
                         <span className="px-2.5 py-1 rounded-full bg-white/15 text-white">{firstAirYear}</span>
                         <span className="px-2.5 py-1 rounded-full bg-white/15 text-white">{langLabel}</span>

@@ -16,7 +16,7 @@ type HeartParticle = {
   endY: number;
 };
 
-const HEARTS = ['❤', '💖', '💕', '💗', '💞'];
+const HEARTS = ['', '', '', '', ''];
 const TOTAL_HEARTS = 34;
 
 function createParticles(seed: number): HeartParticle[] {

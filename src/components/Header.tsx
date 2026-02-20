@@ -341,7 +341,7 @@ export function Header({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="px-4 py-2 border-b border-white/10 flex items-center gap-2">
-                        <span className="text-2xl">{userAvatar ?? '🎬'}</span>
+                        <span className="text-2xl">{userAvatar ?? ''}</span>
                         <p className="text-sm font-medium text-[var(--text-primary)]">{userName}</p>
                       </div>
                       <button

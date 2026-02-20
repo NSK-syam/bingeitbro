@@ -35,7 +35,7 @@ export function RecommendationToast({
       <div className="rounded-2xl border border-white/10 bg-[var(--bg-card)] shadow-2xl backdrop-blur">
         <div className="flex items-start gap-3 p-4">
           <div className="w-10 h-10 rounded-xl bg-[var(--accent)]/15 text-[var(--accent)] flex items-center justify-center text-lg">
-            🎬
+            
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-[var(--text-primary)]">{headline}</p>

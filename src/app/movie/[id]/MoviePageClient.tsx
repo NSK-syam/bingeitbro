@@ -33,7 +33,7 @@ function PosterImage({ src, alt, title }: { src: string; alt: string; title: str
         className="absolute inset-0 flex flex-col items-center justify-center p-4"
         style={{ backgroundColor: getPlaceholderColor(title) }}
       >
-        <span className="text-6xl mb-4">🎬</span>
+        <span className="text-6xl mb-4"></span>
         <span className="text-white text-lg font-semibold text-center">{title}</span>
       </div>
     );
@@ -292,7 +292,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
             mood: [],
             watchWith: undefined,
             ottLinks: ottLinks,
-            recommendedBy: { id: 'tmdb', name: 'TMDB', avatar: '🎬' },
+            recommendedBy: { id: 'tmdb', name: 'TMDB', avatar: '' },
             addedOn: tmdbData.release_date || new Date().toISOString(),
           };
 
@@ -337,7 +337,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           recommendedBy: {
             id: rec.user?.id || 'unknown',
             name: rec.user?.name || 'Anonymous',
-            avatar: rec.user?.avatar || '🎬',
+            avatar: rec.user?.avatar || '',
           },
           addedOn: rec.created_at,
         };
@@ -369,7 +369,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
   if (error || !movie) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center gap-4 px-4">
-        <div className="text-6xl">🎬</div>
+        <div className="text-6xl"></div>
         <h1 className="text-2xl font-bold text-[var(--text-primary)]">Movie not found</h1>
         <p className="text-[var(--text-muted)] text-center max-w-md">
           We couldn&apos;t load this title. It might have been removed or the link is invalid.

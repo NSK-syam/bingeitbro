@@ -5,6 +5,7 @@ import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { safeLocalStorageGet, safeLocalStorageKeys, safeLocalStorageRemove, safeLocalStorageSet, safeSessionStorageKeys, safeSessionStorageRemove } from '@/lib/safe-storage';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
+import { trackFunnelEvent } from '@/lib/funnel';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
 import { WatchReminderCenter } from './WatchReminderCenter';
@@ -39,6 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isConfigured = isSupabaseConfigured();
   const initializedRef = useRef(false);
   const ensuredProfileRef = useRef<string | null>(null);
+  const previousUserIdRef = useRef<string | null>(null);
   const [birthdayOpen, setBirthdayOpen] = useState(false);
   const [birthdayName, setBirthdayName] = useState('');
   const [birthdayToday, setBirthdayToday] = useState(false);
@@ -116,6 +118,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Set up auth listener FIRST - this ensures we catch the SIGNED_IN event
     // that fires when the page loads after OAuth redirect
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const nextUserId = session?.user?.id ?? null;
+      if (nextUserId && previousUserIdRef.current !== nextUserId) {
+        trackFunnelEvent('auth_success', { source: 'auth_state_change' });
+      }
+      previousUserIdRef.current = nextUserId;
       initializedRef.current = true;
       setSession(session);
       setUser(session?.user ?? null);
@@ -131,6 +138,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       // Only update if onAuthStateChange hasn't already initialized
       if (!initializedRef.current) {
+        const nextUserId = session?.user?.id ?? null;
+        if (nextUserId && previousUserIdRef.current !== nextUserId) {
+          trackFunnelEvent('auth_success', { source: 'initial_session' });
+        }
+        previousUserIdRef.current = nextUserId;
         initializedRef.current = true;
         setSession(session);
         setUser(session?.user ?? null);

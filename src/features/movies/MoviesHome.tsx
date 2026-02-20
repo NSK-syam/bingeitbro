@@ -255,7 +255,7 @@ export default function MoviesHome() {
       const friends: Recommender[] = friendsList.map((f) => ({
         id: f.id,
         name: f.name,
-        avatar: f.avatar ?? '🎬',
+        avatar: f.avatar ?? '',
       }));
       setUserFriends(friends);
 
@@ -280,7 +280,7 @@ export default function MoviesHome() {
             friendById.get(row.sender_id) ?? ({
               id: row.sender_id,
               name: 'A friend',
-              avatar: '🎬',
+              avatar: '',
             } as const);
           const id = row.tmdb_id
             ? `tmdb-${row.tmdb_id}`
@@ -298,7 +298,7 @@ export default function MoviesHome() {
             recommendedBy: {
               id: sender.id,
               name: sender.name || 'Anonymous',
-              avatar: sender.avatar ?? '🎬',
+              avatar: sender.avatar ?? '',
             },
             addedOn: row.created_at,
           });
@@ -933,7 +933,7 @@ export default function MoviesHome() {
                     'active:scale-[0.99]',
                   ].join(' ')}
                 >
-                  <span aria-hidden>💘</span>
+                  <span aria-hidden></span>
                   Valentines Special
                 </button>
               )}
@@ -1134,7 +1134,7 @@ export default function MoviesHome() {
               </div>
             ) : (
               <div className="text-center py-20">
-                <div className="text-6xl mb-4">👥</div>
+                <div className="text-6xl mb-4"></div>
                 <h3 className="text-xl font-semibold text-[var(--text-primary)] mb-2">
                   {userFriends.length === 0 ? 'No friends yet' : 'No recommendations'}
                 </h3>
@@ -1214,7 +1214,7 @@ export default function MoviesHome() {
               <div className="p-5 overflow-y-auto max-h-[calc(85vh-88px)]">
                 {watchedFriendsRecommendations.length === 0 ? (
                   <div className="py-14 text-center text-[var(--text-muted)]">
-                    <div className="text-3xl mb-2">🎬</div>
+                    <div className="text-3xl mb-2"></div>
                     <p>No watched friend suggestions yet.</p>
                   </div>
                 ) : (
@@ -1233,7 +1233,7 @@ export default function MoviesHome() {
                               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                             />
                           ) : (
-                            <div className="w-full h-full flex items-center justify-center text-4xl">🎬</div>
+                            <div className="w-full h-full flex items-center justify-center text-4xl"></div>
                           )}
                         </div>
                         <div className="p-2.5">
