@@ -169,7 +169,7 @@ export const TELUGU_THEMES: ChatTheme[] = [
   {
     id: 'they-call-him-og',
     label: 'They Call Him OG',
-    bg: 'linear-gradient(160deg, rgba(8,0,0,0.6) 0%, rgba(10,0,0,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/hgo9gS4le0J12tTbmgiu9Z2ckmh.jpg") center/cover no-repeat',
+    bg: 'linear-gradient(160deg, rgba(8,0,0,0.6) 0%, rgba(10,0,0,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/lBJR69jrQ8I84irRexFfO70v0EA.jpg") center/cover no-repeat',
     bubble: 'rgba(239,68,68,0.3)',
     bubbleBorder: 'rgba(248,113,113,0.5)',
   },
@@ -211,7 +211,7 @@ export const TELUGU_THEMES: ChatTheme[] = [
   {
     id: 'jersey',
     label: 'Jersey',
-    bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/7z95S3AWTrhaEclV5bxzB3YJFJ1.jpg") center/cover no-repeat',
+    bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/53CsGhbXKhmzcOQntz7Qs0whQ6g.jpg") center/cover no-repeat',
     bubble: 'rgba(59,130,246,0.3)',
     bubbleBorder: 'rgba(96,165,250,0.5)',
   },
