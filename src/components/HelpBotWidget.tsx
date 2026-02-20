@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion, PanInfo } from 'framer-motion';
 import { useAuth } from './AuthProvider';
 import {
   fetchFriendsList,
@@ -87,6 +88,7 @@ export function HelpBotWidget() {
   const [directMessages, setDirectMessages] = useState<DirectMessage[]>([]);
   const [groupMessages, setGroupMessages] = useState<WatchGroupMessage[]>([]);
   const [composer, setComposer] = useState('');
+  const [replyingToMessage, setReplyingToMessage] = useState<DirectMessage | WatchGroupMessage | null>(null);
   const [popups, setPopups] = useState<PopupAlert[]>([]);
   const [unreadByChat, setUnreadByChat] = useState<Record<string, PopupAlert>>({});
 
@@ -398,6 +400,7 @@ export function HelpBotWidget() {
     if (!user?.id || !selectedDirectUserId) {
       setDirectMessages([]);
       setDirectConversationOpen(false);
+      setReplyingToMessage(null);
       return;
     }
     void loadDirectConversation(user.id, selectedDirectUserId).catch(() => undefined);
@@ -406,6 +409,7 @@ export function HelpBotWidget() {
   useEffect(() => {
     if (!user?.id || !selectedGroupId) {
       setGroupMessages([]);
+      setReplyingToMessage(null);
       return;
     }
     void loadGroupConversation(user.id, selectedGroupId).catch(() => undefined);
@@ -512,8 +516,10 @@ export function HelpBotWidget() {
           senderId: user.id,
           recipientId: selectedDirectUserId,
           body,
+          replyToId: replyingToMessage?.id ?? null,
         });
         setComposer('');
+        setReplyingToMessage(null);
         await loadDirectConversation(user.id, selectedDirectUserId);
       } else {
         if (!selectedGroupId) return;
@@ -521,8 +527,10 @@ export function HelpBotWidget() {
           groupId: selectedGroupId,
           senderId: user.id,
           body,
+          replyToId: replyingToMessage?.id ?? null,
         });
         setComposer('');
+        setReplyingToMessage(null);
         await loadGroupConversation(user.id, selectedGroupId);
       }
       await refreshThreads(true);
@@ -771,17 +779,45 @@ export function HelpBotWidget() {
                         {activeDirect ? `Start chatting with ${activeDirect.name}.` : 'Pick a friend to start chatting.'}
                       </p>
                     ) : (
-                      directMessages.map((message) => (
-                        <div key={message.id} className={`flex ${message.mine ? 'justify-end' : 'justify-start'}`}>
-                          <article
-                            className={`max-w-[85%] rounded-xl border px-3 py-2 ${message.mine ? '' : 'border-white/10 bg-[var(--bg-primary)]'}`}
-                            style={message.mine ? { background: activeTheme.bubble, borderColor: activeTheme.bubbleBorder } : undefined}
+                      directMessages.map((message) => {
+                        const isReplying = replyingToMessage?.id === message.id;
+                        return (
+                          <motion.div
+                            key={message.id}
+                            layout
+                            drag="x"
+                            dragConstraints={{ left: 0, right: 0 }}
+                            dragElastic={{ right: 0.2, left: 0 }}
+                            onDragEnd={(e, info) => {
+                              if (info.offset.x > 50) {
+                                setReplyingToMessage(message);
+                                if (navigator.vibrate) navigator.vibrate(50);
+                              }
+                            }}
+                            className={`flex w-full items-center ${message.mine ? 'justify-end' : 'justify-start'}`}
                           >
-                            <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">{message.body}</p>
-                            <p className="mt-1 text-[10px] text-[var(--text-muted)] text-right">{shortTime(message.createdAt)}</p>
-                          </article>
-                        </div>
-                      ))
+                            <article
+                              className={`max-w-[85%] rounded-xl border px-3 py-2 transition-transform duration-200 ${message.mine ? '' : 'border-white/10 bg-[var(--bg-primary)]'} ${isReplying ? 'scale-[1.02] ring-2 ring-cyan-400/50' : ''}`}
+                              style={message.mine ? { background: activeTheme.bubble, borderColor: activeTheme.bubbleBorder } : undefined}
+                            >
+                              {message.replyToId && (
+                                <div className="mb-2 rounded bg-black/20 px-2 py-1.5 border-l-2 border-cyan-400/60 flex flex-col">
+                                  <span className="text-[10px] font-semibold text-cyan-200/80 mb-0.5">
+                                    {directMessages.find(m => m.id === message.replyToId)?.senderName || 'Replied Message'}
+                                  </span>
+                                  <span className="text-xs text-white/70 line-clamp-2">
+                                    {directMessages.find(m => m.id === message.replyToId)?.body || '...'}
+                                  </span>
+                                </div>
+                              )}
+                              <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">{message.body}</p>
+                              <p className="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-[var(--text-muted)] text-right">
+                                {shortTime(message.createdAt)}
+                              </p>
+                            </article>
+                          </motion.div>
+                        );
+                      })
                     )}
                   </div>
                 </div>
@@ -866,27 +902,55 @@ export function HelpBotWidget() {
                       {activeGroup ? `Start group chat in ${activeGroup.groupName}.` : 'Pick a group to chat.'}
                     </p>
                   ) : (
-                    groupMessages.map((message) => (
-                      <div key={message.id} className={`flex ${message.mine ? 'justify-end' : 'justify-start'}`}>
-                        <article
-                          className={`max-w-[85%] rounded-xl border px-3 py-2 ${message.mine ? '' : 'border-white/10 bg-[var(--bg-primary)]'}`}
-                          style={message.mine ? { background: activeTheme.bubble, borderColor: activeTheme.bubbleBorder } : undefined}
+                    groupMessages.map((message) => {
+                      const isReplying = replyingToMessage?.id === message.id;
+                      return (
+                        <motion.div
+                          key={message.id}
+                          layout
+                          drag="x"
+                          dragConstraints={{ left: 0, right: 0 }}
+                          dragElastic={{ right: 0.2, left: 0 }}
+                          onDragEnd={(e, info) => {
+                            if (info.offset.x > 50) {
+                              setReplyingToMessage(message);
+                              if (navigator.vibrate) navigator.vibrate(50);
+                            }
+                          }}
+                          className={`flex w-full items-center ${message.mine ? 'justify-end' : 'justify-start'}`}
                         >
-                          {!message.mine && (
-                            <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">{message.senderName}</p>
-                          )}
-                          {message.sharedMovie && (
-                            <p className="mb-1 text-xs text-cyan-100/90">
-                              Shared: {message.sharedMovie.title}
+                          <article
+                            className={`max-w-[85%] rounded-xl border px-3 py-2 transition-transform duration-200 ${message.mine ? '' : 'border-white/10 bg-[var(--bg-primary)]'} ${isReplying ? 'scale-[1.02] ring-2 ring-cyan-400/50' : ''}`}
+                            style={message.mine ? { background: activeTheme.bubble, borderColor: activeTheme.bubbleBorder } : undefined}
+                          >
+                            {!message.mine && (
+                              <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">{message.senderName}</p>
+                            )}
+                            {message.replyToId && (
+                              <div className="mb-2 rounded bg-black/20 px-2 py-1.5 border-l-2 border-cyan-400/60 flex flex-col">
+                                <span className="text-[10px] font-semibold text-cyan-200/80 mb-0.5">
+                                  {groupMessages.find(m => m.id === message.replyToId)?.senderName || 'Replied Message'}
+                                </span>
+                                <span className="text-xs text-white/70 line-clamp-2">
+                                  {groupMessages.find(m => m.id === message.replyToId)?.body || groupMessages.find(m => m.id === message.replyToId)?.sharedMovie?.title || '...'}
+                                </span>
+                              </div>
+                            )}
+                            {message.sharedMovie && (
+                              <p className="mb-1 text-xs text-cyan-100/90">
+                                Shared: {message.sharedMovie.title}
+                              </p>
+                            )}
+                            {message.body && (
+                              <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">{message.body}</p>
+                            )}
+                            <p className="mt-1 flex items-center gap-1.5 justify-end text-[10px] text-[var(--text-muted)] text-right">
+                              {shortTime(message.createdAt)}
                             </p>
-                          )}
-                          {message.body && (
-                            <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">{message.body}</p>
-                          )}
-                          <p className="mt-1 text-[10px] text-[var(--text-muted)] text-right">{shortTime(message.createdAt)}</p>
-                        </article>
-                      </div>
-                    ))
+                          </article>
+                        </motion.div>
+                      );
+                    })
                   )
                 ) : (
                   <p className="text-xs text-[var(--text-muted)]">Create or join a group to use group chat.</p>
@@ -895,7 +959,28 @@ export function HelpBotWidget() {
             </div>
           )}
 
-          <div className="border-t border-white/10 p-3">
+          <div className="border-t border-white/10 p-3 pt-2 relative">
+            {replyingToMessage && (
+              <div className="mb-2 flex items-center justify-between rounded-t-xl border-l-2 border-cyan-400/80 bg-[var(--bg-primary)]/80 px-3 py-1.5 backdrop-blur-md pb-2">
+                <div className="flex flex-col overflow-hidden">
+                  <span className="text-[10px] uppercase tracking-wider text-cyan-300 font-semibold mb-0.5">
+                    Replying to {replyingToMessage.mine ? 'yourself' : ('senderName' in replyingToMessage ? replyingToMessage.senderName : 'friend')}
+                  </span>
+                  <span className="text-xs text-[var(--text-muted)] line-clamp-1 truncate pr-2">
+                    {replyingToMessage.body || ('sharedMovie' in replyingToMessage && replyingToMessage.sharedMovie?.title) || 'Attachment'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setReplyingToMessage(null)}
+                  className="shrink-0 p-1 text-[var(--text-muted)] hover:text-white transition-colors h-6 w-6 ml-1 flex items-center justify-center rounded-full hover:bg-white/10"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" className="w-4 h-4" stroke="currentColor" strokeWidth="2">
+                    <path d="M18 6L6 18M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+            )}
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <input
                 type="text"

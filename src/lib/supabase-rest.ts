@@ -228,6 +228,7 @@ export interface DirectMessage {
   senderName: string;
   senderAvatar: string | null;
   body: string;
+  replyToId?: string | null;
   createdAt: string;
   mine: boolean;
 }
@@ -1053,6 +1054,7 @@ export interface WatchGroupMessage {
   senderAvatar: string | null;
   body: string;
   sharedMovie: WatchGroupSharedMovie | null;
+  replyToId?: string | null;
   createdAt: string;
   mine: boolean;
 }
@@ -1175,6 +1177,7 @@ export async function sendDirectMessage(input: {
   senderId: string;
   recipientId: string;
   body: string;
+  replyToId?: string | null;
 }): Promise<void> {
   const token = ensureAuthedToken();
   const body = input.body.trim();
@@ -1193,6 +1196,7 @@ export async function sendDirectMessage(input: {
         sender_id: input.senderId,
         recipient_id: input.recipientId,
         body: body.slice(0, 1200),
+        reply_to_id: input.replyToId ?? null,
       }),
       timeoutMs: DEFAULT_TIMEOUT_MS,
     },
@@ -1207,7 +1211,7 @@ export async function getDirectMessagesWithUser(
   const token = ensureAuthedToken();
   try {
     const params = new URLSearchParams({
-      select: 'id,sender_id,recipient_id,body,created_at',
+      select: 'id,sender_id,recipient_id,body,reply_to_id,created_at',
       or: `(and(sender_id.eq.${currentUserId},recipient_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},recipient_id.eq.${currentUserId}))`,
       order: 'created_at.asc',
       limit: '200',
@@ -1241,6 +1245,7 @@ export async function getDirectMessagesWithUser(
         senderName: sender?.name || 'Member',
         senderAvatar: sender?.avatar ?? null,
         body: msg.body,
+        replyToId: (msg as any).reply_to_id ?? null,
         createdAt: msg.created_at,
         mine: msg.sender_id === currentUserId,
       } satisfies DirectMessage;
@@ -2174,6 +2179,7 @@ export async function sendWatchGroupMessage(input: {
   groupId: string;
   senderId: string;
   body: string;
+  replyToId?: string | null;
   sharedMovie?: WatchGroupSharedMovie | null;
 }): Promise<void> {
   const token = ensureAuthedToken();
@@ -2200,6 +2206,7 @@ export async function sendWatchGroupMessage(input: {
     shared_title: sharedMovie?.title ?? null,
     shared_poster: sharedMovie?.poster ?? null,
     shared_release_year: sharedMovie?.releaseYear ?? null,
+    reply_to_id: input.replyToId ?? null,
   };
 
   try {
@@ -2240,6 +2247,7 @@ export async function sendWatchGroupMessage(input: {
           group_id: input.groupId,
           sender_id: input.senderId,
           body: body ? body.slice(0, 1200) : `Shared movie: ${sharedMovie.title}`.slice(0, 1200),
+          reply_to_id: input.replyToId ?? null,
         }),
         timeoutMs: DEFAULT_TIMEOUT_MS,
       },
@@ -2257,8 +2265,8 @@ export async function getWatchGroupMessages(
     const makeParams = (includeSharedColumns: boolean) =>
       new URLSearchParams({
         select: includeSharedColumns
-          ? 'id,group_id,sender_id,body,shared_media_type,shared_tmdb_id,shared_title,shared_poster,shared_release_year,created_at'
-          : 'id,group_id,sender_id,body,created_at',
+          ? 'id,group_id,sender_id,body,reply_to_id,shared_media_type,shared_tmdb_id,shared_title,shared_poster,shared_release_year,created_at'
+          : 'id,group_id,sender_id,body,reply_to_id,created_at',
         group_id: `eq.${groupId}`,
         order: 'created_at.desc',
         limit: '200',
@@ -2322,6 +2330,7 @@ export async function getWatchGroupMessages(
         senderName: sender?.name || 'Member',
         senderAvatar: sender?.avatar ?? null,
         body: msg.body ?? '',
+        replyToId: (msg as any).reply_to_id ?? null,
         sharedMovie,
         createdAt: msg.created_at,
         mine: msg.sender_id === currentUserId,
