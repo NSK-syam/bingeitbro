@@ -169,7 +169,7 @@ export const TELUGU_THEMES: ChatTheme[] = [
   {
     id: 'they-call-him-og',
     label: 'They Call Him OG',
-    bg: 'linear-gradient(160deg, rgba(8,0,0,0.6) 0%, rgba(10,0,0,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/lBJR69jrQ8I84irRexFfO70v0EA.jpg") center/cover no-repeat',
+    bg: 'linear-gradient(160deg, rgba(8,0,0,0.6) 0%, rgba(10,0,0,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/tSqvrZLsYQ6OnHALVvBKV6V9Ot0.jpg") center/cover no-repeat',
     bubble: 'rgba(239,68,68,0.3)',
     bubbleBorder: 'rgba(248,113,113,0.5)',
   },
