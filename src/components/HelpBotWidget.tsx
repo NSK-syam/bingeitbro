@@ -15,107 +15,13 @@ import {
   type FriendForSelect,
   type WatchGroupMessage,
 } from '@/lib/supabase-rest';
+import { ENGLISH_THEMES, TELUGU_THEMES, type ChatTheme } from '@/lib/chat-themes';
 
 type ChatTab = 'direct' | 'groups';
 
-// ─── Movie / Show Chat Themes ────────────────────────────────────────────────
-type ChatTheme = {
-  id: string;
-  label: string;
-  /** CSS value for the chat area background (gradient or solid color) */
-  bg: string;
-  /** CSS value for the sent-message bubble background */
-  bubble: string;
-  /** Border color for sent-message bubble (Tailwind-compatible inline style) */
-  bubbleBorder: string;
-  /** Whether to render text in dark color on sent bubbles */
-  darkText?: boolean;
-};
-
-const CHAT_THEMES: ChatTheme[] = [
-  {
-    // Neutral cinematic baseline
-    id: 'default',
-    label: 'Cinema Night',
-    bg: 'linear-gradient(160deg, rgba(4,8,16,0.6) 0%, rgba(4,8,16,0.95) 100%), url("https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1280&auto=format&fit=crop") center/cover no-repeat',
-    bubble: 'rgba(6,182,212,0.25)',
-    bubbleBorder: 'rgba(103,232,249,0.45)',
-  },
-  {
-    // Interstellar
-    id: 'interstellar',
-    label: 'Interstellar',
-    bg: 'linear-gradient(160deg, rgba(0,0,5,0.7) 0%, rgba(0,13,26,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/2ssWTSVklAEc98frZUQhgtGHx7s.jpg") center/cover no-repeat',
-    bubble: 'rgba(139,92,246,0.35)',
-    bubbleBorder: 'rgba(196,181,253,0.55)',
-  },
-  {
-    // The Matrix
-    id: 'matrix',
-    label: 'The Matrix',
-    bg: 'linear-gradient(160deg, rgba(0,18,0,0.7) 0%, rgba(0,8,0,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/tlm8UkiQsitc8rSuIAscQDCnP8d.jpg") center/cover no-repeat',
-    bubble: 'rgba(0,180,60,0.30)',
-    bubbleBorder: 'rgba(34,197,94,0.65)',
-  },
-  {
-    // Dune
-    id: 'dune',
-    label: 'Dune',
-    bg: 'linear-gradient(155deg, rgba(26,14,0,0.6) 0%, rgba(15,8,0,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/wYMbnrdRCREjNLwFlG5SLWzBjui.jpg") center/cover no-repeat',
-    bubble: 'rgba(217,119,6,0.35)',
-    bubbleBorder: 'rgba(251,191,36,0.65)',
-  },
-  {
-    // Blade Runner 2049
-    id: 'bladerunner',
-    label: 'Blade Runner 2049',
-    bg: 'linear-gradient(145deg, rgba(10,0,21,0.7) 0%, rgba(0,8,15,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/ilRyazdMJwN05exqhwK4tMKBYZs.jpg") center/cover no-repeat',
-    bubble: 'rgba(236,72,153,0.35)',
-    bubbleBorder: 'rgba(244,114,182,0.65)',
-  },
-  {
-    // Game of Thrones
-    id: 'game-of-thrones',
-    label: 'Game of Thrones',
-    bg: 'linear-gradient(160deg, rgba(6,13,20,0.6) 0%, rgba(4,10,16,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/zZqpAXxVSBtxV9qPBcscfXBcL2w.jpg") center/cover no-repeat',
-    bubble: 'rgba(147,210,240,0.25)',
-    bubbleBorder: 'rgba(186,230,253,0.55)',
-  },
-  {
-    // Avatar
-    id: 'avatar',
-    label: 'Avatar',
-    bg: 'linear-gradient(145deg, rgba(0,18,8,0.6) 0%, rgba(0,21,8,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/vL5LR6WdxWPjLPFRLe133jXWsh5.jpg") center/cover no-repeat',
-    bubble: 'rgba(52,211,153,0.30)',
-    bubbleBorder: 'rgba(110,231,183,0.60)',
-  },
-  {
-    // The Lord of the Rings
-    id: 'lotr',
-    label: 'The Lord of the Rings',
-    bg: 'linear-gradient(155deg, rgba(21,2,0,0.6) 0%, rgba(15,1,0,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/oiwc338EoBgS4sEI2ixAny4KQKg.jpg") center/cover no-repeat',
-    bubble: 'rgba(239,68,68,0.30)',
-    bubbleBorder: 'rgba(252,165,165,0.55)',
-  },
-  {
-    // Stranger Things
-    id: 'upside-down',
-    label: 'Stranger Things',
-    bg: 'linear-gradient(155deg, rgba(10,0,16,0.7) 0%, rgba(8,0,10,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/8zbAoryWbtH0DKdev8abFAjdufy.jpg") center/cover no-repeat',
-    bubble: 'rgba(217,70,239,0.35)',
-    bubbleBorder: 'rgba(232,121,249,0.60)',
-  },
-  {
-    // Breaking Bad
-    id: 'breaking-bad',
-    label: 'Breaking Bad',
-    bg: 'linear-gradient(145deg, rgba(3,17,8,0.7) 0%, rgba(4,11,8,0.95) 100%), url("https://image.tmdb.org/t/p/w1280/tsRy63Mu5cu8etL1X7ZLyf7UP1M.jpg") center/cover no-repeat',
-    bubble: 'rgba(34,197,94,0.30)',
-    bubbleBorder: 'rgba(134,239,172,0.60)',
-  },
-];
-
+const CHAT_THEMES = [...ENGLISH_THEMES, ...TELUGU_THEMES];
 const THEME_STORAGE_KEY = 'bib-chat-theme';
+const THEME_LANG_STORAGE_KEY = 'bib-chat-theme-lang';
 
 type GroupThreadPreview = {
   groupId: string;
@@ -186,9 +92,13 @@ export function HelpBotWidget() {
     if (typeof window === 'undefined') return 'default';
     return localStorage.getItem(THEME_STORAGE_KEY) ?? 'default';
   });
+  const [themeLang, setThemeLang] = useState<'English' | 'Telugu'>(() => {
+    if (typeof window === 'undefined') return 'English';
+    return (localStorage.getItem(THEME_LANG_STORAGE_KEY) as 'English' | 'Telugu') ?? 'English';
+  });
   const [showThemePicker, setShowThemePicker] = useState(false);
 
-  const activeTheme = CHAT_THEMES.find((t) => t.id === activeThemeId) ?? CHAT_THEMES[0];
+  const activeTheme = CHAT_THEMES.find((t) => t.id === activeThemeId) ?? ENGLISH_THEMES[0];
 
   const selectTheme = (themeId: string) => {
     setActiveThemeId(themeId);
@@ -675,44 +585,74 @@ export function HelpBotWidget() {
                 </button>
 
                 {showThemePicker && (
-                  <div className="absolute right-0 top-10 z-50 w-[min(82vw,360px)] rounded-2xl border border-white/15 bg-[#090d19]/98 backdrop-blur-2xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] p-3">
-                    <p className="mb-2.5 text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Chat Theme</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {CHAT_THEMES.map((theme) => {
-                        const isActive = theme.id === activeThemeId;
-                        const swatchBg = theme.bg === 'transparent'
-                          ? 'linear-gradient(135deg,#0f172a 0%,#1e293b 100%)'
-                          : theme.bg;
-                        return (
-                          <button
-                            key={theme.id}
-                            type="button"
-                            onClick={() => selectTheme(theme.id)}
-                            aria-label={`${theme.label} theme${isActive ? ' (active)' : ''}`}
-                            className={`relative overflow-hidden rounded-xl border transition-all text-left ${isActive
-                                ? 'border-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.5)]'
-                                : 'border-white/15 hover:border-white/45'
-                              }`}
-                          >
-                            <div className="h-6 w-full" style={{ background: swatchBg }} />
-                            <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-[#050917]/85">
-                              <span className="text-[10px] text-[var(--text-primary)] line-clamp-1">{theme.label}</span>
-                              {isActive && (
-                                <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-cyan-200">On</span>
-                              )}
-                            </div>
-                            {isActive && (
-                              <span className="absolute right-1 top-1 rounded-full border border-cyan-200/80 bg-cyan-500/25 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-cyan-100">
-                                Active
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
+                  <div className="absolute right-0 top-10 z-50 w-[min(90vw,420px)] rounded-2xl border border-white/15 bg-[#090d19]/98 backdrop-blur-3xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] p-3 overflow-hidden flex flex-col max-h-[60vh]">
+                    <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
+                      <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Chat Theme Filter</p>
+                      <div className="flex bg-[#050917]/80 rounded-lg p-0.5 border border-white/10">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setThemeLang('English');
+                            if (typeof window !== 'undefined') localStorage.setItem(THEME_LANG_STORAGE_KEY, 'English');
+                          }}
+                          className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-colors ${themeLang === 'English' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-300/30' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-transparent'
+                            }`}
+                        >
+                          English (20)
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setThemeLang('Telugu');
+                            if (typeof window !== 'undefined') localStorage.setItem(THEME_LANG_STORAGE_KEY, 'Telugu');
+                          }}
+                          className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-colors ${themeLang === 'Telugu' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-300/30' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-transparent'
+                            }`}
+                        >
+                          Telugu (20)
+                        </button>
+                      </div>
                     </div>
-                    <div className="mt-2.5 border-t border-white/10 pt-2">
+
+                    <div className="overflow-y-auto pr-1 pb-1 space-y-2 flex-1 min-h-0 custom-scrollbar">
+                      <div className="grid grid-cols-2 gap-2">
+                        {(themeLang === 'English' ? ENGLISH_THEMES : TELUGU_THEMES).map((theme) => {
+                          const isActive = theme.id === activeThemeId;
+                          const swatchBg = theme.bg === 'transparent'
+                            ? 'linear-gradient(135deg,#0f172a 0%,#1e293b 100%)'
+                            : theme.bg;
+                          return (
+                            <button
+                              key={theme.id}
+                              type="button"
+                              onClick={() => selectTheme(theme.id)}
+                              aria-label={`${theme.label} theme${isActive ? ' (active)' : ''}`}
+                              className={`relative overflow-hidden rounded-xl border transition-all text-left ${isActive
+                                  ? 'border-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.5)]'
+                                  : 'border-white/15 hover:border-white/45'
+                                }`}
+                            >
+                              <div className="h-10 w-full bg-cover bg-center" style={{ background: swatchBg }} />
+                              <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-[#050917]/95">
+                                <span className="text-[10px] font-medium text-[var(--text-primary)] line-clamp-1">{theme.label}</span>
+                                {isActive && (
+                                  <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-cyan-300">On</span>
+                                )}
+                              </div>
+                              {isActive && (
+                                <span className="absolute right-1 top-1 rounded-full border border-cyan-200/80 bg-cyan-500/25 px-1 py-0.5 text-[9px] font-semibold uppercase tracking-[0.08em] text-cyan-100 backdrop-blur-sm">
+                                  Active
+                                </span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    <div className="mt-2 border-t border-white/10 pt-2 shrink-0">
                       <p className="text-[10px] text-[var(--text-muted)] text-center">
-                        Current: {activeTheme.label}
+                        Current: <span className="text-cyan-200/90 font-medium">{activeTheme.label}</span>
                       </p>
                     </div>
                   </div>
@@ -788,8 +728,8 @@ export function HelpBotWidget() {
                           type="button"
                           onClick={() => openDirectConversation(thread.peerId)}
                           className={`w-full rounded-lg border px-2 py-1.5 text-left transition-colors ${selectedDirectUserId === thread.peerId
-                              ? 'border-cyan-300/55 bg-cyan-500/12'
-                              : 'border-white/10 bg-[var(--bg-card)] hover:border-cyan-300/35'
+                            ? 'border-cyan-300/55 bg-cyan-500/12'
+                            : 'border-white/10 bg-[var(--bg-card)] hover:border-cyan-300/35'
                             }`}
                         >
                           <div className="flex items-center justify-between gap-2">
@@ -825,8 +765,8 @@ export function HelpBotWidget() {
                         clearUnreadForTarget('groups', group.groupId);
                       }}
                       className={`w-full rounded-lg border px-2 py-1.5 text-left transition-colors ${selectedGroupId === group.groupId
-                          ? 'border-cyan-300/55 bg-cyan-500/12'
-                          : 'border-white/10 bg-[var(--bg-card)] hover:border-cyan-300/35'
+                        ? 'border-cyan-300/55 bg-cyan-500/12'
+                        : 'border-white/10 bg-[var(--bg-card)] hover:border-cyan-300/35'
                         }`}
                     >
                       <div className="flex items-center justify-between gap-2">
