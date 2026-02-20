@@ -88,23 +88,47 @@ export function HelpBotWidget() {
   const [popups, setPopups] = useState<PopupAlert[]>([]);
   const [unreadByChat, setUnreadByChat] = useState<Record<string, PopupAlert>>({});
 
-  const [activeThemeId, setActiveThemeId] = useState<string>(() => {
-    if (typeof window === 'undefined') return 'default';
-    return localStorage.getItem(THEME_STORAGE_KEY) ?? 'default';
+  const [themeMap, setThemeMap] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const stored = localStorage.getItem(THEME_STORAGE_KEY);
+      if (stored) {
+        if (stored.startsWith('{')) return JSON.parse(stored);
+        return { global: stored };
+      }
+    } catch (e) {
+      // ignore
+    }
+    return {};
   });
+
   const [themeLang, setThemeLang] = useState<'English' | 'Telugu'>(() => {
     if (typeof window === 'undefined') return 'English';
     return (localStorage.getItem(THEME_LANG_STORAGE_KEY) as 'English' | 'Telugu') ?? 'English';
   });
   const [showThemePicker, setShowThemePicker] = useState(false);
 
+  const currentChatKey = useMemo(() => {
+    if (tab === 'direct' && directConversationOpen && selectedDirectUserId) {
+      return `direct:${selectedDirectUserId}`;
+    }
+    if (tab === 'groups' && selectedGroupId) {
+      return `group:${selectedGroupId}`;
+    }
+    return 'global';
+  }, [tab, directConversationOpen, selectedDirectUserId, selectedGroupId]);
+
+  const activeThemeId = themeMap[currentChatKey] || themeMap['global'] || 'default';
   const activeTheme = CHAT_THEMES.find((t) => t.id === activeThemeId) ?? ENGLISH_THEMES[0];
 
   const selectTheme = (themeId: string) => {
-    setActiveThemeId(themeId);
-    if (typeof window !== 'undefined') {
-      localStorage.setItem(THEME_STORAGE_KEY, themeId);
-    }
+    setThemeMap((prev) => {
+      const next = { ...prev, [currentChatKey]: themeId };
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next));
+      }
+      return next;
+    });
     setShowThemePicker(false);
   };
 
@@ -628,8 +652,8 @@ export function HelpBotWidget() {
                               onClick={() => selectTheme(theme.id)}
                               aria-label={`${theme.label} theme${isActive ? ' (active)' : ''}`}
                               className={`relative overflow-hidden rounded-xl border transition-all text-left ${isActive
-                                  ? 'border-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.5)]'
-                                  : 'border-white/15 hover:border-white/45'
+                                ? 'border-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.5)]'
+                                : 'border-white/15 hover:border-white/45'
                                 }`}
                             >
                               <div className="h-10 w-full bg-cover bg-center" style={{ background: swatchBg }} />
