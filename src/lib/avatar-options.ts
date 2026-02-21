@@ -95,7 +95,16 @@ export const IMAGE_AVATAR_THEMES: ImageAvatarTheme[] = [
       { id: 'cruise_3', path: '/avatars/english_movies/cruise_3.jpg', label: `Mission: Impossible - Ghost Protocol` },
       { id: 'rdj_1', path: '/avatars/english_movies/rdj_1.jpg', label: `Avengers: Endgame` },
       { id: 'rdj_2', path: '/avatars/english_movies/rdj_2.jpg', label: `Avengers: Infinity War` },
-      { id: 'rdj_3', path: '/avatars/english_movies/rdj_3.jpg', label: `The Avengers` }
+      { id: 'rdj_3', path: '/avatars/english_movies/rdj_3.jpg', label: `The Avengers` },
+      { id: 'pitt_1', path: '/avatars/english_movies/pitt_1.jpg', label: `Deadpool 2` },
+      { id: 'pitt_2', path: '/avatars/english_movies/pitt_2.jpg', label: `F1` },
+      { id: 'pitt_3', path: '/avatars/english_movies/pitt_3.jpg', label: `World War Z` },
+      { id: 'bale_1', path: '/avatars/english_movies/bale_1.jpg', label: `The Dark Knight Rises` },
+      { id: 'bale_2', path: '/avatars/english_movies/bale_2.jpg', label: `The Dark Knight` },
+      { id: 'bale_3', path: '/avatars/english_movies/bale_3.jpg', label: `Thor: Love and Thunder` },
+      { id: 'depp_1', path: '/avatars/english_movies/depp_1.jpg', label: `Pirates of the Caribbean: Dead Man's Chest` },
+      { id: 'depp_2', path: '/avatars/english_movies/depp_2.jpg', label: `Pirates of the Caribbean: On Stranger Tides` },
+      { id: 'depp_3', path: '/avatars/english_movies/depp_3.jpg', label: `Alice in Wonderland` }
     ]
   },
   {
@@ -109,37 +118,16 @@ export const IMAGE_AVATAR_THEMES: ImageAvatarTheme[] = [
       { id: 'mahesh_3', path: '/avatars/telugu_movies/mahesh_3.jpg', label: `Maharshi` },
       { id: 'allu_1', path: '/avatars/telugu_movies/allu_1.jpg', label: `Pushpa 2 - The Rule` },
       { id: 'allu_2', path: '/avatars/telugu_movies/allu_2.jpg', label: `Pushpa: The Rise` },
-      { id: 'allu_3', path: '/avatars/telugu_movies/allu_3.jpg', label: `Ala Vaikunthapurramuloo` }
-    ]
-  },
-  {
-    name: 'Top English Series',
-    options: [
-      { id: 'english_series_0', path: '/avatars/english_series/a_knight_of_the_seve.jpg', label: `A Knight of the Seven Kingdoms` },
-      { id: 'english_series_1', path: '/avatars/english_series/supernatural.jpg', label: `Supernatural` },
-      { id: 'english_series_2', path: '/avatars/english_series/grey_s_anatomy.jpg', label: `Grey's Anatomy` },
-      { id: 'english_series_3', path: '/avatars/english_series/the_simpsons.jpg', label: `The Simpsons` },
-      { id: 'english_series_4', path: '/avatars/english_series/the_rookie.jpg', label: `The Rookie` },
-      { id: 'english_series_5', path: '/avatars/english_series/family_guy.jpg', label: `Family Guy` },
-      { id: 'english_series_6', path: '/avatars/english_series/stranger_things.jpg', label: `Stranger Things` },
-      { id: 'english_series_7', path: '/avatars/english_series/law_order_special_vi.jpg', label: `Law & Order: Special Victims Unit` },
-      { id: 'english_series_8', path: '/avatars/english_series/game_of_thrones.jpg', label: `Game of Thrones` },
-      { id: 'english_series_9', path: '/avatars/english_series/ncis.jpg', label: `NCIS` }
-    ]
-  },
-  {
-    name: 'Top Telugu Series',
-    options: [
-      { id: 'telugu_series_0', path: '/avatars/telugu_series/amrutham.jpg', label: `Amrutham` },
-      { id: 'telugu_series_1', path: '/avatars/telugu_series/dhoolpet_police_stat.jpg', label: `Dhoolpet Police Station` },
-      { id: 'telugu_series_2', path: '/avatars/telugu_series/bigg_boss_telugu.jpg', label: `Bigg Boss Telugu` },
-      { id: 'telugu_series_3', path: '/avatars/telugu_series/3_roses.jpg', label: `3 Roses` },
-      { id: 'telugu_series_4', path: '/avatars/telugu_series/arabia_kadali.jpg', label: `Arabia Kadali` },
-      { id: 'telugu_series_5', path: '/avatars/telugu_series/oka_chinna_family_st.jpg', label: `Oka Chinna Family Story` },
-      { id: 'telugu_series_6', path: '/avatars/telugu_series/shaitan.jpg', label: `Shaitan` },
-      { id: 'telugu_series_7', path: '/avatars/telugu_series/bujji_bhairava.jpg', label: `Bujji & Bhairava` },
-      { id: 'telugu_series_8', path: '/avatars/telugu_series/brinda.jpg', label: `Brinda` },
-      { id: 'telugu_series_9', path: '/avatars/telugu_series/dhahanam.jpg', label: `Dhahanam` }
+      { id: 'allu_3', path: '/avatars/telugu_movies/allu_3.jpg', label: `Ala Vaikunthapurramuloo` },
+      { id: 'ram_1', path: '/avatars/telugu_movies/ram_1.jpg', label: `RRR` },
+      { id: 'ram_2', path: '/avatars/telugu_movies/ram_2.jpg', label: `Game Changer` },
+      { id: 'ram_3', path: '/avatars/telugu_movies/ram_3.jpg', label: `Magadheera` },
+      { id: 'ntr_1', path: '/avatars/telugu_movies/ntr_1.jpg', label: `RRR` },
+      { id: 'ntr_2', path: '/avatars/telugu_movies/ntr_2.jpg', label: `Devara: Part 1` },
+      { id: 'ntr_3', path: '/avatars/telugu_movies/ntr_3.jpg', label: `Oosaravelli` },
+      { id: 'pawan_1', path: '/avatars/telugu_movies/pawan_1.jpg', label: `Gabbar Singh` },
+      { id: 'pawan_2', path: '/avatars/telugu_movies/pawan_2.jpg', label: `Komaram Puli` },
+      { id: 'pawan_3', path: '/avatars/telugu_movies/pawan_3.jpg', label: `Tholi Prema` }
     ]
   }
 ];
