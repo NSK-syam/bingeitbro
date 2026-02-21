@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { AuthModal, BibSplash, Header, MovieBackground, useAuth } from '@/components';
+import { AdDisplayUnit, AuthModal, BibSplash, Header, MovieBackground, useAuth } from '@/components';
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 import { trackFunnelEvent } from '@/lib/funnel';
 
@@ -132,7 +132,7 @@ export default function HomeGate() {
                 ) : null}
                 <div className="bib-guest-badges">
                   <span>100+ members already signed in</span>
-                  <span>No third-party tracking pixels</span>
+                  <span>Selected sponsored placements only</span>
                   <span>Works best in under 30 seconds with Google sign-in</span>
                 </div>
               </div>
@@ -168,9 +168,13 @@ export default function HomeGate() {
             </div>
             <div className="bib-guest-step">
               <h3>Private by design</h3>
-              <p>No ad network trackers. No spam feed. Just recommendations from people you trust.</p>
+              <p>No spam feed. Just recommendations from people you trust.</p>
             </div>
           </section>
+
+          <div className="mt-8">
+            <AdDisplayUnit className="mx-auto max-w-3xl" />
+          </div>
         </main>
       </div>
     );

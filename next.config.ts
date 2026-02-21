@@ -27,6 +27,10 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: "https",
+        hostname: "lixovgnusjbooxskigmd.supabase.co",
+      },
+      {
+        protocol: "https",
         hostname: "upload.wikimedia.org",
       },
       {

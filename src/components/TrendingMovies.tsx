@@ -3,6 +3,7 @@
 import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { SendToFriendModal } from './SendToFriendModal';
 import { useAuth } from './AuthProvider';
 import { getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, normalizeWatchProviderKey, resolveOttProvider, type TMDBWatchProviders } from '@/lib/tmdb';
@@ -472,7 +473,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         }
 
         trendingCache.set(cacheKey, { movies: allMovies, upcoming: upcomingByLang, ts: Date.now() });
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         if (err.name !== 'AbortError') {
           setError('Failed to fetch');
@@ -632,11 +633,10 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         <button
           type="button"
           onClick={() => setFilterOpen((o) => !o)}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all border ${
-            filterOpen
-              ? 'bg-[var(--accent)] text-[var(--bg-primary)] border-[var(--accent)]'
-              : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-white/10 hover:bg-[var(--bg-card)] hover:border-white/20'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all border ${filterOpen
+            ? 'bg-[var(--accent)] text-[var(--bg-primary)] border-[var(--accent)]'
+            : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-white/10 hover:bg-[var(--bg-card)] hover:border-white/20'
+            }`}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -769,13 +769,12 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                     }}
                     disabled={!availableInCountry}
                     title={!availableInCountry ? `Available in ${availabilityHint.replace(' only', '')}` : undefined}
-                    className={`px-3 py-1.5 text-sm rounded-full transition-all inline-flex items-center gap-1.5 ${
-                      !availableInCountry
-                        ? 'bg-[var(--bg-card)]/60 text-[var(--text-muted)]/55 border border-white/10 cursor-not-allowed'
-                        : activeOttKey === p.key
-                          ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
-                          : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                    }`}
+                    className={`px-3 py-1.5 text-sm rounded-full transition-all inline-flex items-center gap-1.5 ${!availableInCountry
+                      ? 'bg-[var(--bg-card)]/60 text-[var(--text-muted)]/55 border border-white/10 cursor-not-allowed'
+                      : activeOttKey === p.key
+                        ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
+                        : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
+                      }`}
                   >
                     <span>{p.name}</span>
                     {availabilityHint && <span className="text-[10px] uppercase tracking-wide">{availabilityHint}</span>}
@@ -815,7 +814,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             className="flex transition-transform duration-700 ease-out"
             style={{ transform: `translateX(-${activeHeroIndex * 100}%)` }}
           >
-            {topHeroMovies.map((movie) => {
+            {topHeroMovies.map((movie, index) => {
               const heroImage = movie.backdrop_path
                 ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}`
                 : movie.poster_path
@@ -827,10 +826,12 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
               return (
                 <article key={`hero-${movie.id}`} className="relative min-w-full h-[52vw] min-h-[280px] max-h-[540px]">
                   {heroImage ? (
-                    <img
+                    <Image
                       src={heroImage}
                       alt={movie.title}
-                      className="absolute inset-0 h-full w-full object-cover"
+                      fill
+                      priority={index === 0}
+                      className="object-cover"
                     />
                   ) : (
                     <div className="absolute inset-0 bg-[var(--bg-card)]" />
@@ -960,11 +961,12 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                       >
                         <div className="relative aspect-[2/3] overflow-hidden">
                           {movie.poster_path ? (
-                            <img
+                            <Image
                               src={`https://image.tmdb.org/t/p/w300${movie.poster_path}`}
                               alt={movie.title}
-                              className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                              loading="lazy"
+                              fill
+                              sizes="(max-width: 640px) 160px, 144px"
+                              className="object-cover transition-transform duration-500 group-hover:scale-105"
                             />
                           ) : (
                             <div className="absolute inset-0 bg-[var(--bg-secondary)] flex items-center justify-center">
@@ -1023,13 +1025,13 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         <h3 className="text-xl font-bold text-[var(--text-primary)] flex items-center gap-2">
           {searchQuery ? (
             <>
-               <span>Search: &quot;{searchQuery}&quot;</span>
+              <span>Search: &quot;{searchQuery}&quot;</span>
             </>
           ) : currentLang ? (
             <span>{currentLang.name} Movies</span>
           ) : (
             <>
-               <span>Latest & Trending</span>
+              <span>Latest & Trending</span>
             </>
           )}
         </h3>
@@ -1062,10 +1064,12 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
               >
                 <div className="relative aspect-[2/3] overflow-hidden">
                   {movie.poster_path ? (
-                    <img
+                    <Image
                       src={`https://image.tmdb.org/t/p/w300${movie.poster_path}`}
                       alt={movie.title}
-                      className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      fill
+                      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                      className="object-cover transition-transform duration-500 group-hover:scale-105"
                       loading="lazy"
                     />
                   ) : (
@@ -1105,7 +1109,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                             className="w-8 h-8 rounded-xl bg-[var(--bg-primary)]/90 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-lg transition-all duration-200 hover:scale-110 hover:border-[var(--accent)]/50 hover:shadow-[var(--accent)]/20 hover:shadow-md active:scale-95"
                             title={`Watch on ${item.name} (opens in new tab)`}
                           >
-                            <img src={item.url} alt={item.name} className="w-5 h-5 object-contain" />
+                            <Image src={item.url} alt={item.name} width={20} height={20} className="object-contain" />
                           </div>
                         );
                         return (
@@ -1194,20 +1198,23 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             </button>
           )}
         </div>
-      )}
+      )
+      }
 
       {/* Send to Friend Modal */}
-      {sendModalMovie && (
-        <SendToFriendModal
-          isOpen={!!sendModalMovie}
-          onClose={() => setSendModalMovie(null)}
-          movieId={`tmdb-${sendModalMovie.id}`}
-          movieTitle={sendModalMovie.title}
-          moviePoster={sendModalMovie.poster_path ? `https://image.tmdb.org/t/p/w300${sendModalMovie.poster_path}` : ''}
-          movieYear={parseInt(sendModalMovie.release_date?.split('-')[0] || '0')}
-          tmdbId={String(sendModalMovie.id)}
-        />
-      )}
-    </div>
+      {
+        sendModalMovie && (
+          <SendToFriendModal
+            isOpen={!!sendModalMovie}
+            onClose={() => setSendModalMovie(null)}
+            movieId={`tmdb-${sendModalMovie.id}`}
+            movieTitle={sendModalMovie.title}
+            moviePoster={sendModalMovie.poster_path ? `https://image.tmdb.org/t/p/w300${sendModalMovie.poster_path}` : ''}
+            movieYear={parseInt(sendModalMovie.release_date?.split('-')[0] || '0')}
+            tmdbId={String(sendModalMovie.id)}
+          />
+        )
+      }
+    </div >
   );
 }

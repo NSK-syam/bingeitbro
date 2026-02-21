@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import Image from 'next/image';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import {
   deleteWatchReminder,
@@ -351,7 +352,7 @@ export function ScheduleWatchModal({
                   >
                     <div className="w-10 h-14 rounded-md overflow-hidden bg-[var(--bg-primary)]/60 flex-shrink-0">
                       {poster ? (
-                        <img src={poster} alt={movie.title} className="w-full h-full object-cover" />
+                        <Image src={poster} alt={movie.title} fill sizes="(max-width: 768px) 80px, 120px" className="object-cover" />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center text-lg"></div>
                       )}
@@ -372,7 +373,7 @@ export function ScheduleWatchModal({
         <div className="mt-5 grid gap-4 sm:grid-cols-[140px_minmax(0,1fr)] items-start">
           <div className="w-[140px] aspect-[2/3] rounded-xl overflow-hidden bg-[var(--bg-secondary)]/70 border border-white/10">
             {selectedPoster ? (
-              <img src={selectedPoster} alt={selected?.title || 'Selected movie'} className="w-full h-full object-cover" />
+              <Image src={selectedPoster} alt={selected?.title || 'Selected movie'} fill sizes="140px" className="object-cover" />
             ) : (
               <div className="w-full h-full flex flex-col items-center justify-center text-[var(--text-muted)] text-xs">
                 <span className="text-2xl mb-2"></span>
@@ -446,7 +447,7 @@ export function ScheduleWatchModal({
                 >
                   <div className="w-10 h-14 rounded-md overflow-hidden bg-[var(--bg-primary)]/50 flex-shrink-0">
                     {item.moviePoster ? (
-                      <img src={item.moviePoster} alt={item.movieTitle} className="w-full h-full object-cover" />
+                      <Image src={item.moviePoster} alt={item.movieTitle} fill sizes="80px" className="object-cover" />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center text-sm"></div>
                     )}

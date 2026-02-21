@@ -8,7 +8,7 @@ export default function TermsOfService() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Terms of Service</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 18, 2026</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 20, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -95,6 +95,7 @@ export default function TermsOfService() {
               <li><strong>TMDB (The Movie Database):</strong> For movie and series metadata. BiB is not endorsed or certified by TMDB.</li>
               <li><strong>Streaming Platforms:</strong> We display links to streaming services (Netflix, Prime Video, Disney+ Hotstar, Aha, and 20+ others). We are not affiliated with these platforms and do not guarantee content availability.</li>
               <li><strong>Google:</strong> For OAuth authentication.</li>
+              <li><strong>Google AdSense:</strong> For sponsored ad delivery and measurement.</li>
               <li><strong>Cloudflare:</strong> For CDN, edge caching, and TMDB proxy services to improve global performance.</li>
               <li><strong>Supabase:</strong> For database hosting, authentication, and real-time features.</li>
             </ul>

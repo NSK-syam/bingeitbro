@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from './AuthProvider';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
@@ -22,7 +23,6 @@ import {
   renameWatchGroup,
   sendWatchGroupMessage,
   sendWatchGroupInvite,
-  updateWatchGroup,
   voteOnWatchGroupPick,
   type FriendForSelect,
   type WatchGroup,
@@ -98,7 +98,6 @@ export function GroupWatchModal({
   const [groupDescription, setGroupDescription] = useState('');
   const [creatingGroup, setCreatingGroup] = useState(false);
   const [editingGroupName, setEditingGroupName] = useState('');
-  const [editingGroupDescription, setEditingGroupDescription] = useState('');
   const [savingGroupSettings, setSavingGroupSettings] = useState(false);
   const [leavingGroup, setLeavingGroup] = useState(false);
 
@@ -269,11 +268,9 @@ export function GroupWatchModal({
   useEffect(() => {
     if (!activeGroup) {
       setEditingGroupName('');
-      setEditingGroupDescription('');
       return;
     }
     setEditingGroupName(activeGroup.name);
-    setEditingGroupDescription(activeGroup.description ?? '');
   }, [activeGroup]);
 
   useEffect(() => {
@@ -289,7 +286,6 @@ export function GroupWatchModal({
       setGroupName('');
       setGroupDescription('');
       setEditingGroupName('');
-      setEditingGroupDescription('');
       setFriendSearch('');
       setInviteUserId('');
       setPickQuery('');
@@ -411,16 +407,8 @@ export function GroupWatchModal({
     setError('');
     setSuccess('');
     try {
-      if (isActiveGroupOwner) {
-        await updateWatchGroup(activeGroup.id, {
-          name,
-          description: editingGroupDescription,
-        });
-        setSuccess('Group settings updated.');
-      } else {
-        await renameWatchGroup(activeGroup.id, name);
-        setSuccess('Group name updated.');
-      }
+      await renameWatchGroup(activeGroup.id, name);
+      setSuccess('Group name updated.');
       await loadGroups(activeGroup.id);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update group settings.';
@@ -767,7 +755,7 @@ export function GroupWatchModal({
                 <p className="text-sm font-semibold text-[var(--text-primary)]">Your groups</p>
                 {groupsLoading && <span className="text-xs text-[var(--text-muted)]">Loading…</span>}
               </div>
-                  {groups.length === 0 ? (
+              {groups.length === 0 ? (
                 <p className="text-sm text-[var(--text-muted)]">No groups yet. Create your first one.</p>
               ) : (
                 <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
@@ -799,6 +787,40 @@ export function GroupWatchModal({
                 </div>
               )}
             </section>
+
+            {activeGroup && (
+              <section className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
+                <p className="text-sm font-semibold text-[var(--text-primary)] mb-3">Group name</p>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={editingGroupName}
+                    onChange={(e) => setEditingGroupName(e.target.value)}
+                    maxLength={60}
+                    placeholder="Group name"
+                    className="w-full rounded-xl border border-white/10 bg-[var(--bg-primary)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleSaveGroupSettings}
+                    disabled={savingGroupSettings}
+                    className="w-full rounded-xl bg-indigo-400/90 px-3 py-2 text-sm font-semibold text-[#0b1327] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {savingGroupSettings ? 'Saving…' : 'Save group name'}
+                  </button>
+                  {!isActiveGroupOwner && (
+                    <button
+                      type="button"
+                      onClick={handleLeaveGroup}
+                      disabled={leavingGroup}
+                      className="w-full rounded-xl border border-rose-300/40 bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {leavingGroup ? 'Leaving…' : 'Leave group'}
+                    </button>
+                  )}
+                </div>
+              </section>
+            )}
 
             <section className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
               <div className="flex items-center justify-between mb-3">
@@ -855,72 +877,13 @@ export function GroupWatchModal({
             ) : (
               <>
                 <div className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
-                  <div className="flex flex-wrap items-center gap-2 justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
                     <div>
                       <h3 className="text-lg font-semibold text-[var(--text-primary)]">{activeGroup.name}</h3>
                       <p className="text-xs text-[var(--text-muted)] mt-1">
                         {activeGroup.description || 'No description'} · {members.length} members
                       </p>
                     </div>
-                    {isActiveGroupOwner && (
-                      <span className="text-[11px] uppercase tracking-[0.16em] px-2 py-1 rounded-full border border-indigo-300/40 text-indigo-200">
-                        Owner controls enabled
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="mt-4">
-                    <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">
-                      Group settings
-                    </p>
-                    <div className="rounded-xl border border-white/10 bg-[var(--bg-primary)] p-3 space-y-2">
-                      <input
-                        type="text"
-                        value={editingGroupName}
-                        onChange={(e) => setEditingGroupName(e.target.value)}
-                        maxLength={60}
-                        className="w-full rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
-                        placeholder="Group name"
-                      />
-                      {isActiveGroupOwner && (
-                        <textarea
-                          value={editingGroupDescription}
-                          onChange={(e) => setEditingGroupDescription(e.target.value)}
-                          maxLength={300}
-                          rows={2}
-                          className="w-full rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55 resize-none"
-                          placeholder="Group description"
-                        />
-                      )}
-                      <button
-                        type="button"
-                        onClick={handleSaveGroupSettings}
-                        disabled={savingGroupSettings}
-                        className="rounded-lg bg-indigo-400/90 px-3 py-2 text-sm font-semibold text-[#0b1327] disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {savingGroupSettings ? 'Saving…' : isActiveGroupOwner ? 'Save settings' : 'Save group name'}
-                      </button>
-                      {!isActiveGroupOwner && (
-                        <div className="pt-2 border-t border-white/10">
-                          <p className="text-sm text-[var(--text-muted)]">
-                            Don&apos;t want this group anymore? You can leave anytime.
-                          </p>
-                          <button
-                            type="button"
-                            onClick={handleLeaveGroup}
-                            disabled={leavingGroup}
-                            className="mt-2 rounded-lg border border-rose-300/40 bg-rose-500/15 px-3 py-2 text-sm font-semibold text-rose-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            {leavingGroup ? 'Leaving…' : 'Leave group'}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                    {!isActiveGroupOwner && (
-                      <div className="mt-2 rounded-lg border border-indigo-300/20 bg-indigo-500/10 px-3 py-2 text-[11px] text-indigo-100/90">
-                        All members in this group can rename the group.
-                      </div>
-                    )}
                   </div>
 
                   <div className="mt-4">
@@ -1061,7 +1024,7 @@ export function GroupWatchModal({
                         >
                           <div className="w-10 h-14 rounded-md overflow-hidden bg-black/30 flex-shrink-0">
                             {result.poster ? (
-                              <img src={result.poster} alt={result.title} className="w-full h-full object-cover" />
+                              <Image src={result.poster} alt={result.title} fill sizes="80px" className="object-cover" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-xs"></div>
                             )}
@@ -1110,7 +1073,7 @@ export function GroupWatchModal({
                               title={`Open ${pick.title}`}
                             >
                               {pick.poster ? (
-                                <img src={pick.poster} alt={pick.title} className="w-full h-full object-cover" />
+                                <Image src={pick.poster} alt={pick.title} fill sizes="80px" className="object-cover" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-sm"></div>
                               )}
@@ -1166,11 +1129,10 @@ export function GroupWatchModal({
                                   type="button"
                                   onClick={() => void handleMarkWatched(pick)}
                                   disabled={pick.watchedByMe || markingWatchedPickId === pick.id}
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${
-                                    pick.watchedByMe
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-colors ${pick.watchedByMe
                                       ? 'bg-sky-500/20 border-sky-300/40 text-sky-100'
                                       : 'bg-transparent border-white/15 text-[var(--text-secondary)] hover:border-sky-300/30 hover:text-sky-100'
-                                  }`}
+                                    }`}
                                 >
                                   {pick.watchedByMe ? 'Watched' : markingWatchedPickId === pick.id ? 'Saving...' : 'Mark watched'}
                                 </button>
@@ -1200,11 +1162,10 @@ export function GroupWatchModal({
                     }}
                     onDragLeave={() => setChatDropActive(false)}
                     onDrop={handleChatDrop}
-                    className={`mb-3 rounded-2xl border p-3 transition-colors ${
-                      chatDropActive
+                    className={`mb-3 rounded-2xl border p-3 transition-colors ${chatDropActive
                         ? 'border-indigo-300/55 bg-indigo-500/12'
                         : 'border-white/10 bg-[var(--bg-primary)]/70'
-                    }`}
+                      }`}
                   >
                     <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                       <input
@@ -1240,7 +1201,7 @@ export function GroupWatchModal({
                             title={`Open ${chatSharedPick.title}`}
                           >
                             {chatSharedPick.poster ? (
-                              <img src={chatSharedPick.poster} alt={chatSharedPick.title} className="w-full h-full object-cover" />
+                              <Image src={chatSharedPick.poster} alt={chatSharedPick.title} fill sizes="80px" className="object-cover" />
                             ) : (
                               <div className="w-full h-full" />
                             )}
@@ -1297,11 +1258,10 @@ export function GroupWatchModal({
                               </div>
                             )}
                             <article
-                              className={`max-w-[86%] rounded-2xl border px-3 py-2.5 ${
-                                message.mine
+                              className={`max-w-[86%] rounded-2xl border px-3 py-2.5 ${message.mine
                                   ? 'border-indigo-300/45 bg-gradient-to-b from-indigo-500/25 to-indigo-500/12'
                                   : 'border-white/10 bg-[var(--bg-primary)]'
-                              }`}
+                                }`}
                             >
                               {!message.mine && (
                                 <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
@@ -1317,7 +1277,7 @@ export function GroupWatchModal({
                                   <div className="flex items-center gap-2.5">
                                     <div className="h-14 w-10 rounded-md overflow-hidden bg-black/20 shrink-0">
                                       {message.sharedMovie.poster ? (
-                                        <img src={message.sharedMovie.poster} alt={message.sharedMovie.title} className="w-full h-full object-cover" />
+                                        <Image src={message.sharedMovie.poster} alt={message.sharedMovie.title} fill sizes="80px" className="object-cover" />
                                       ) : (
                                         <div className="w-full h-full" />
                                       )}

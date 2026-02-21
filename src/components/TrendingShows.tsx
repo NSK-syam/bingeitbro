@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import Image from 'next/image';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from './AuthProvider';
@@ -9,7 +10,8 @@ import { ScheduleWatchButton } from './ScheduleWatchButton';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
-import { GENRE_LIST, OTT_PROVIDERS, getImageUrl, getLanguageName, getTVWatchProviders, normalizeWatchProviderKey, resolveOttProvider, tmdbWatchProvidersToOttLinks, type TMDBTV, type TMDBTVSearchResult } from '@/lib/tmdb';
+import { OTT_PROVIDERS, getImageUrl, getLanguageName, getTVWatchProviders, normalizeWatchProviderKey, resolveOttProvider, tmdbWatchProvidersToOttLinks, type TMDBTV, type TMDBTVSearchResult } from '@/lib/tmdb';
+
 
 type TrendingShow = TMDBTV;
 
@@ -81,36 +83,36 @@ async function fetchShows(args: {
 
   const urls = q
     ? [
-        `${base}/search/tv?api_key=${apiKey}&query=${encodeURIComponent(q)}&page=1&include_adult=false`,
-      ]
+      `${base}/search/tv?api_key=${apiKey}&query=${encodeURIComponent(q)}&page=1&include_adult=false`,
+    ]
     : (() => {
-        if (!hasFilters) {
-          return [
-            `${base}/tv/popular?api_key=${apiKey}&language=en-US&page=1`,
-            `${base}/tv/top_rated?api_key=${apiKey}&language=en-US&page=1`,
-            `${base}/discover/tv?api_key=${apiKey}&with_original_language=te&sort_by=popularity.desc&page=1`,
-            `${base}/discover/tv?api_key=${apiKey}&with_original_language=hi&sort_by=popularity.desc&page=1`,
-            `${base}/discover/tv?api_key=${apiKey}&with_original_language=ta&sort_by=popularity.desc&page=1`,
-            `${base}/discover/tv?api_key=${apiKey}&with_original_language=ml&sort_by=popularity.desc&page=1`,
-            `${base}/discover/tv?api_key=${apiKey}&with_original_language=kn&sort_by=popularity.desc&page=1`,
-            `${base}/discover/tv?api_key=${apiKey}&with_original_language=ko&sort_by=popularity.desc&page=1`,
-            `${base}/discover/tv?api_key=${apiKey}&with_original_language=ja&sort_by=popularity.desc&page=1`,
-          ];
-        }
+      if (!hasFilters) {
+        return [
+          `${base}/tv/popular?api_key=${apiKey}&language=en-US&page=1`,
+          `${base}/tv/top_rated?api_key=${apiKey}&language=en-US&page=1`,
+          `${base}/discover/tv?api_key=${apiKey}&with_original_language=te&sort_by=popularity.desc&page=1`,
+          `${base}/discover/tv?api_key=${apiKey}&with_original_language=hi&sort_by=popularity.desc&page=1`,
+          `${base}/discover/tv?api_key=${apiKey}&with_original_language=ta&sort_by=popularity.desc&page=1`,
+          `${base}/discover/tv?api_key=${apiKey}&with_original_language=ml&sort_by=popularity.desc&page=1`,
+          `${base}/discover/tv?api_key=${apiKey}&with_original_language=kn&sort_by=popularity.desc&page=1`,
+          `${base}/discover/tv?api_key=${apiKey}&with_original_language=ko&sort_by=popularity.desc&page=1`,
+          `${base}/discover/tv?api_key=${apiKey}&with_original_language=ja&sort_by=popularity.desc&page=1`,
+        ];
+      }
 
-        const defaultLangs = ['en', 'hi', 'te', 'ta', 'kn'];
-        const langs = args.lang ? [args.lang] : defaultLangs;
-        const maxPages = 4;
-        const pages = Array.from({ length: maxPages }, (_, i) => i + 1);
-        const discoverBase = `${base}/discover/tv?api_key=${apiKey}&sort_by=${sortBy}&watch_region=${args.country}&with_watch_monetization_types=flatrate${genrePart}${yearPart}${ottPart}`;
-        const out: string[] = [];
-        for (const lang of langs) {
-          for (const page of pages) {
-            out.push(`${discoverBase}&with_original_language=${lang}&page=${page}`);
-          }
+      const defaultLangs = ['en', 'hi', 'te', 'ta', 'kn'];
+      const langs = args.lang ? [args.lang] : defaultLangs;
+      const maxPages = 4;
+      const pages = Array.from({ length: maxPages }, (_, i) => i + 1);
+      const discoverBase = `${base}/discover/tv?api_key=${apiKey}&sort_by=${sortBy}&watch_region=${args.country}&with_watch_monetization_types=flatrate${genrePart}${yearPart}${ottPart}`;
+      const out: string[] = [];
+      for (const lang of langs) {
+        for (const page of pages) {
+          out.push(`${discoverBase}&with_original_language=${lang}&page=${page}`);
         }
-        return out;
-      })();
+      }
+      return out;
+    })();
 
   const responses = await Promise.all(urls.map((u) => fetchTmdbWithProxy(u)));
   const payloads = await Promise.all(responses.map((r) => r.json().catch(() => null)));
@@ -239,11 +241,21 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
 
   const updateFilters = (updates: { lang?: string; genre?: string; year?: string; sort?: string; ott?: string }) => {
     const params = new URLSearchParams(searchParams.toString());
-    if (updates.lang !== undefined) (updates.lang ? params.set('lang', updates.lang) : params.delete('lang'));
-    if (updates.genre !== undefined) (updates.genre ? params.set('genre', updates.genre) : params.delete('genre'));
-    if (updates.year !== undefined) (updates.year ? params.set('year', updates.year) : params.delete('year'));
-    if (updates.sort !== undefined) (updates.sort ? params.set('sort', updates.sort) : params.delete('sort'));
-    if (updates.ott !== undefined) (updates.ott ? params.set('ott', updates.ott) : params.delete('ott'));
+    if (updates.lang !== undefined) {
+      if (updates.lang) params.set('lang', updates.lang); else params.delete('lang');
+    }
+    if (updates.genre !== undefined) {
+      if (updates.genre) params.set('genre', updates.genre); else params.delete('genre');
+    }
+    if (updates.year !== undefined) {
+      if (updates.year) params.set('year', updates.year); else params.delete('year');
+    }
+    if (updates.sort !== undefined) {
+      if (updates.sort) params.set('sort', updates.sort); else params.delete('sort');
+    }
+    if (updates.ott !== undefined) {
+      if (updates.ott) params.set('ott', updates.ott); else params.delete('ott');
+    }
     const qs = params.toString();
     const base = pathname && pathname.startsWith('/') ? pathname : '/shows';
     router.push(qs ? `${base}?${qs}` : base, { scroll: false });
@@ -385,7 +397,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
             const providers = await getTVWatchProviders(id);
             if (cancelled) return;
 
-            const region: any = country === 'IN' ? providers?.results?.IN : providers?.results?.US;
+            const region = (country === 'IN' ? providers?.results?.IN : providers?.results?.US) as Record<string, unknown> | undefined;
             const link = (region?.link as string | undefined) ?? undefined;
             const ottLinksAll = tmdbWatchProvidersToOttLinks(providers, show?.name || 'TV', id, 'tv');
             const want = country === 'IN' ? 'india' : 'usa';
@@ -447,11 +459,10 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
         <button
           type="button"
           onClick={() => setFilterOpen((o) => !o)}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all border ${
-            filterOpen
-              ? 'bg-[var(--accent)] text-[var(--bg-primary)] border-[var(--accent)]'
-              : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-white/10 hover:bg-[var(--bg-card)] hover:border-white/20'
-          }`}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-full text-sm font-medium transition-all border ${filterOpen
+            ? 'bg-[var(--accent)] text-[var(--bg-primary)] border-[var(--accent)]'
+            : 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-white/10 hover:bg-[var(--bg-card)] hover:border-white/20'
+            }`}
         >
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z" />
@@ -503,7 +514,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                   className={`px-3 py-1.5 text-sm rounded-full transition-all ${selectedLang === lang.code
                     ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
                     : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   {lang.name}
                 </button>
@@ -517,7 +528,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                 className={`px-3 py-1.5 text-sm rounded-full transition-all ${!selectedGenre
                   ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
                   : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                }`}
+                  }`}
               >
                 All
               </button>
@@ -528,7 +539,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                   className={`px-3 py-1.5 text-sm rounded-full transition-all ${selectedGenre === String(g.id)
                     ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
                     : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   {g.name}
                 </button>
@@ -543,7 +554,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                   className={`px-3 py-1.5 text-sm rounded-full transition-all ${!selectedYear
                     ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
                     : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   Any
                 </button>
@@ -554,7 +565,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                     className={`px-3 py-1.5 text-sm rounded-full transition-all ${expandedDecade === decade
                       ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium ring-2 ring-[var(--accent)] ring-offset-2 ring-offset-[var(--bg-primary)]'
                       : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                    }`}
+                      }`}
                   >
                     {decade}s
                   </button>
@@ -569,7 +580,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                       className={`px-3 py-1.5 text-sm rounded-full transition-all ${selectedYear === String(y)
                         ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
                         : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                      }`}
+                        }`}
                     >
                       {y}
                     </button>
@@ -585,7 +596,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                 className={`px-3 py-1.5 text-sm rounded-full transition-all ${!selectedOtt
                   ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
                   : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                }`}
+                  }`}
               >
                 All
               </button>
@@ -631,7 +642,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                   className={`px-3 py-1.5 text-sm rounded-full transition-all ${sortParam === opt.value
                     ? 'bg-[var(--accent)] text-[var(--bg-primary)] font-medium'
                     : 'bg-[var(--bg-card)] text-[var(--text-muted)] hover:bg-[var(--bg-card-hover)] hover:text-[var(--text-primary)]'
-                  }`}
+                    }`}
                 >
                   {opt.label}
                 </button>
@@ -652,7 +663,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
             className="flex transition-transform duration-700 ease-out"
             style={{ transform: `translateX(-${activeHeroIndex * 100}%)` }}
           >
-            {topHeroShows.map((show) => {
+            {topHeroShows.map((show, index) => {
               const heroImage = show.backdrop_path
                 ? getImageUrl(show.backdrop_path, 'original')
                 : getImageUrl(show.poster_path, 'w780');
@@ -663,10 +674,12 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
               return (
                 <article key={`show-hero-${show.id}`} className="relative min-w-full h-[52vw] min-h-[280px] max-h-[540px]">
                   {heroImage ? (
-                    <img
+                    <Image
                       src={heroImage}
                       alt={show.name}
-                      className="absolute inset-0 h-full w-full object-cover"
+                      fill
+                      priority={index === 0}
+                      className="object-cover"
                     />
                   ) : (
                     <div className="absolute inset-0 bg-[var(--bg-card)]" />
@@ -775,10 +788,12 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
               style={{ animationDelay: `${Math.min(idx, 12) * 45}ms` }}
             >
               <div className="relative aspect-[2/3] overflow-hidden">
-                <img
+                <Image
                   src={poster}
                   alt={show.name}
-                  className="absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                  fill
+                  sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 20vw"
+                  className="object-cover transition-transform duration-500 group-hover:scale-105"
                   loading="lazy"
                 />
                 <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/10 to-transparent" />
@@ -802,7 +817,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                           title={`Watch on ${item.name}`}
                         >
                           <div className="w-8 h-8 rounded-xl bg-[var(--bg-primary)]/90 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-lg transition-all duration-200 hover:scale-110 hover:border-[var(--accent)]/50 active:scale-95">
-                            <img src={item.url} alt={item.name} className="w-5 h-5 object-contain" />
+                            <Image src={item.url} alt={item.name} width={20} height={20} className="object-contain" />
                           </div>
                         </a>
                       );

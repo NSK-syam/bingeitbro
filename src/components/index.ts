@@ -34,3 +34,4 @@ export { WatchReminderCenter } from './WatchReminderCenter';
 export { FriendRecommendationReminderCenter } from './FriendRecommendationReminderCenter';
 export { ScheduleWatchModal } from './ScheduleWatchModal';
 export { HelpBotWidget } from './HelpBotWidget';
+export { AdDisplayUnit } from './AdDisplayUnit';

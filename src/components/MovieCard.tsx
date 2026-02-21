@@ -3,6 +3,7 @@
 
 import { Recommendation } from '@/types';
 import Link from 'next/link';
+import Image from 'next/image';
 import { useState } from 'react';
 import { WatchedButton } from './WatchedButton';
 import { ReactionBadges } from './ReactionBar';
@@ -136,11 +137,14 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
       {/* Poster */}
       <div className="relative aspect-[2/3] overflow-hidden">
         {!imageError ? (
-          <img
-            src={poster}
+          <Image
+            src={poster || ''}
             alt={`${title} poster`}
-            className={`absolute inset-0 w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${watched ? 'opacity-60' : ''}`}
+            fill
+            sizes="(max-width: 768px) 50vw, (max-width: 1200px) 33vw, 25vw"
+            className={`object-cover transition-transform duration-500 group-hover:scale-105 ${watched ? 'opacity-60' : ''}`}
             onError={() => setImageError(true)}
+            unoptimized={poster.startsWith('data:')}
           />
         ) : (
           <div
@@ -213,7 +217,7 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
                 className="w-7 h-7 rounded-full bg-[var(--bg-primary)]/80 border border-white/10 flex items-center justify-center overflow-hidden"
               >
                 {logoUrl ? (
-                  <img src={logoUrl} alt={link.platform} className="w-5 h-5 object-contain" />
+                  <Image src={logoUrl} alt={link.platform} width={20} height={20} className="object-contain" />
                 ) : (
                   <svg className="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                     <path d="M4 4.5a1 1 0 0 1 1.6-.8l9 6.5a1 1 0 0 1 0 1.6l-9 6.5A1 1 0 0 1 4 17.5v-13z" />
@@ -273,7 +277,7 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
                   className="w-6 h-6 rounded-full bg-[var(--bg-primary)]/80 border border-white/10 flex items-center justify-center overflow-hidden"
                 >
                   {logoUrl ? (
-                    <img src={logoUrl} alt={link.platform} className="w-4 h-4 object-contain" />
+                    <Image src={logoUrl} alt={link.platform} width={16} height={16} className="object-contain" />
                   ) : (
                     <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
                       <path d="M4 4.5a1 1 0 0 1 1.6-.8l9 6.5a1 1 0 0 1 0 1.6l-9 6.5A1 1 0 0 1 4 17.5v-13z" />

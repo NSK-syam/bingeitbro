@@ -8,7 +8,7 @@ export default function CookiePolicy() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Cookie Policy</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 16, 2026</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 20, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -23,9 +23,9 @@ export default function CookiePolicy() {
           <section>
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">2. How We Use Cookies</h2>
             <p>
-              BiB uses only <strong>essential cookies</strong> and <strong>local storage</strong> that are
-              strictly necessary for the Service to function. We do not use any tracking, advertising,
-              or analytics cookies.
+              BiB uses <strong>essential cookies</strong> and <strong>local storage</strong> that are
+              strictly necessary for the Service to function. When sponsored placements are shown, Google AdSense can set
+              advertising-related cookies or identifiers for ad delivery and measurement.
             </p>
           </section>
 
@@ -47,6 +47,12 @@ export default function CookiePolicy() {
                     <td className="py-3 px-2">Supabase authentication session. Keeps you signed in.</td>
                     <td className="py-3 px-2">Session</td>
                     <td className="py-3 px-2">Essential</td>
+                  </tr>
+                  <tr>
+                    <td className="py-3 px-2 font-mono text-xs">Google AdSense cookies</td>
+                    <td className="py-3 px-2">Advertising delivery and measurement by Google AdSense on sponsored placements.</td>
+                    <td className="py-3 px-2">Google-defined</td>
+                    <td className="py-3 px-2">Advertising (optional)</td>
                   </tr>
                 </tbody>
               </table>
@@ -103,12 +109,11 @@ export default function CookiePolicy() {
           <section>
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">5. What We Don&apos;t Use</h2>
             <ul className="list-disc pl-6 space-y-1">
-              <li>No advertising or marketing cookies</li>
-              <li>No third-party tracking cookies</li>
+              <li>No third-party advertising network scripts other than Google AdSense</li>
               <li>No analytics cookies (e.g., Google Analytics)</li>
               <li>No social media tracking pixels</li>
-              <li>No fingerprinting technologies</li>
-              <li>No cross-site tracking of any kind</li>
+              <li>No fingerprinting technologies operated by BiB itself</li>
+              <li>No cross-site tracking technologies operated by BiB itself</li>
             </ul>
           </section>
 

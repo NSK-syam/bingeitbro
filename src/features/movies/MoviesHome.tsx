@@ -15,6 +15,7 @@ import { MovieCalendarSpotlightPopup } from '@/components/MovieCalendarSpotlight
 import { ValentineHeartsBurst } from '@/components/ValentineHeartsBurst';
 import { RecommendationToast } from '@/components/RecommendationToast';
 import { CountryToggle } from '@/components/CountryToggle';
+import { AdDisplayUnit } from '@/components/AdDisplayUnit';
 import { HelpBotWidget } from '@/components/HelpBotWidget';
 import { useAuth } from '@/components/AuthProvider';
 import { Recommendation, Recommender, OTTLink } from '@/types';
@@ -770,6 +771,10 @@ export default function MoviesHome() {
                   </button>
                 </div>
               )}
+            </div>
+
+            <div className="mb-8">
+              <AdDisplayUnit className="mx-auto max-w-3xl" />
             </div>
 
             {/* Main Tabs - Trending and Friends */}

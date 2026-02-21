@@ -10,6 +10,7 @@ import { HelpBotWidget } from '@/components/HelpBotWidget';
 import { HubTabs } from '@/components/HubTabs';
 import { MovieCalendarSpotlightPopup } from '@/components/MovieCalendarSpotlightPopup';
 import { ShowBackground } from '@/components/ShowBackground';
+import { AdDisplayUnit } from '@/components/AdDisplayUnit';
 import { useAuth } from '@/components/AuthProvider';
 import { useCountry } from '@/hooks';
 
@@ -87,6 +88,10 @@ export default function ShowsHome() {
               <p className="mt-3 text-sm text-[var(--text-secondary)]">
                 Trending across languages, plus your friends&apos; picks. Add a show to your profile or send it directly to a friend.
               </p>
+            </div>
+
+            <div className="mt-6">
+              <AdDisplayUnit className="max-w-3xl" />
             </div>
 
             <div className="mt-8 bg-[var(--bg-card)] border border-white/10 rounded-3xl p-4 sm:p-6">

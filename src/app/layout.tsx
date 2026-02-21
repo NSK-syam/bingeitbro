@@ -76,6 +76,11 @@ export default function RootLayout({
           data-domain="bingeitbro.com"
           src="https://datafa.st/js/script.js"
         />
+        <script
+          async
+          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2865422080937547"
+          crossOrigin="anonymous"
+        />
       </head>
       <body className={fontClass}>
         <AuthProvider>

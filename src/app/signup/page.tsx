@@ -1,21 +1,30 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
-import { AuthModal, BibSplash, MovieBackground, useAuth } from '@/components';
+import { Suspense } from 'react';
+import { CinematicAuth } from '@/components/CinematicAuth';
+import { useAuth, MovieBackground } from '@/components';
+import { BibSplash } from '@/components/BibSplash';
 
-export default function SignupPage() {
-  const router = useRouter();
+function SignupContent() {
   const { user } = useAuth();
 
+  if (user) {
+    // If the user is already logged in, the CinematicAuth will redirect them.
+  }
+
   return (
-    <div className="min-h-screen relative">
+    <div className="min-h-screen relative bg-black">
       <BibSplash enabled={!user} />
       <MovieBackground />
-      <AuthModal
-        isOpen
-        initialMode="signup"
-        onClose={() => router.push('/')}
-      />
+      <CinematicAuth />
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={null}>
+      <SignupContent />
+    </Suspense>
   );
 }

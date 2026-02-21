@@ -8,7 +8,7 @@ export default function PrivacyPolicy() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Privacy Policy</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 16, 2026</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 20, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -40,6 +40,7 @@ export default function PrivacyPolicy() {
             <ul className="list-disc pl-6 space-y-1">
               <li><strong>Authentication Data:</strong> Session tokens and authentication cookies necessary to keep you signed in.</li>
               <li><strong>Local Storage Data:</strong> We store certain preferences locally in your browser, including your watched movies list and UI preferences. This data stays on your device and is not transmitted to our servers.</li>
+              <li><strong>Usage Events:</strong> We collect privacy-focused page and interaction events through DataFast analytics.</li>
             </ul>
 
             <h3 className="text-lg font-medium text-[var(--text-primary)] mt-4 mb-2">2.3 Information from Third Parties</h3>
@@ -85,7 +86,7 @@ export default function PrivacyPolicy() {
             <ul className="list-disc pl-6 space-y-1 mt-2">
               <li><strong>Public Recommendations:</strong> Your movie recommendations, username, and avatar are visible to other users of the Service.</li>
               <li><strong>Friends:</strong> Your friends can see your recommendations and send you nudges.</li>
-              <li><strong>Service Providers:</strong> We use Supabase for database hosting, Vercel for website hosting, Cloudflare for CDN and edge caching, and TMDB for movie data. These providers process data as necessary to provide their services.</li>
+              <li><strong>Service Providers:</strong> We use Supabase for database hosting, Vercel for website hosting, Cloudflare for CDN and edge caching, TMDB for movie data, DataFast for privacy-focused analytics, and Google AdSense for advertising. These providers process data as necessary to provide their services.</li>
               <li><strong>Email Notifications:</strong> Your email address is used to send scheduled watch reminders, friend recommendations, group invites, and birthday celebrations. You can manage notification preferences in your profile settings.</li>
               <li><strong>Legal Requirements:</strong> We may disclose your information if required by law, regulation, or legal process.</li>
             </ul>
@@ -95,7 +96,7 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">6. Cookies and Local Storage</h2>
             <p>
               We use essential cookies and browser local storage for authentication and basic functionality.
-              We do not use tracking cookies, advertising cookies, or any third-party analytics services.
+              When sponsored placements are shown, Google AdSense may set advertising-related cookies or similar identifiers for ad delivery and measurement.
               For more details, see our <Link href="/cookies" className="text-[var(--accent)] hover:underline">Cookie Policy</Link>.
             </p>
           </section>
