@@ -87,16 +87,29 @@ export const IMAGE_AVATAR_THEMES: ImageAvatarTheme[] = [
   {
     name: 'Top English Movies',
     options: [
-      { id: 'english_movies_0', path: '/avatars/english_movies/mercy.jpg', label: `Mercy` },
-      { id: 'english_movies_1', path: '/avatars/english_movies/space_time.jpg', label: `Space/Time` },
-      { id: 'english_movies_2', path: '/avatars/english_movies/28_years_later_the_b.jpg', label: `28 Years Later: The Bone Temple` },
-      { id: 'english_movies_3', path: '/avatars/english_movies/greenland_2_migratio.jpg', label: `Greenland 2: Migration` },
-      { id: 'english_movies_4', path: '/avatars/english_movies/deathstalker.jpg', label: `Deathstalker` },
-      { id: 'english_movies_5', path: '/avatars/english_movies/zootopia_2.jpg', label: `Zootopia 2` },
-      { id: 'english_movies_6', path: '/avatars/english_movies/the_wrecking_crew.jpg', label: `The Wrecking Crew` },
-      { id: 'english_movies_7', path: '/avatars/english_movies/_wuthering_heights_.jpg', label: `“Wuthering Heights”` },
-      { id: 'english_movies_8', path: '/avatars/english_movies/predator_badlands.jpg', label: `Predator: Badlands` },
-      { id: 'english_movies_9', path: '/avatars/english_movies/the_housemaid.jpg', label: `The Housemaid` }
+      { id: 'leo_1', path: '/avatars/english_movies/leo_1.jpg', label: `Titanic` },
+      { id: 'leo_2', path: '/avatars/english_movies/leo_2.jpg', label: `Inception` },
+      { id: 'leo_3', path: '/avatars/english_movies/leo_3.jpg', label: `The Revenant` },
+      { id: 'cruise_1', path: '/avatars/english_movies/cruise_1.jpg', label: `Top Gun: Maverick` },
+      { id: 'cruise_2', path: '/avatars/english_movies/cruise_2.jpg', label: `Mission: Impossible - Fallout` },
+      { id: 'cruise_3', path: '/avatars/english_movies/cruise_3.jpg', label: `Mission: Impossible - Ghost Protocol` },
+      { id: 'rdj_1', path: '/avatars/english_movies/rdj_1.jpg', label: `Avengers: Endgame` },
+      { id: 'rdj_2', path: '/avatars/english_movies/rdj_2.jpg', label: `Avengers: Infinity War` },
+      { id: 'rdj_3', path: '/avatars/english_movies/rdj_3.jpg', label: `The Avengers` }
+    ]
+  },
+  {
+    name: 'Top Telugu Movies',
+    options: [
+      { id: 'prabhas_1', path: '/avatars/telugu_movies/prabhas_1.jpg', label: `Bāhubali 2: The Conclusion` },
+      { id: 'prabhas_2', path: '/avatars/telugu_movies/prabhas_2.jpg', label: `Kalki 2898-AD` },
+      { id: 'prabhas_3', path: '/avatars/telugu_movies/prabhas_3.jpg', label: `Bāhubali: The Beginning` },
+      { id: 'mahesh_1', path: '/avatars/telugu_movies/mahesh_1.jpg', label: `Sarileru Neekevvaru` },
+      { id: 'mahesh_2', path: '/avatars/telugu_movies/mahesh_2.jpg', label: `Bharat Ane Nenu` },
+      { id: 'mahesh_3', path: '/avatars/telugu_movies/mahesh_3.jpg', label: `Maharshi` },
+      { id: 'allu_1', path: '/avatars/telugu_movies/allu_1.jpg', label: `Pushpa 2 - The Rule` },
+      { id: 'allu_2', path: '/avatars/telugu_movies/allu_2.jpg', label: `Pushpa: The Rise` },
+      { id: 'allu_3', path: '/avatars/telugu_movies/allu_3.jpg', label: `Ala Vaikunthapurramuloo` }
     ]
   },
   {
@@ -112,21 +125,6 @@ export const IMAGE_AVATAR_THEMES: ImageAvatarTheme[] = [
       { id: 'english_series_7', path: '/avatars/english_series/law_order_special_vi.jpg', label: `Law & Order: Special Victims Unit` },
       { id: 'english_series_8', path: '/avatars/english_series/game_of_thrones.jpg', label: `Game of Thrones` },
       { id: 'english_series_9', path: '/avatars/english_series/ncis.jpg', label: `NCIS` }
-    ]
-  },
-  {
-    name: 'Top Telugu Movies',
-    options: [
-      { id: 'telugu_movies_0', path: '/avatars/telugu_movies/b_hubali_the_epic.jpg', label: `Bāhubali: The Epic` },
-      { id: 'telugu_movies_1', path: '/avatars/telugu_movies/laila.jpg', label: `Laila` },
-      { id: 'telugu_movies_2', path: '/avatars/telugu_movies/the_rajasaab.jpg', label: `The Rajasaab` },
-      { id: 'telugu_movies_3', path: '/avatars/telugu_movies/rrr.jpg', label: `RRR` },
-      { id: 'telugu_movies_4', path: '/avatars/telugu_movies/v_ran_si.jpg', label: `Vāranāsi` },
-      { id: 'telugu_movies_5', path: '/avatars/telugu_movies/devara_part_1.jpg', label: `Devara: Part 1` },
-      { id: 'telugu_movies_6', path: '/avatars/telugu_movies/shivam.jpg', label: `Shivam` },
-      { id: 'telugu_movies_7', path: '/avatars/telugu_movies/annayya.jpg', label: `Annayya` },
-      { id: 'telugu_movies_8', path: '/avatars/telugu_movies/dragon.jpg', label: `Dragon` },
-      { id: 'telugu_movies_9', path: '/avatars/telugu_movies/funky.jpg', label: `Funky` }
     ]
   },
   {
