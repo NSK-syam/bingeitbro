@@ -335,6 +335,8 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             `&primary_release_date.lte=${today}` +
             `&with_watch_monetization_types=flatrate` +
             `&watch_region=${country}` +
+            `&vote_average.gte=6.0` +
+            `&vote_count.gte=100` +
             `${ottPart}` +
             `${genrePart}${yearPart}`;
           const upcomingBaseUrl = upcomingWindow
@@ -424,7 +426,8 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
               `?api_key=${apiKey}` +
               `&sort_by=popularity.desc` +
               `&primary_release_date.lte=${today}` +
-              `&vote_count.gte=50` +
+              `&vote_average.gte=6.0` +
+              `&vote_count.gte=200` +
               `&include_adult=false` +
               `&watch_region=${country}` +
               `&page=1`;

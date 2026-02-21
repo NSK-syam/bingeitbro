@@ -669,12 +669,13 @@ export async function getTrendingToday(): Promise<NewRelease[]> {
   try {
     const lastYear = new Date().getFullYear() - 1;
     const base = `api_key=${TMDB_API_KEY}&with_watch_monetization_types=flatrate&primary_release_date.gte=${lastYear}-01-01&sort_by=popularity.desc`;
+    const ratingFilter = `&vote_average.gte=6.0&vote_count.gte=100`;
 
     const [usRecent, usIndian, inRecent, inIndian] = await Promise.all([
-      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=US&vote_count.gte=50&page=1`),
-      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=US&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
-      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=IN&vote_count.gte=50&page=1`),
-      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}&watch_region=IN&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
+      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}${ratingFilter}&watch_region=US&page=1`),
+      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}${ratingFilter}&watch_region=US&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
+      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}${ratingFilter}&watch_region=IN&page=1`),
+      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}${ratingFilter}&watch_region=IN&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
     ]);
 
     const collect = async (res: Response) => (res.ok ? (await res.json()).results || [] : []);
