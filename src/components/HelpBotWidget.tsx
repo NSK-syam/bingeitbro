@@ -4,10 +4,20 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from './AuthProvider';
 import {
+  applyMentionTarget,
+  filterMentionTargets,
+  getMentionQueryState,
+  mentionHandle,
+  splitMentionSegments,
+  type MentionQueryState,
+  type MentionTarget,
+} from '@/lib/chat-mentions';
+import {
   fetchFriendsList,
   getDirectChatThreads,
   getDirectMessagesWithUser,
   getMyWatchGroups,
+  getWatchGroupMembers,
   getWatchGroupMessages,
   sendDirectMessage,
   sendWatchGroupMessage,
@@ -18,6 +28,7 @@ import {
   type DirectMessage,
   type DirectMessageThread,
   type FriendForSelect,
+  type WatchGroupMember,
   type WatchGroupMessage,
 } from '@/lib/supabase-rest';
 import { ENGLISH_THEMES, TELUGU_THEMES } from '@/lib/chat-themes';
@@ -130,7 +141,10 @@ export function HelpBotWidget() {
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [directMessages, setDirectMessages] = useState<DirectMessage[]>([]);
   const [groupMessages, setGroupMessages] = useState<WatchGroupMessage[]>([]);
+  const [groupMembersByGroup, setGroupMembersByGroup] = useState<Record<string, WatchGroupMember[]>>({});
   const [composer, setComposer] = useState('');
+  const [composerMentionQuery, setComposerMentionQuery] = useState<MentionQueryState | null>(null);
+  const [composerMentionIndex, setComposerMentionIndex] = useState(0);
   const [replyingToMessage, setReplyingToMessage] = useState<DirectMessage | WatchGroupMessage | null>(null);
   const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
   const [reactingMessageId, setReactingMessageId] = useState<string | null>(null);
@@ -226,6 +240,7 @@ export function HelpBotWidget() {
   const knownLatestByThreadRef = useRef<Record<string, string>>({});
   const initializedRef = useRef(false);
   const chatBodyRef = useRef<HTMLDivElement>(null);
+  const composerInputRef = useRef<HTMLInputElement>(null);
   const knownLatestBootstrappedUserRef = useRef<string | null>(null);
   const reactionLongPressTimerRef = useRef<number | null>(null);
 
@@ -424,7 +439,10 @@ export function HelpBotWidget() {
       setGroupThreads([]);
       setDirectMessages([]);
       setGroupMessages([]);
+      setGroupMembersByGroup({});
       setComposer('');
+      setComposerMentionQuery(null);
+      setComposerMentionIndex(0);
       setReplyingToMessage(null);
       setReactionPickerMessageId(null);
       setReactingMessageId(null);
@@ -479,9 +497,13 @@ export function HelpBotWidget() {
       setDirectConversationOpen(false);
       setReplyingToMessage(null);
       setReactionPickerMessageId(null);
+      setComposerMentionQuery(null);
+      setComposerMentionIndex(0);
       return;
     }
     setReactionPickerMessageId(null);
+    setComposerMentionQuery(null);
+    setComposerMentionIndex(0);
     void loadDirectConversation(user.id, selectedDirectUserId).catch(() => undefined);
   }, [user?.id, selectedDirectUserId, loadDirectConversation]);
 
@@ -490,11 +512,29 @@ export function HelpBotWidget() {
       setGroupMessages([]);
       setReplyingToMessage(null);
       setReactionPickerMessageId(null);
+      setComposerMentionQuery(null);
+      setComposerMentionIndex(0);
       return;
     }
     setReactionPickerMessageId(null);
+    setComposerMentionQuery(null);
+    setComposerMentionIndex(0);
     void loadGroupConversation(user.id, selectedGroupId).catch(() => undefined);
   }, [user?.id, selectedGroupId, loadGroupConversation]);
+
+  useEffect(() => {
+    if (!selectedGroupId) {
+      setComposerMentionQuery(null);
+      setComposerMentionIndex(0);
+      return;
+    }
+    if (groupMembersByGroup[selectedGroupId]) return;
+    void getWatchGroupMembers(selectedGroupId)
+      .then((rows) => {
+        setGroupMembersByGroup((prev) => ({ ...prev, [selectedGroupId]: rows }));
+      })
+      .catch(() => undefined);
+  }, [selectedGroupId, groupMembersByGroup]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -506,6 +546,13 @@ export function HelpBotWidget() {
   useEffect(() => {
     if (!isOpen) {
       setReactionPickerMessageId(null);
+      setComposerMentionQuery(null);
+      setComposerMentionIndex(0);
+      return;
+    }
+    if (tab !== 'groups') {
+      setComposerMentionQuery(null);
+      setComposerMentionIndex(0);
     }
   }, [isOpen, tab, directConversationOpen]);
 
@@ -564,6 +611,39 @@ export function HelpBotWidget() {
     [groupThreads, selectedGroupId],
   );
 
+  const groupMentionTargets = useMemo<MentionTarget[]>(
+    () =>
+      tab === 'groups' && selectedGroupId
+        ? (groupMembersByGroup[selectedGroupId] ?? []).map((member) => ({
+          id: member.userId,
+          name: member.name,
+          username: member.username,
+        }))
+        : [],
+    [groupMembersByGroup, selectedGroupId, tab],
+  );
+
+  const filteredComposerMentions = useMemo(
+    () =>
+      tab === 'groups' && composerMentionQuery
+        ? filterMentionTargets(groupMentionTargets, composerMentionQuery.query, user?.id ?? null)
+        : [],
+    [tab, composerMentionQuery, groupMentionTargets, user?.id],
+  );
+
+  const renderMessageBody = useCallback((value: string) => (
+    <>
+      {splitMentionSegments(value).map((segment, index) => (
+        <span
+          key={`mention-segment-${index}-${segment.mention ? 'm' : 't'}`}
+          className={segment.mention ? 'font-semibold text-cyan-200' : undefined}
+        >
+          {segment.text}
+        </span>
+      ))}
+    </>
+  ), []);
+
   const popupCount = Object.keys(unreadByChat).length;
 
   const removePopup = useCallback((popupId: string) => {
@@ -588,6 +668,8 @@ export function HelpBotWidget() {
     setSelectedDirectUserId(peerId);
     setDirectConversationOpen(true);
     setComposer('');
+    setComposerMentionQuery(null);
+    setComposerMentionIndex(0);
     setReactionPickerMessageId(null);
     clearPopupsForTarget('direct', peerId);
     clearUnreadForTarget('direct', peerId);
@@ -598,6 +680,8 @@ export function HelpBotWidget() {
     setTab(popup.kind);
     setError('');
     setComposer('');
+    setComposerMentionQuery(null);
+    setComposerMentionIndex(0);
     setReactionPickerMessageId(null);
     if (popup.kind === 'direct') {
       setSelectedDirectUserId(popup.targetId);
@@ -649,6 +733,35 @@ export function HelpBotWidget() {
     refreshThreads,
   ]);
 
+  const syncComposerMentionQuery = useCallback((value: string, cursor: number) => {
+    if (tab !== 'groups') {
+      setComposerMentionQuery(null);
+      setComposerMentionIndex(0);
+      return;
+    }
+    const queryState = getMentionQueryState(value, cursor);
+    setComposerMentionQuery(queryState);
+    if (!queryState) {
+      setComposerMentionIndex(0);
+    } else {
+      setComposerMentionIndex((prev) => Math.min(prev, 5));
+    }
+  }, [tab]);
+
+  const applyComposerMention = useCallback((target: MentionTarget) => {
+    if (!composerMentionQuery) return;
+    const applied = applyMentionTarget(composer, composerMentionQuery, target);
+    setComposer(applied.text);
+    setComposerMentionQuery(null);
+    setComposerMentionIndex(0);
+    requestAnimationFrame(() => {
+      const input = composerInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(applied.cursor, applied.cursor);
+    });
+  }, [composer, composerMentionQuery]);
+
   const sendCurrentMessage = async () => {
     if (!user?.id || sending) return;
     const body = composer.trim();
@@ -666,6 +779,8 @@ export function HelpBotWidget() {
           replyToId: replyingToMessage?.id ?? null,
         });
         setComposer('');
+        setComposerMentionQuery(null);
+        setComposerMentionIndex(0);
         setReplyingToMessage(null);
         await loadDirectConversation(user.id, selectedDirectUserId);
       } else {
@@ -677,6 +792,8 @@ export function HelpBotWidget() {
           replyToId: replyingToMessage?.id ?? null,
         });
         setComposer('');
+        setComposerMentionQuery(null);
+        setComposerMentionIndex(0);
         setReplyingToMessage(null);
         await loadGroupConversation(user.id, selectedGroupId);
       }
@@ -745,6 +862,8 @@ export function HelpBotWidget() {
           onClick={() => {
             setShowThemePicker(false);
             setReactionPickerMessageId(null);
+            setComposerMentionQuery(null);
+            setComposerMentionIndex(0);
           }}
         >
           <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
@@ -757,6 +876,8 @@ export function HelpBotWidget() {
               onClick={() => {
                 setIsOpen(false);
                 setShowThemePicker(false);
+                setComposerMentionQuery(null);
+                setComposerMentionIndex(0);
               }}
               className="h-8 w-8 rounded-full border border-white/15 text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:border-white/35 transition-colors"
               aria-label="Close chat shortcuts"
@@ -773,6 +894,8 @@ export function HelpBotWidget() {
                   onClick={() => {
                     setTab('direct');
                     setComposer('');
+                    setComposerMentionQuery(null);
+                    setComposerMentionIndex(0);
                     setDirectConversationOpen(false);
                     setReactionPickerMessageId(null);
                   }}
@@ -786,6 +909,8 @@ export function HelpBotWidget() {
                   onClick={() => {
                     setTab('groups');
                     setComposer('');
+                    setComposerMentionQuery(null);
+                    setComposerMentionIndex(0);
                     setReactionPickerMessageId(null);
                   }}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${tab === 'groups' ? 'bg-[var(--accent)] text-[#130f0a]' : 'text-[var(--text-muted)]'
@@ -1067,6 +1192,8 @@ export function HelpBotWidget() {
                       type="button"
                       onClick={() => {
                         setSelectedGroupId(group.groupId);
+                        setComposerMentionQuery(null);
+                        setComposerMentionIndex(0);
                         setReactionPickerMessageId(null);
                         clearPopupsForTarget('groups', group.groupId);
                         clearUnreadForTarget('groups', group.groupId);
@@ -1150,7 +1277,9 @@ export function HelpBotWidget() {
                               </p>
                             )}
                             {message.body && (
-                              <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">{message.body}</p>
+                              <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">
+                                {renderMessageBody(message.body)}
+                              </p>
                             )}
                             <p className="mt-1 flex items-center gap-1.5 justify-end text-[10px] text-[var(--text-muted)] text-right">
                               {shortTime(message.createdAt)}
@@ -1228,10 +1357,51 @@ export function HelpBotWidget() {
             )}
             <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
               <input
+                ref={composerInputRef}
                 type="text"
                 value={composer}
-                onChange={(e) => setComposer(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setComposer(nextValue);
+                  syncComposerMentionQuery(nextValue, e.target.selectionStart ?? nextValue.length);
+                }}
+                onClick={(e) => {
+                  syncComposerMentionQuery(
+                    e.currentTarget.value,
+                    e.currentTarget.selectionStart ?? e.currentTarget.value.length,
+                  );
+                }}
+                onKeyUp={(e) => {
+                  syncComposerMentionQuery(
+                    e.currentTarget.value,
+                    e.currentTarget.selectionStart ?? e.currentTarget.value.length,
+                  );
+                }}
                 onKeyDown={(e) => {
+                  if (tab === 'groups' && composerMentionQuery && filteredComposerMentions.length > 0) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setComposerMentionIndex((prev) => (prev + 1) % filteredComposerMentions.length);
+                      return;
+                    }
+                    if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setComposerMentionIndex((prev) => (prev - 1 + filteredComposerMentions.length) % filteredComposerMentions.length);
+                      return;
+                    }
+                    if (e.key === 'Enter' || e.key === 'Tab') {
+                      e.preventDefault();
+                      const selected = filteredComposerMentions[composerMentionIndex] ?? filteredComposerMentions[0];
+                      if (selected) applyComposerMention(selected);
+                      return;
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      setComposerMentionQuery(null);
+                      setComposerMentionIndex(0);
+                      return;
+                    }
+                  }
                   if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
                     void sendCurrentMessage();
@@ -1254,6 +1424,35 @@ export function HelpBotWidget() {
                 {sending ? 'Sending...' : 'Send'}
               </button>
             </div>
+            {tab === 'groups' && composerMentionQuery && filteredComposerMentions.length > 0 && (
+              <div className="mt-2 rounded-xl border border-cyan-300/30 bg-[#070f1a]/95 p-1">
+                <p className="px-2 pb-1 text-[10px] uppercase tracking-[0.14em] text-cyan-200/70">
+                  Mention a member
+                </p>
+                <div className="max-h-36 overflow-y-auto space-y-0.5">
+                  {filteredComposerMentions.map((target, index) => {
+                    const handle = mentionHandle(target);
+                    const active = index === composerMentionIndex;
+                    return (
+                      <button
+                        key={`composer-mention-${target.id}`}
+                        type="button"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => applyComposerMention(target)}
+                        className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
+                          active
+                            ? 'bg-cyan-500/20 text-cyan-100'
+                            : 'text-[var(--text-primary)] hover:bg-cyan-500/10'
+                        }`}
+                      >
+                        <span className="font-semibold">{target.name}</span>
+                        <span className="ml-1 text-[11px] text-[var(--text-muted)]">@{handle}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

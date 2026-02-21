@@ -8,6 +8,15 @@ import { useAuth } from './AuthProvider';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { ENGLISH_THEMES, TELUGU_THEMES } from '@/lib/chat-themes';
 import {
+  applyMentionTarget,
+  filterMentionTargets,
+  getMentionQueryState,
+  mentionHandle,
+  splitMentionSegments,
+  type MentionQueryState,
+  type MentionTarget,
+} from '@/lib/chat-mentions';
+import {
   addWatchGroupPick,
   clearWatchGroupPickVote,
   createWatchGroup,
@@ -101,6 +110,8 @@ export function GroupWatchModal({
   const [chatMessages, setChatMessages] = useState<WatchGroupMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
   const [chatMessage, setChatMessage] = useState('');
+  const [chatMentionQuery, setChatMentionQuery] = useState<MentionQueryState | null>(null);
+  const [chatMentionIndex, setChatMentionIndex] = useState(0);
   const [chatSharedPick, setChatSharedPick] = useState<WatchGroupPick | null>(null);
   const [chatDropActive, setChatDropActive] = useState(false);
   const [replyingToMessage, setReplyingToMessage] = useState<WatchGroupMessage | null>(null);
@@ -188,6 +199,24 @@ export function GroupWatchModal({
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [friends, members, pendingInvites, friendSearch]);
+
+  const groupMentionTargets = useMemo<MentionTarget[]>(
+    () =>
+      members.map((member) => ({
+        id: member.userId,
+        name: member.name,
+        username: member.username,
+      })),
+    [members],
+  );
+
+  const filteredChatMentions = useMemo(
+    () =>
+      chatMentionQuery
+        ? filterMentionTargets(groupMentionTargets, chatMentionQuery.query, user?.id ?? null)
+        : [],
+    [groupMentionTargets, chatMentionQuery, user?.id],
+  );
 
   const baselineMemberCount = useMemo(
     () => Math.max(1, activeGroup?.memberCount ?? 0, members.length),
@@ -349,6 +378,8 @@ export function GroupWatchModal({
   useEffect(() => {
     setChatSharedPick(null);
     setChatDropActive(false);
+    setChatMentionQuery(null);
+    setChatMentionIndex(0);
     setReplyingToMessage(null);
     setReactionPickerMessageId(null);
     setReactingMessageId(null);
@@ -408,6 +439,8 @@ export function GroupWatchModal({
       setPickQuery('');
       setPickNote('');
       setChatMessage('');
+      setChatMentionQuery(null);
+      setChatMentionIndex(0);
       setChatSharedPick(null);
       setReplyingToMessage(null);
       setReactionPickerMessageId(null);
@@ -779,6 +812,43 @@ export function GroupWatchModal({
     }
   }, [activeGroupId, user?.id]);
 
+  const syncChatMentionQuery = useCallback((value: string, cursor: number) => {
+    const queryState = getMentionQueryState(value, cursor);
+    setChatMentionQuery(queryState);
+    if (!queryState) {
+      setChatMentionIndex(0);
+    } else {
+      setChatMentionIndex((prev) => Math.min(prev, 5));
+    }
+  }, []);
+
+  const applyChatMention = useCallback((target: MentionTarget) => {
+    if (!chatMentionQuery) return;
+    const applied = applyMentionTarget(chatMessage, chatMentionQuery, target);
+    setChatMessage(applied.text);
+    setChatMentionQuery(null);
+    setChatMentionIndex(0);
+    requestAnimationFrame(() => {
+      const input = chatInputRef.current;
+      if (!input) return;
+      input.focus();
+      input.setSelectionRange(applied.cursor, applied.cursor);
+    });
+  }, [chatMessage, chatMentionQuery]);
+
+  const renderMessageBody = useCallback((value: string) => (
+    <>
+      {splitMentionSegments(value).map((segment, index) => (
+        <span
+          key={`mention-segment-${index}-${segment.mention ? 'm' : 't'}`}
+          className={segment.mention ? 'font-semibold text-cyan-200' : undefined}
+        >
+          {segment.text}
+        </span>
+      ))}
+    </>
+  ), []);
+
   const handleSendChatMessage = async () => {
     if (!activeGroupId || !user) return;
     const body = chatMessage.trim();
@@ -795,6 +865,8 @@ export function GroupWatchModal({
         replyToId: replyingToMessage?.id ?? null,
       });
       setChatMessage('');
+      setChatMentionQuery(null);
+      setChatMentionIndex(0);
       setChatSharedPick(null);
       setReplyingToMessage(null);
       const rows = await getWatchGroupMessages(activeGroupId, user.id);
@@ -858,6 +930,7 @@ export function GroupWatchModal({
         className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-3xl border border-indigo-300/20 bg-[var(--bg-card)] p-6 sm:p-7 shadow-[0_30px_90px_rgba(0,0,0,0.55)]"
         onClick={(e) => {
           e.stopPropagation();
+          setChatMentionQuery(null);
           setReactionPickerMessageId(null);
           setShowThemePicker(false);
         }}
@@ -1439,8 +1512,48 @@ export function GroupWatchModal({
                         ref={chatInputRef}
                         type="text"
                         value={chatMessage}
-                        onChange={(e) => setChatMessage(e.target.value)}
+                        onChange={(e) => {
+                          const nextValue = e.target.value;
+                          setChatMessage(nextValue);
+                          syncChatMentionQuery(nextValue, e.target.selectionStart ?? nextValue.length);
+                        }}
+                        onClick={(e) => {
+                          syncChatMentionQuery(
+                            e.currentTarget.value,
+                            e.currentTarget.selectionStart ?? e.currentTarget.value.length,
+                          );
+                        }}
+                        onKeyUp={(e) => {
+                          syncChatMentionQuery(
+                            e.currentTarget.value,
+                            e.currentTarget.selectionStart ?? e.currentTarget.value.length,
+                          );
+                        }}
                         onKeyDown={(e) => {
+                          if (chatMentionQuery && filteredChatMentions.length > 0) {
+                            if (e.key === 'ArrowDown') {
+                              e.preventDefault();
+                              setChatMentionIndex((prev) => (prev + 1) % filteredChatMentions.length);
+                              return;
+                            }
+                            if (e.key === 'ArrowUp') {
+                              e.preventDefault();
+                              setChatMentionIndex((prev) => (prev - 1 + filteredChatMentions.length) % filteredChatMentions.length);
+                              return;
+                            }
+                            if (e.key === 'Enter' || e.key === 'Tab') {
+                              e.preventDefault();
+                              const selected = filteredChatMentions[chatMentionIndex] ?? filteredChatMentions[0];
+                              if (selected) applyChatMention(selected);
+                              return;
+                            }
+                            if (e.key === 'Escape') {
+                              e.preventDefault();
+                              setChatMentionQuery(null);
+                              setChatMentionIndex(0);
+                              return;
+                            }
+                          }
                           if (e.key === 'Enter' && !e.shiftKey) {
                             e.preventDefault();
                             void handleSendChatMessage();
@@ -1459,6 +1572,35 @@ export function GroupWatchModal({
                         {sendingChatMessage ? 'Sending...' : 'Send'}
                       </button>
                     </div>
+                    {chatMentionQuery && filteredChatMentions.length > 0 && (
+                      <div className="mt-2 rounded-xl border border-cyan-300/30 bg-[#070f1a]/95 p-1">
+                        <p className="px-2 pb-1 text-[10px] uppercase tracking-[0.14em] text-cyan-200/70">
+                          Mention a member
+                        </p>
+                        <div className="max-h-40 overflow-y-auto space-y-0.5">
+                          {filteredChatMentions.map((target, index) => {
+                            const handle = mentionHandle(target);
+                            const active = index === chatMentionIndex;
+                            return (
+                              <button
+                                key={`mention-${target.id}`}
+                                type="button"
+                                onMouseDown={(event) => event.preventDefault()}
+                                onClick={() => applyChatMention(target)}
+                                className={`w-full rounded-lg px-2 py-1.5 text-left text-sm transition-colors ${
+                                  active
+                                    ? 'bg-cyan-500/20 text-cyan-100'
+                                    : 'text-[var(--text-primary)] hover:bg-cyan-500/10'
+                                }`}
+                              >
+                                <span className="font-semibold">{target.name}</span>
+                                <span className="ml-1 text-[11px] text-[var(--text-muted)]">@{handle}</span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                     {chatSharedPick && (
                       <div className="mt-3 rounded-xl border border-indigo-300/35 bg-indigo-500/10 p-2.5">
                         <div className="flex items-center gap-2.5">
@@ -1603,7 +1745,7 @@ export function GroupWatchModal({
                               )}
                               {showBody && (
                                 <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">
-                                  {message.body}
+                                  {renderMessageBody(message.body)}
                                 </p>
                               )}
                               <p className="mt-1 text-[10px] text-[var(--text-muted)] text-right">
