@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 export async function POST() {
   // We submit to Supabase via authenticated client calls (RLS + RPC).

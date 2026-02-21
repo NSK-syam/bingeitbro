@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 
 type TriviaLanguage = 'en' | 'te' | 'hi' | 'ta';
 type TriviaQuestionType = 'year' | 'director' | 'actor' | 'genre' | 'runtime';
