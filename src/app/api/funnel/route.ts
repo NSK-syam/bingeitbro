@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server';
 
+export const runtime = 'nodejs';
+
 const namePattern = /^[a-z0-9_:-]{2,80}$/;
 const keyPattern = /^[a-zA-Z0-9_.-]{1,60}$/;
 

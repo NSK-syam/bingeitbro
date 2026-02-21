@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server';
 
-export const runtime = 'nodejs';
-export const maxDuration = 10;
+export const runtime = 'edge';
 
 type AppleSong = { artworkUrl100?: string | null };
 
@@ -53,10 +52,10 @@ export async function GET(request: Request) {
   const countries =
     countriesParam.length > 0
       ? countriesParam
-          .split(',')
-          .map((c) => c.trim().toLowerCase())
-          .filter(Boolean)
-          .slice(0, 8)
+        .split(',')
+        .map((c) => c.trim().toLowerCase())
+        .filter(Boolean)
+        .slice(0, 8)
       : (['us', 'gb', 'in', 'es', 'mx'] as const);
 
   const limit = Number.isFinite(limitParam) ? Math.max(20, Math.min(100, Math.floor(limitParam))) : 100;

@@ -1,8 +1,7 @@
 import { NextResponse } from 'next/server';
 import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
 
-export const runtime = 'nodejs';
-export const maxDuration = 15;
+export const runtime = 'edge';
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();

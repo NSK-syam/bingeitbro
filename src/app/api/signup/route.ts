@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 
+export const runtime = 'edge';
+
 type SignupBody = {
   email?: unknown;
   password?: unknown;

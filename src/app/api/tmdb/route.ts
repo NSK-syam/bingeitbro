@@ -4,7 +4,7 @@ const TMDB_HOST = 'api.themoviedb.org';
 const SERVER_TMDB_API_KEY = (process.env.TMDB_API_KEY ?? process.env.NEXT_PUBLIC_TMDB_API_KEY ?? '').trim();
 const TMDB_REVALIDATE_SECONDS = 900;
 
-export const runtime = 'nodejs';
+export const runtime = 'edge';
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
 export const preferredRegion = ['bom1', 'sin1', 'iad1'];
