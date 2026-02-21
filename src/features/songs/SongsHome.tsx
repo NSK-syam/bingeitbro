@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AuthModal } from '@/components/AuthModal';
 import { BibSplash } from '@/components/BibSplash';
 import { Header } from '@/components/Header';
-import { HelpBotWidget } from '@/components/HelpBotWidget';
 import { HubTabs } from '@/components/HubTabs';
 import { SongBackground } from '@/components/SongBackground';
 import { StarRating } from '@/components/StarRating';
@@ -257,7 +256,6 @@ export default function SongsHome() {
 
       <Header searchMode="off" onLoginClick={() => setShowAuthModal(true)} />
       {user && <HubTabs placement="center" />}
-      {user && <HelpBotWidget />}
 
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
 

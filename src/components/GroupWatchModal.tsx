@@ -3,13 +3,16 @@
 import Link from 'next/link';
 import Image from 'next/image';
 import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { motion } from 'framer-motion';
 import { useAuth } from './AuthProvider';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { ENGLISH_THEMES, TELUGU_THEMES } from '@/lib/chat-themes';
 import {
   addWatchGroupPick,
   clearWatchGroupPickVote,
   createWatchGroup,
   fetchFriendsList,
+  getChatTheme,
   getWatchGroupMessages,
   getIncomingWatchGroupInvites,
   getMyWatchGroups,
@@ -21,8 +24,10 @@ import {
   leaveWatchGroup,
   respondToWatchGroupInvite,
   renameWatchGroup,
+  setChatTheme,
   sendWatchGroupMessage,
   sendWatchGroupInvite,
+  toggleWatchGroupMessageReaction,
   voteOnWatchGroupPick,
   type FriendForSelect,
   type WatchGroup,
@@ -44,6 +49,17 @@ type SearchMediaResult = {
 };
 
 const GROUP_PICK_DRAG_MIME = 'application/x-bib-watch-group-pick';
+const CHAT_REACTION_OPTIONS = [
+  '\u2764\uFE0F',
+  '\uD83D\uDE02',
+  '\uD83D\uDE2E',
+  '\uD83D\uDE22',
+  '\uD83D\uDE20',
+  '\uD83D\uDE2D',
+];
+const THEME_STORAGE_KEY = 'bib-chat-theme';
+const THEME_LANG_STORAGE_KEY = 'bib-chat-theme-lang';
+const CHAT_THEMES = [...ENGLISH_THEMES, ...TELUGU_THEMES];
 
 function parseYear(value?: string): number | null {
   if (!value) return null;
@@ -87,12 +103,35 @@ export function GroupWatchModal({
   const [chatMessage, setChatMessage] = useState('');
   const [chatSharedPick, setChatSharedPick] = useState<WatchGroupPick | null>(null);
   const [chatDropActive, setChatDropActive] = useState(false);
+  const [replyingToMessage, setReplyingToMessage] = useState<WatchGroupMessage | null>(null);
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
+  const [reactingMessageId, setReactingMessageId] = useState<string | null>(null);
+  const [showThemePicker, setShowThemePicker] = useState(false);
   const [sendingChatMessage, setSendingChatMessage] = useState(false);
   const [friends, setFriends] = useState<FriendForSelect[]>([]);
   const [incomingInvites, setIncomingInvites] = useState<WatchGroupIncomingInvite[]>([]);
   const [incomingInvitesLoading, setIncomingInvitesLoading] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<WatchGroupPendingInvite[]>([]);
   const [pendingInvitesLoading, setPendingInvitesLoading] = useState(false);
+  const [themeLang, setThemeLang] = useState<'English' | 'Telugu'>(() => {
+    if (typeof window === 'undefined') return 'English';
+    const stored = window.localStorage.getItem(THEME_LANG_STORAGE_KEY);
+    return stored === 'Telugu' ? 'Telugu' : 'English';
+  });
+  const [themeMap, setThemeMap] = useState<Record<string, string>>(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (!stored) return {};
+      if (stored.startsWith('{')) {
+        const parsed = JSON.parse(stored);
+        return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+      }
+      return { global: stored };
+    } catch {
+      return {};
+    }
+  });
 
   const [groupName, setGroupName] = useState('');
   const [groupDescription, setGroupDescription] = useState('');
@@ -119,11 +158,18 @@ export function GroupWatchModal({
   const searchInputRef = useRef<HTMLInputElement>(null);
   const chatInputRef = useRef<HTMLInputElement>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
+  const reactionLongPressTimerRef = useRef<number | null>(null);
 
   const activeGroup = useMemo(
     () => groups.find((group) => group.id === activeGroupId) ?? null,
     [groups, activeGroupId],
   );
+  const currentThemeChatKey = useMemo(
+    () => (activeGroupId ? `group:${activeGroupId}` : 'global'),
+    [activeGroupId],
+  );
+  const activeThemeId = themeMap[currentThemeChatKey] || 'default';
+  const activeTheme = CHAT_THEMES.find((theme) => theme.id === activeThemeId) ?? ENGLISH_THEMES[0];
 
   const isActiveGroupOwner = Boolean(
     activeGroup && user && activeGroup.ownerId === user.id,
@@ -142,6 +188,41 @@ export function GroupWatchModal({
       })
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [friends, members, pendingInvites, friendSearch]);
+
+  const baselineMemberCount = useMemo(
+    () => Math.max(1, activeGroup?.memberCount ?? 0, members.length),
+    [activeGroup?.memberCount, members.length],
+  );
+
+  const getRequiredWatchedCount = useCallback(
+    (pick: WatchGroupPick) => Math.max(1, pick.memberCount, baselineMemberCount),
+    [baselineMemberCount],
+  );
+
+  const visiblePicks = useMemo(
+    () => picks.filter((pick) => pick.watchedCount < getRequiredWatchedCount(pick)),
+    [picks, getRequiredWatchedCount],
+  );
+
+  const selectTheme = useCallback(
+    async (themeId: string) => {
+      setThemeMap((prev) => {
+        const next = { ...prev, [currentThemeChatKey]: themeId };
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next));
+        }
+        return next;
+      });
+      setShowThemePicker(false);
+      if (currentThemeChatKey === 'global') return;
+      try {
+        await setChatTheme(currentThemeChatKey, themeId);
+      } catch {
+        // Ignore sync errors and keep local theme.
+      }
+    },
+    [currentThemeChatKey],
+  );
 
   const loadGroups = useCallback(async (preferredGroupId?: string) => {
     if (!user) return;
@@ -245,8 +326,33 @@ export function GroupWatchModal({
   }, [isOpen, activeGroupId, loadActiveGroupData]);
 
   useEffect(() => {
+    if (!isOpen || currentThemeChatKey === 'global') return;
+    let active = true;
+    void getChatTheme(currentThemeChatKey)
+      .then((themeId) => {
+        if (!active || !themeId) return;
+        setThemeMap((prev) => {
+          if (prev[currentThemeChatKey] === themeId) return prev;
+          const next = { ...prev, [currentThemeChatKey]: themeId };
+          if (typeof window !== 'undefined') {
+            window.localStorage.setItem(THEME_STORAGE_KEY, JSON.stringify(next));
+          }
+          return next;
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [isOpen, currentThemeChatKey]);
+
+  useEffect(() => {
     setChatSharedPick(null);
     setChatDropActive(false);
+    setReplyingToMessage(null);
+    setReactionPickerMessageId(null);
+    setReactingMessageId(null);
+    setShowThemePicker(false);
   }, [activeGroupId]);
 
   useEffect(() => {
@@ -256,6 +362,17 @@ export function GroupWatchModal({
         .then((rows) => setChatMessages(rows))
         .catch(() => undefined);
     }, 12000);
+    return () => window.clearInterval(intervalId);
+  }, [isOpen, activeGroupId, user?.id]);
+
+  useEffect(() => {
+    if (!isOpen || !activeGroupId || !user?.id) return;
+    const intervalId = window.setInterval(() => {
+      void Promise.all([
+        getWatchGroupPicks(activeGroupId, user.id).then((rows) => setPicks(rows)),
+        getWatchGroupMembers(activeGroupId).then((rows) => setMembers(rows)),
+      ]).catch(() => undefined);
+    }, 10000);
     return () => window.clearInterval(intervalId);
   }, [isOpen, activeGroupId, user?.id]);
 
@@ -292,6 +409,9 @@ export function GroupWatchModal({
       setPickNote('');
       setChatMessage('');
       setChatSharedPick(null);
+      setReplyingToMessage(null);
+      setReactionPickerMessageId(null);
+      setReactingMessageId(null);
       setChatDropActive(false);
       setSearchResults([]);
       setChatMessages([]);
@@ -309,6 +429,27 @@ export function GroupWatchModal({
       setIncomingInvites([]);
     }
   }, [isOpen]);
+
+  const clearReactionLongPress = useCallback(() => {
+    if (reactionLongPressTimerRef.current !== null) {
+      window.clearTimeout(reactionLongPressTimerRef.current);
+      reactionLongPressTimerRef.current = null;
+    }
+  }, []);
+
+  const startReactionLongPress = useCallback((messageId: string) => {
+    clearReactionLongPress();
+    reactionLongPressTimerRef.current = window.setTimeout(() => {
+      setReactionPickerMessageId(messageId);
+      reactionLongPressTimerRef.current = null;
+    }, 380);
+  }, [clearReactionLongPress]);
+
+  useEffect(() => {
+    return () => {
+      clearReactionLongPress();
+    };
+  }, [clearReactionLongPress]);
 
   useEffect(() => {
     if (!isOpen || !tmdbApiKey) return;
@@ -651,9 +792,11 @@ export function GroupWatchModal({
         senderId: user.id,
         body,
         sharedMovie,
+        replyToId: replyingToMessage?.id ?? null,
       });
       setChatMessage('');
       setChatSharedPick(null);
+      setReplyingToMessage(null);
       const rows = await getWatchGroupMessages(activeGroupId, user.id);
       setChatMessages(rows);
       void markWatchGroupSeen(activeGroupId).then(() => {
@@ -678,6 +821,34 @@ export function GroupWatchModal({
     }
   };
 
+  const handleToggleChatReaction = useCallback(async (messageId: string, reaction: string) => {
+    if (!user?.id || reactingMessageId === messageId) return;
+    setReactionPickerMessageId(null);
+    setReactingMessageId(messageId);
+    setError('');
+    try {
+      await toggleWatchGroupMessageReaction({
+        messageId,
+        userId: user.id,
+        reaction,
+      });
+      if (activeGroupId) {
+        const rows = await getWatchGroupMessages(activeGroupId, user.id);
+        setChatMessages(rows);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to react to message.';
+      const lower = message.toLowerCase();
+      if (lower.includes('watch_group_message_reactions')) {
+        setError('Chat reactions migration is not enabled yet. Run chat reactions migration SQL first.');
+      } else {
+        setError(message);
+      }
+    } finally {
+      setReactingMessageId(null);
+    }
+  }, [activeGroupId, reactingMessageId, user?.id]);
+
   if (!isOpen) return null;
 
   return (
@@ -685,7 +856,11 @@ export function GroupWatchModal({
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
       <div
         className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-3xl border border-indigo-300/20 bg-[var(--bg-card)] p-6 sm:p-7 shadow-[0_30px_90px_rgba(0,0,0,0.55)]"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e) => {
+          e.stopPropagation();
+          setReactionPickerMessageId(null);
+          setShowThemePicker(false);
+        }}
       >
         <button
           type="button"
@@ -1022,7 +1197,7 @@ export function GroupWatchModal({
                           key={result.id}
                           className="flex items-center gap-3 rounded-xl border border-white/10 bg-[var(--bg-primary)] px-3 py-2"
                         >
-                          <div className="w-10 h-14 rounded-md overflow-hidden bg-black/30 flex-shrink-0">
+                          <div className="relative w-10 h-14 rounded-md overflow-hidden bg-black/30 flex-shrink-0">
                             {result.poster ? (
                               <Image src={result.poster} alt={result.title} fill sizes="80px" className="object-cover" />
                             ) : (
@@ -1055,11 +1230,11 @@ export function GroupWatchModal({
                     {picksLoading && <span className="text-xs text-[var(--text-muted)]">Refreshing…</span>}
                   </div>
 
-                  {picks.length === 0 ? (
+                  {visiblePicks.length === 0 ? (
                     <p className="text-sm text-[var(--text-muted)]">No picks yet. Add the first movie or show above.</p>
                   ) : (
                     <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1">
-                      {picks.map((pick) => (
+                      {visiblePicks.map((pick) => (
                         <article
                           key={pick.id}
                           draggable
@@ -1069,7 +1244,7 @@ export function GroupWatchModal({
                           <div className="flex gap-3">
                             <Link
                               href={pick.mediaType === 'movie' ? `/movie/${pick.tmdbId}` : `/show/${pick.tmdbId}`}
-                              className="w-14 h-20 rounded-md overflow-hidden bg-black/30 flex-shrink-0"
+                              className="relative w-14 h-20 rounded-md overflow-hidden bg-black/30 flex-shrink-0"
                               title={`Open ${pick.title}`}
                             >
                               {pick.poster ? (
@@ -1099,7 +1274,7 @@ export function GroupWatchModal({
                                 <p className="mt-1 text-xs text-[var(--text-secondary)] line-clamp-2">{pick.note}</p>
                               )}
                               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
-                                Watched {pick.watchedCount}/{pick.memberCount}
+                                Watched {pick.watchedCount}/{getRequiredWatchedCount(pick)}
                               </p>
                               <div className="mt-2 flex items-center gap-2">
                                 <button
@@ -1151,7 +1326,79 @@ export function GroupWatchModal({
                 <div className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
                   <div className="flex items-center justify-between mb-3 gap-2">
                     <p className="text-sm font-semibold text-[var(--text-primary)]">Group chat</p>
-                    {chatLoading && <span className="text-xs text-[var(--text-muted)]">Loading...</span>}
+                    <div className="flex items-center gap-2">
+                      {chatLoading && <span className="text-xs text-[var(--text-muted)]">Loading...</span>}
+                      {currentThemeChatKey !== 'global' && (
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setShowThemePicker((prev) => !prev)}
+                            className="h-8 px-2 rounded-full border border-cyan-300/50 bg-cyan-500/15 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300/80 hover:bg-cyan-500/25 transition-colors flex items-center gap-1 text-[11px] font-semibold tracking-wide"
+                            aria-label="Change group chat theme"
+                            title="Change theme"
+                          >
+                            Theme
+                          </button>
+                          {showThemePicker && (
+                            <div className="absolute right-0 top-10 z-50 w-[min(90vw,420px)] rounded-2xl border border-white/15 bg-[#090d19]/98 backdrop-blur-3xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] p-3 overflow-hidden flex flex-col max-h-[60vh]">
+                              <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
+                                <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Group Theme</p>
+                                <div className="flex bg-[#050917]/80 rounded-lg p-0.5 border border-white/10">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setThemeLang('English');
+                                      if (typeof window !== 'undefined') window.localStorage.setItem(THEME_LANG_STORAGE_KEY, 'English');
+                                    }}
+                                    className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-colors ${themeLang === 'English' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-300/30' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-transparent'}`}
+                                  >
+                                    English
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setThemeLang('Telugu');
+                                      if (typeof window !== 'undefined') window.localStorage.setItem(THEME_LANG_STORAGE_KEY, 'Telugu');
+                                    }}
+                                    className={`px-3 py-1 text-[10px] font-semibold uppercase tracking-wider rounded-md transition-colors ${themeLang === 'Telugu' ? 'bg-cyan-500/20 text-cyan-200 border border-cyan-300/30' : 'text-[var(--text-muted)] hover:text-[var(--text-primary)] border border-transparent'}`}
+                                  >
+                                    Telugu
+                                  </button>
+                                </div>
+                              </div>
+
+                              <div className="overflow-y-auto pr-1 pb-1 space-y-2 flex-1 min-h-0">
+                                <div className="grid grid-cols-2 gap-2">
+                                  {(themeLang === 'English' ? ENGLISH_THEMES : TELUGU_THEMES).map((theme) => {
+                                    const isActive = theme.id === activeThemeId;
+                                    const swatchBg = theme.bg === 'transparent'
+                                      ? 'linear-gradient(135deg,#0f172a 0%,#1e293b 100%)'
+                                      : theme.bg;
+                                    return (
+                                      <button
+                                        key={theme.id}
+                                        type="button"
+                                        onClick={() => void selectTheme(theme.id)}
+                                        className={`relative overflow-hidden rounded-xl border transition-all text-left ${isActive ? 'border-cyan-300 shadow-[0_0_12px_rgba(103,232,249,0.5)]' : 'border-white/15 hover:border-white/45'}`}
+                                        aria-label={`${theme.label}${isActive ? ' active' : ''}`}
+                                      >
+                                        <div className="h-10 w-full bg-cover bg-center" style={{ background: swatchBg }} />
+                                        <div className="flex items-center justify-between gap-2 px-2 py-1.5 bg-[#050917]/95">
+                                          <span className="text-[10px] font-medium text-[var(--text-primary)] line-clamp-1">{theme.label}</span>
+                                          {isActive && (
+                                            <span className="text-[9px] font-bold uppercase tracking-[0.08em] text-cyan-300">On</span>
+                                          )}
+                                        </div>
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div
@@ -1167,6 +1414,26 @@ export function GroupWatchModal({
                         : 'border-white/10 bg-[var(--bg-primary)]/70'
                       }`}
                   >
+                    {replyingToMessage && (
+                      <div className="mb-3 flex items-center justify-between rounded-xl border-l-2 border-cyan-400/80 bg-[var(--bg-card)]/85 px-3 py-2">
+                        <div className="min-w-0">
+                          <p className="text-[10px] uppercase tracking-[0.12em] text-cyan-200/85">
+                            Replying to {replyingToMessage.mine ? 'yourself' : replyingToMessage.senderName || 'member'}
+                          </p>
+                          <p className="text-xs text-[var(--text-muted)] line-clamp-1">
+                            {replyingToMessage.body.trim() || replyingToMessage.sharedMovie?.title || 'Attachment'}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setReplyingToMessage(null)}
+                          className="rounded-full border border-white/15 bg-[var(--bg-primary)] px-2 py-1 text-[11px] text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                          aria-label="Cancel reply"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    )}
                     <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
                       <input
                         ref={chatInputRef}
@@ -1197,7 +1464,7 @@ export function GroupWatchModal({
                         <div className="flex items-center gap-2.5">
                           <Link
                             href={chatSharedPick.mediaType === 'movie' ? `/movie/${chatSharedPick.tmdbId}` : `/show/${chatSharedPick.tmdbId}`}
-                            className="h-14 w-10 rounded-md overflow-hidden bg-black/25 shrink-0"
+                            className="relative h-14 w-10 rounded-md overflow-hidden bg-black/25 shrink-0"
                             title={`Open ${chatSharedPick.title}`}
                           >
                             {chatSharedPick.poster ? (
@@ -1238,7 +1505,8 @@ export function GroupWatchModal({
                   ) : (
                     <div
                       ref={chatContainerRef}
-                      className="max-h-[26rem] overflow-y-auto pr-1 space-y-2.5"
+                      className="max-h-[26rem] overflow-y-auto pr-1 space-y-2.5 rounded-xl p-2"
+                      style={{ background: activeTheme.bg }}
                     >
                       {chatMessages.map((message) => {
                         const showBody =
@@ -1247,9 +1515,28 @@ export function GroupWatchModal({
                             message.sharedMovie &&
                             message.body.toLowerCase().startsWith('shared movie:')
                           );
+                        const isReplying = replyingToMessage?.id === message.id;
+                        const replyMessage = message.replyToId
+                          ? chatMessages.find((m) => m.id === message.replyToId)
+                          : null;
+                        const replyText = replyMessage?.body.trim()
+                          || replyMessage?.sharedMovie?.title
+                          || 'Attachment';
                         return (
-                          <div
+                          <motion.div
                             key={message.id}
+                            layout
+                            drag="x"
+                            dragConstraints={{ left: 0, right: 0 }}
+                            dragElastic={{ right: 0.2, left: 0 }}
+                            onDragEnd={(_, info) => {
+                              if (info.offset.x > 50) {
+                                setReplyingToMessage(message);
+                                if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                                  navigator.vibrate(50);
+                                }
+                              }
+                            }}
                             className={`flex items-end gap-2 ${message.mine ? 'justify-end' : 'justify-start'}`}
                           >
                             {!message.mine && (
@@ -1258,15 +1545,35 @@ export function GroupWatchModal({
                               </div>
                             )}
                             <article
-                              className={`max-w-[86%] rounded-2xl border px-3 py-2.5 ${message.mine
-                                  ? 'border-indigo-300/45 bg-gradient-to-b from-indigo-500/25 to-indigo-500/12'
+                              onPointerDown={() => startReactionLongPress(message.id)}
+                              onPointerUp={clearReactionLongPress}
+                              onPointerCancel={clearReactionLongPress}
+                              onPointerLeave={clearReactionLongPress}
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                clearReactionLongPress();
+                                setReactionPickerMessageId(message.id);
+                              }}
+                              className={`relative max-w-[86%] rounded-2xl border px-3 py-2.5 transition-transform duration-200 ${message.mine
+                                  ? ''
                                   : 'border-white/10 bg-[var(--bg-primary)]'
-                                }`}
+                                } ${isReplying ? 'scale-[1.01] ring-2 ring-cyan-400/45' : ''}`}
+                              style={message.mine ? { background: activeTheme.bubble, borderColor: activeTheme.bubbleBorder } : undefined}
                             >
                               {!message.mine && (
                                 <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
                                   {message.senderName}
                                 </p>
+                              )}
+                              {message.replyToId && (
+                                <div className="mb-2 rounded-lg border-l-2 border-cyan-400/70 bg-black/25 px-2 py-1.5">
+                                  <p className="text-[10px] font-semibold text-cyan-200/85">
+                                    {replyMessage?.senderName || 'Replied message'}
+                                  </p>
+                                  <p className="text-[11px] text-white/75 line-clamp-2">
+                                    {replyText}
+                                  </p>
+                                </div>
                               )}
                               {message.sharedMovie && (
                                 <Link
@@ -1275,7 +1582,7 @@ export function GroupWatchModal({
                                   title={`Open ${message.sharedMovie.title}`}
                                 >
                                   <div className="flex items-center gap-2.5">
-                                    <div className="h-14 w-10 rounded-md overflow-hidden bg-black/20 shrink-0">
+                                    <div className="relative h-14 w-10 rounded-md overflow-hidden bg-black/20 shrink-0">
                                       {message.sharedMovie.poster ? (
                                         <Image src={message.sharedMovie.poster} alt={message.sharedMovie.title} fill sizes="80px" className="object-cover" />
                                       ) : (
@@ -1305,8 +1612,45 @@ export function GroupWatchModal({
                                   minute: '2-digit',
                                 })}
                               </p>
+                              {message.reactions.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                  {message.reactions.map((reaction) => (
+                                    <button
+                                      key={`${message.id}-${reaction.value}`}
+                                      type="button"
+                                      onClick={() => void handleToggleChatReaction(message.id, reaction.value)}
+                                      disabled={reactingMessageId === message.id}
+                                      className={`rounded-full border px-1.5 py-0.5 text-[11px] leading-none ${reaction.reacted ? 'border-cyan-300/55 bg-cyan-500/18 text-cyan-100' : 'border-white/20 bg-black/20 text-white/85'} disabled:opacity-60`}
+                                    >
+                                      <span>{reaction.value}</span>
+                                      <span className="ml-1">{reaction.count}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {reactionPickerMessageId === message.id && (
+                                <div
+                                  onClick={(event) => event.stopPropagation()}
+                                  className="absolute left-1/2 top-0 z-30 inline-flex w-max max-w-[calc(100vw-28px)] -translate-x-1/2 -translate-y-[calc(100%+8px)] flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border border-white/15 bg-[#111827]/95 px-2 py-1 shadow-[0_14px_30px_rgba(0,0,0,0.45)]"
+                                >
+                                  {CHAT_REACTION_OPTIONS.map((reaction) => {
+                                    const active = message.reactions.some((item) => item.value === reaction && item.reacted);
+                                    return (
+                                      <button
+                                        key={`${message.id}-${reaction}-option`}
+                                        type="button"
+                                        onClick={() => void handleToggleChatReaction(message.id, reaction)}
+                                        disabled={reactingMessageId === message.id}
+                                        className={`rounded-full border px-1.5 py-0.5 text-sm leading-none transition-colors ${active ? 'border-cyan-300/55 bg-cyan-500/18' : 'border-white/15 bg-black/20'} disabled:opacity-60`}
+                                      >
+                                        {reaction}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </article>
-                          </div>
+                          </motion.div>
                         );
                       })}
                     </div>

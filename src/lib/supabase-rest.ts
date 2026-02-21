@@ -229,8 +229,15 @@ export interface DirectMessage {
   senderAvatar: string | null;
   body: string;
   replyToId?: string | null;
+  reactions: ChatMessageReaction[];
   createdAt: string;
   mine: boolean;
+}
+
+export interface ChatMessageReaction {
+  value: string;
+  count: number;
+  reacted: boolean;
 }
 
 export interface DirectMessageThread {
@@ -249,6 +256,7 @@ type DirectMessageRow = {
   sender_id: string;
   recipient_id: string;
   body: string;
+  reply_to_id?: string | null;
   created_at: string;
 };
 
@@ -1055,6 +1063,7 @@ export interface WatchGroupMessage {
   body: string;
   sharedMovie: WatchGroupSharedMovie | null;
   replyToId?: string | null;
+  reactions: ChatMessageReaction[];
   createdAt: string;
   mine: boolean;
 }
@@ -1124,12 +1133,19 @@ type WatchGroupMessageRow = {
   group_id: string;
   sender_id: string;
   body: string | null;
+  reply_to_id?: string | null;
   shared_media_type?: 'movie' | 'show' | null;
   shared_tmdb_id?: string | null;
   shared_title?: string | null;
   shared_poster?: string | null;
   shared_release_year?: number | null;
   created_at: string;
+};
+
+type MessageReactionRow = {
+  message_id: string;
+  user_id: string;
+  reaction: string;
 };
 
 type WatchGroupInviteStatus = 'pending' | 'accepted' | 'rejected' | 'canceled';
@@ -1163,6 +1179,66 @@ function ensureAuthedToken(): string {
     throw new Error('Not authenticated');
   }
   return token;
+}
+
+function normalizeReactionValue(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  return Array.from(trimmed).slice(0, 8).join('');
+}
+
+function buildReactionSummaryMap(
+  rows: MessageReactionRow[],
+  currentUserId: string,
+): Map<string, ChatMessageReaction[]> {
+  const byMessage = new Map<
+    string,
+    Map<string, { count: number; reacted: boolean }>
+  >();
+
+  for (const row of rows) {
+    const reaction = normalizeReactionValue(row.reaction);
+    if (!reaction) continue;
+    const byReaction = byMessage.get(row.message_id) ?? new Map<string, { count: number; reacted: boolean }>();
+    const prev = byReaction.get(reaction) ?? { count: 0, reacted: false };
+    byReaction.set(reaction, {
+      count: prev.count + 1,
+      reacted: prev.reacted || row.user_id === currentUserId,
+    });
+    byMessage.set(row.message_id, byReaction);
+  }
+
+  const summaryMap = new Map<string, ChatMessageReaction[]>();
+  for (const [messageId, reactionsMap] of byMessage.entries()) {
+    const summary = [...reactionsMap.entries()]
+      .map(([value, stats]) => ({
+        value,
+        count: stats.count,
+        reacted: stats.reacted,
+      }))
+      .sort((a, b) => {
+        if (b.count !== a.count) return b.count - a.count;
+        return a.value.localeCompare(b.value);
+      });
+    summaryMap.set(messageId, summary);
+  }
+  return summaryMap;
+}
+
+function isMissingDirectMessageReactionsTableError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : '';
+  return (
+    message.includes('direct_message_reactions') &&
+    (message.includes('does not exist') || message.includes('schema cache'))
+  );
+}
+
+function isMissingWatchGroupMessageReactionsTableError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : '';
+  return (
+    message.includes('watch_group_message_reactions') &&
+    (message.includes('does not exist') || message.includes('schema cache'))
+  );
 }
 
 function isMissingDirectMessagesTableError(err: unknown): boolean {
@@ -1235,6 +1311,25 @@ export async function getDirectMessagesWithUser(
       token,
     );
     const userMap = new Map((Array.isArray(users) ? users : []).map((u) => [u.id, u]));
+    let reactionsByMessage = new Map<string, ChatMessageReaction[]>();
+    try {
+      const messageIds = messages.map((msg) => msg.id);
+      const reactionParams = new URLSearchParams({
+        select: 'message_id,user_id,reaction',
+        message_id: `in.(${messageIds.join(',')})`,
+        limit: '2000',
+      });
+      const reactionRows = await supabaseRestRequest<MessageReactionRow[]>(
+        `direct_message_reactions?${reactionParams.toString()}`,
+        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+        token,
+      );
+      reactionsByMessage = buildReactionSummaryMap(Array.isArray(reactionRows) ? reactionRows : [], currentUserId);
+    } catch (err) {
+      if (!isMissingDirectMessageReactionsTableError(err)) {
+        throw err;
+      }
+    }
 
     return messages.map((msg) => {
       const sender = userMap.get(msg.sender_id);
@@ -1245,7 +1340,8 @@ export async function getDirectMessagesWithUser(
         senderName: sender?.name || 'Member',
         senderAvatar: sender?.avatar ?? null,
         body: msg.body,
-        replyToId: (msg as any).reply_to_id ?? null,
+        replyToId: msg.reply_to_id ?? null,
+        reactions: reactionsByMessage.get(msg.id) ?? [],
         createdAt: msg.created_at,
         mine: msg.sender_id === currentUserId,
       } satisfies DirectMessage;
@@ -1256,6 +1352,68 @@ export async function getDirectMessagesWithUser(
     }
     throw err;
   }
+}
+
+export async function toggleDirectMessageReaction(input: {
+  messageId: string;
+  userId: string;
+  reaction: string;
+}): Promise<void> {
+  const token = ensureAuthedToken();
+  const reaction = normalizeReactionValue(input.reaction);
+  if (!reaction) {
+    throw new Error('Reaction cannot be empty.');
+  }
+
+  const existingParams = new URLSearchParams({
+    select: 'reaction',
+    message_id: `eq.${input.messageId}`,
+    user_id: `eq.${input.userId}`,
+    limit: '1',
+  });
+  const existingRows = await supabaseRestRequest<Array<{ reaction: string }>>(
+    `direct_message_reactions?${existingParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const existing = Array.isArray(existingRows) ? existingRows[0] : undefined;
+  const existingReaction = normalizeReactionValue(existing?.reaction ?? '');
+
+  if (existing && existingReaction === reaction) {
+    const deleteParams = new URLSearchParams({
+      message_id: `eq.${input.messageId}`,
+      user_id: `eq.${input.userId}`,
+    });
+    await supabaseRestRequest(
+      `direct_message_reactions?${deleteParams.toString()}`,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    );
+    return;
+  }
+
+  await supabaseRestRequest(
+    'direct_message_reactions',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({
+        message_id: input.messageId,
+        user_id: input.userId,
+        reaction,
+        updated_at: new Date().toISOString(),
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
 }
 
 export async function getDirectChatThreads(
@@ -2091,10 +2249,6 @@ export async function getWatchGroupPicks(groupId: string, currentUserId: string)
         watchedByMe: watchedSet.has(currentUserId),
       } satisfies WatchGroupPick;
     })
-    .filter((pick) => {
-      if (watches === null) return true;
-      return pick.watchedCount < pick.memberCount;
-    })
     .sort((a, b) => {
       if (a.score !== b.score) return b.score - a.score;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
@@ -2310,6 +2464,25 @@ export async function getWatchGroupMessages(
       token,
     );
     const userMap = new Map((Array.isArray(users) ? users : []).map((u) => [u.id, u]));
+    let reactionsByMessage = new Map<string, ChatMessageReaction[]>();
+    try {
+      const messageIds = messages.map((msg) => msg.id);
+      const reactionParams = new URLSearchParams({
+        select: 'message_id,user_id,reaction',
+        message_id: `in.(${messageIds.join(',')})`,
+        limit: '3000',
+      });
+      const reactionRows = await supabaseRestRequest<MessageReactionRow[]>(
+        `watch_group_message_reactions?${reactionParams.toString()}`,
+        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+        token,
+      );
+      reactionsByMessage = buildReactionSummaryMap(Array.isArray(reactionRows) ? reactionRows : [], currentUserId);
+    } catch (err) {
+      if (!isMissingWatchGroupMessageReactionsTableError(err)) {
+        throw err;
+      }
+    }
 
     return messages.reverse().map((msg) => {
       const sender = userMap.get(msg.sender_id);
@@ -2330,7 +2503,8 @@ export async function getWatchGroupMessages(
         senderName: sender?.name || 'Member',
         senderAvatar: sender?.avatar ?? null,
         body: msg.body ?? '',
-        replyToId: (msg as any).reply_to_id ?? null,
+        replyToId: msg.reply_to_id ?? null,
+        reactions: reactionsByMessage.get(msg.id) ?? [],
         sharedMovie,
         createdAt: msg.created_at,
         mine: msg.sender_id === currentUserId,
@@ -2347,4 +2521,66 @@ export async function getWatchGroupMessages(
     }
     throw err;
   }
+}
+
+export async function toggleWatchGroupMessageReaction(input: {
+  messageId: string;
+  userId: string;
+  reaction: string;
+}): Promise<void> {
+  const token = ensureAuthedToken();
+  const reaction = normalizeReactionValue(input.reaction);
+  if (!reaction) {
+    throw new Error('Reaction cannot be empty.');
+  }
+
+  const existingParams = new URLSearchParams({
+    select: 'reaction',
+    message_id: `eq.${input.messageId}`,
+    user_id: `eq.${input.userId}`,
+    limit: '1',
+  });
+  const existingRows = await supabaseRestRequest<Array<{ reaction: string }>>(
+    `watch_group_message_reactions?${existingParams.toString()}`,
+    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+    token,
+  );
+  const existing = Array.isArray(existingRows) ? existingRows[0] : undefined;
+  const existingReaction = normalizeReactionValue(existing?.reaction ?? '');
+
+  if (existing && existingReaction === reaction) {
+    const deleteParams = new URLSearchParams({
+      message_id: `eq.${input.messageId}`,
+      user_id: `eq.${input.userId}`,
+    });
+    await supabaseRestRequest(
+      `watch_group_message_reactions?${deleteParams.toString()}`,
+      {
+        method: 'DELETE',
+        headers: { Prefer: 'return=minimal' },
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    );
+    return;
+  }
+
+  await supabaseRestRequest(
+    'watch_group_message_reactions',
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates,return=minimal',
+      },
+      body: JSON.stringify({
+        message_id: input.messageId,
+        user_id: input.userId,
+        reaction,
+        updated_at: new Date().toISOString(),
+      }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
 }

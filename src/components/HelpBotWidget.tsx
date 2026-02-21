@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { motion, PanInfo } from 'framer-motion';
+import { motion } from 'framer-motion';
 import { useAuth } from './AuthProvider';
 import {
   fetchFriendsList,
@@ -13,18 +13,29 @@ import {
   sendWatchGroupMessage,
   getChatTheme,
   setChatTheme,
+  toggleDirectMessageReaction,
+  toggleWatchGroupMessageReaction,
   type DirectMessage,
   type DirectMessageThread,
   type FriendForSelect,
   type WatchGroupMessage,
 } from '@/lib/supabase-rest';
-import { ENGLISH_THEMES, TELUGU_THEMES, type ChatTheme } from '@/lib/chat-themes';
+import { ENGLISH_THEMES, TELUGU_THEMES } from '@/lib/chat-themes';
 
 type ChatTab = 'direct' | 'groups';
 
 const CHAT_THEMES = [...ENGLISH_THEMES, ...TELUGU_THEMES];
+const CHAT_REACTION_OPTIONS = [
+  '\u2764\uFE0F',
+  '\uD83D\uDE02',
+  '\uD83D\uDE2E',
+  '\uD83D\uDE22',
+  '\uD83D\uDE20',
+  '\uD83D\uDE2D',
+];
 const THEME_STORAGE_KEY = 'bib-chat-theme';
 const THEME_LANG_STORAGE_KEY = 'bib-chat-theme-lang';
+const CHAT_LATEST_STORAGE_PREFIX = 'bib-chat-known-latest-v1';
 
 type GroupThreadPreview = {
   groupId: string;
@@ -69,6 +80,38 @@ function chatKey(kind: ChatTab, targetId: string): string {
   return `${kind}:${targetId}`;
 }
 
+function latestStorageKey(userId: string): string {
+  return `${CHAT_LATEST_STORAGE_PREFIX}:${userId}`;
+}
+
+function readKnownLatest(userId: string): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(latestStorageKey(userId));
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const normalized: Record<string, string> = {};
+    for (const [key, value] of Object.entries(parsed as Record<string, unknown>)) {
+      if (typeof key === 'string' && typeof value === 'string' && value.trim()) {
+        normalized[key] = value;
+      }
+    }
+    return normalized;
+  } catch {
+    return {};
+  }
+}
+
+function writeKnownLatest(userId: string, value: Record<string, string>): void {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(latestStorageKey(userId), JSON.stringify(value));
+  } catch {
+    // Ignore storage quota/privacy mode failures.
+  }
+}
+
 export function HelpBotWidget() {
   const { user } = useAuth();
   const instanceId = useMemo(() => Symbol('chat-shortcut-instance'), []);
@@ -89,6 +132,8 @@ export function HelpBotWidget() {
   const [groupMessages, setGroupMessages] = useState<WatchGroupMessage[]>([]);
   const [composer, setComposer] = useState('');
   const [replyingToMessage, setReplyingToMessage] = useState<DirectMessage | WatchGroupMessage | null>(null);
+  const [reactionPickerMessageId, setReactionPickerMessageId] = useState<string | null>(null);
+  const [reactingMessageId, setReactingMessageId] = useState<string | null>(null);
   const [popups, setPopups] = useState<PopupAlert[]>([]);
   const [unreadByChat, setUnreadByChat] = useState<Record<string, PopupAlert>>({});
 
@@ -100,7 +145,7 @@ export function HelpBotWidget() {
         if (stored.startsWith('{')) return JSON.parse(stored);
         return { global: stored };
       }
-    } catch (e) {
+    } catch {
       // ignore
     }
     return {};
@@ -181,6 +226,8 @@ export function HelpBotWidget() {
   const knownLatestByThreadRef = useRef<Record<string, string>>({});
   const initializedRef = useRef(false);
   const chatBodyRef = useRef<HTMLDivElement>(null);
+  const knownLatestBootstrappedUserRef = useRef<string | null>(null);
+  const reactionLongPressTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
     const syncOwner = () => {
@@ -332,6 +379,7 @@ export function HelpBotWidget() {
         }
 
         knownLatestByThreadRef.current = latestByThread;
+        writeKnownLatest(user.id, latestByThread);
         if (!initializedRef.current) {
           initializedRef.current = true;
         } else {
@@ -377,13 +425,23 @@ export function HelpBotWidget() {
       setDirectMessages([]);
       setGroupMessages([]);
       setComposer('');
+      setReplyingToMessage(null);
+      setReactionPickerMessageId(null);
+      setReactingMessageId(null);
       setSelectedDirectUserId(null);
       setDirectConversationOpen(false);
       setSelectedGroupId(null);
       setUnreadByChat({});
       knownLatestByThreadRef.current = {};
       initializedRef.current = false;
+      knownLatestBootstrappedUserRef.current = null;
       return;
+    }
+    if (knownLatestBootstrappedUserRef.current !== user.id) {
+      const restored = readKnownLatest(user.id);
+      knownLatestByThreadRef.current = restored;
+      initializedRef.current = Object.keys(restored).length > 0;
+      knownLatestBootstrappedUserRef.current = user.id;
     }
     void refreshThreads(false);
   }, [isActiveOwner, user?.id, refreshThreads]);
@@ -392,8 +450,27 @@ export function HelpBotWidget() {
     if (!isActiveOwner || !user?.id) return;
     const intervalId = window.setInterval(() => {
       void refreshThreads(true);
-    }, 12000);
+    }, 6000);
     return () => window.clearInterval(intervalId);
+  }, [isActiveOwner, user?.id, refreshThreads]);
+
+  useEffect(() => {
+    if (!isActiveOwner || !user?.id) return;
+    const onFocus = () => {
+      void refreshThreads(true);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        void refreshThreads(true);
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
   }, [isActiveOwner, user?.id, refreshThreads]);
 
   useEffect(() => {
@@ -401,8 +478,10 @@ export function HelpBotWidget() {
       setDirectMessages([]);
       setDirectConversationOpen(false);
       setReplyingToMessage(null);
+      setReactionPickerMessageId(null);
       return;
     }
+    setReactionPickerMessageId(null);
     void loadDirectConversation(user.id, selectedDirectUserId).catch(() => undefined);
   }, [user?.id, selectedDirectUserId, loadDirectConversation]);
 
@@ -410,8 +489,10 @@ export function HelpBotWidget() {
     if (!user?.id || !selectedGroupId) {
       setGroupMessages([]);
       setReplyingToMessage(null);
+      setReactionPickerMessageId(null);
       return;
     }
+    setReactionPickerMessageId(null);
     void loadGroupConversation(user.id, selectedGroupId).catch(() => undefined);
   }, [user?.id, selectedGroupId, loadGroupConversation]);
 
@@ -421,6 +502,33 @@ export function HelpBotWidget() {
     if (!el) return;
     el.scrollTop = el.scrollHeight;
   }, [isOpen, tab, directMessages, groupMessages]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setReactionPickerMessageId(null);
+    }
+  }, [isOpen, tab, directConversationOpen]);
+
+  const clearReactionLongPress = useCallback(() => {
+    if (reactionLongPressTimerRef.current !== null) {
+      window.clearTimeout(reactionLongPressTimerRef.current);
+      reactionLongPressTimerRef.current = null;
+    }
+  }, []);
+
+  const startReactionLongPress = useCallback((messageId: string) => {
+    clearReactionLongPress();
+    reactionLongPressTimerRef.current = window.setTimeout(() => {
+      setReactionPickerMessageId(messageId);
+      reactionLongPressTimerRef.current = null;
+    }, 380);
+  }, [clearReactionLongPress]);
+
+  useEffect(() => {
+    return () => {
+      clearReactionLongPress();
+    };
+  }, [clearReactionLongPress]);
 
   const directList = useMemo(() => {
     const byPeer = new Map(directThreads.map((thread) => [thread.peerId, thread]));
@@ -480,6 +588,7 @@ export function HelpBotWidget() {
     setSelectedDirectUserId(peerId);
     setDirectConversationOpen(true);
     setComposer('');
+    setReactionPickerMessageId(null);
     clearPopupsForTarget('direct', peerId);
     clearUnreadForTarget('direct', peerId);
   }, [clearPopupsForTarget, clearUnreadForTarget]);
@@ -489,6 +598,7 @@ export function HelpBotWidget() {
     setTab(popup.kind);
     setError('');
     setComposer('');
+    setReactionPickerMessageId(null);
     if (popup.kind === 'direct') {
       setSelectedDirectUserId(popup.targetId);
       setDirectConversationOpen(true);
@@ -501,6 +611,43 @@ export function HelpBotWidget() {
     }
     removePopup(popup.id);
   };
+
+  const toggleReaction = useCallback(async (kind: ChatTab, messageId: string, reaction: string) => {
+    if (!user?.id || reactingMessageId === messageId) return;
+    setReactionPickerMessageId(null);
+    setReactingMessageId(messageId);
+    setError('');
+    try {
+      if (kind === 'direct') {
+        if (!selectedDirectUserId) return;
+        await toggleDirectMessageReaction({ messageId, userId: user.id, reaction });
+        await loadDirectConversation(user.id, selectedDirectUserId);
+      } else {
+        if (!selectedGroupId) return;
+        await toggleWatchGroupMessageReaction({ messageId, userId: user.id, reaction });
+        await loadGroupConversation(user.id, selectedGroupId);
+      }
+      await refreshThreads(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to react to message.';
+      const low = message.toLowerCase();
+      if (low.includes('direct_message_reactions') || low.includes('watch_group_message_reactions')) {
+        setError('Chat reactions migration is missing. Run chat reactions migration SQL first.');
+      } else {
+        setError(message);
+      }
+    } finally {
+      setReactingMessageId(null);
+    }
+  }, [
+    user?.id,
+    reactingMessageId,
+    selectedDirectUserId,
+    selectedGroupId,
+    loadDirectConversation,
+    loadGroupConversation,
+    refreshThreads,
+  ]);
 
   const sendCurrentMessage = async () => {
     if (!user?.id || sending) return;
@@ -595,7 +742,10 @@ export function HelpBotWidget() {
       {isOpen && (
         <div
           className="w-[min(calc(100vw-1rem),560px)] sm:w-[min(92vw,560px)] h-[min(72vh,620px)] max-h-[calc(100vh-9rem)] rounded-2xl border border-cyan-200/30 bg-[#090d19]/95 backdrop-blur-2xl shadow-[0_24px_70px_rgba(0,0,0,0.55)] flex flex-col overflow-hidden"
-          onClick={() => setShowThemePicker(false)}
+          onClick={() => {
+            setShowThemePicker(false);
+            setReactionPickerMessageId(null);
+          }}
         >
           <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
             <div>
@@ -624,6 +774,7 @@ export function HelpBotWidget() {
                     setTab('direct');
                     setComposer('');
                     setDirectConversationOpen(false);
+                    setReactionPickerMessageId(null);
                   }}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${tab === 'direct' ? 'bg-[var(--accent)] text-[#130f0a]' : 'text-[var(--text-muted)]'
                     }`}
@@ -635,6 +786,7 @@ export function HelpBotWidget() {
                   onClick={() => {
                     setTab('groups');
                     setComposer('');
+                    setReactionPickerMessageId(null);
                   }}
                   className={`px-3 py-1 rounded-full text-xs font-semibold transition-colors ${tab === 'groups' ? 'bg-[var(--accent)] text-[#130f0a]' : 'text-[var(--text-muted)]'
                     }`}
@@ -797,7 +949,16 @@ export function HelpBotWidget() {
                             className={`flex w-full items-center ${message.mine ? 'justify-end' : 'justify-start'}`}
                           >
                             <article
-                              className={`max-w-[85%] rounded-xl border px-3 py-2 transition-transform duration-200 ${message.mine ? '' : 'border-white/10 bg-[var(--bg-primary)]'} ${isReplying ? 'scale-[1.02] ring-2 ring-cyan-400/50' : ''}`}
+                              onPointerDown={() => startReactionLongPress(message.id)}
+                              onPointerUp={clearReactionLongPress}
+                              onPointerCancel={clearReactionLongPress}
+                              onPointerLeave={clearReactionLongPress}
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                clearReactionLongPress();
+                                setReactionPickerMessageId(message.id);
+                              }}
+                              className={`relative max-w-[85%] rounded-xl border px-3 py-2 transition-transform duration-200 ${message.mine ? '' : 'border-white/10 bg-[var(--bg-primary)]'} ${isReplying ? 'scale-[1.02] ring-2 ring-cyan-400/50' : ''}`}
                               style={message.mine ? { background: activeTheme.bubble, borderColor: activeTheme.bubbleBorder } : undefined}
                             >
                               {message.replyToId && (
@@ -814,6 +975,43 @@ export function HelpBotWidget() {
                               <p className="mt-1 flex items-center justify-end gap-1.5 text-[10px] text-[var(--text-muted)] text-right">
                                 {shortTime(message.createdAt)}
                               </p>
+                              {message.reactions.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                  {message.reactions.map((reaction) => (
+                                    <button
+                                      key={`${message.id}-${reaction.value}`}
+                                      type="button"
+                                      onClick={() => void toggleReaction('direct', message.id, reaction.value)}
+                                      disabled={reactingMessageId === message.id}
+                                      className={`rounded-full border px-1.5 py-0.5 text-[11px] leading-none ${reaction.reacted ? 'border-cyan-300/55 bg-cyan-500/18 text-cyan-100' : 'border-white/20 bg-black/20 text-white/85'} disabled:opacity-60`}
+                                    >
+                                      <span>{reaction.value}</span>
+                                      <span className="ml-1">{reaction.count}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {reactionPickerMessageId === message.id && (
+                                <div
+                                  onClick={(event) => event.stopPropagation()}
+                                  className="absolute left-1/2 top-0 z-30 inline-flex w-max max-w-[calc(100vw-28px)] -translate-x-1/2 -translate-y-[calc(100%+8px)] flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border border-white/15 bg-[#111827]/95 px-2 py-1 shadow-[0_14px_30px_rgba(0,0,0,0.45)]"
+                                >
+                                  {CHAT_REACTION_OPTIONS.map((reaction) => {
+                                    const active = message.reactions.some((item) => item.value === reaction && item.reacted);
+                                    return (
+                                      <button
+                                        key={`${message.id}-${reaction}-option`}
+                                        type="button"
+                                        onClick={() => void toggleReaction('direct', message.id, reaction)}
+                                        disabled={reactingMessageId === message.id}
+                                        className={`rounded-full border px-1.5 py-0.5 text-sm leading-none transition-colors ${active ? 'border-cyan-300/55 bg-cyan-500/18' : 'border-white/15 bg-black/20'} disabled:opacity-60`}
+                                      >
+                                        {reaction}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </article>
                           </motion.div>
                         );
@@ -869,6 +1067,7 @@ export function HelpBotWidget() {
                       type="button"
                       onClick={() => {
                         setSelectedGroupId(group.groupId);
+                        setReactionPickerMessageId(null);
                         clearPopupsForTarget('groups', group.groupId);
                         clearUnreadForTarget('groups', group.groupId);
                       }}
@@ -919,8 +1118,17 @@ export function HelpBotWidget() {
                           }}
                           className={`flex w-full items-center ${message.mine ? 'justify-end' : 'justify-start'}`}
                         >
-                          <article
-                            className={`max-w-[85%] rounded-xl border px-3 py-2 transition-transform duration-200 ${message.mine ? '' : 'border-white/10 bg-[var(--bg-primary)]'} ${isReplying ? 'scale-[1.02] ring-2 ring-cyan-400/50' : ''}`}
+                            <article
+                            onPointerDown={() => startReactionLongPress(message.id)}
+                            onPointerUp={clearReactionLongPress}
+                            onPointerCancel={clearReactionLongPress}
+                            onPointerLeave={clearReactionLongPress}
+                            onContextMenu={(event) => {
+                              event.preventDefault();
+                              clearReactionLongPress();
+                              setReactionPickerMessageId(message.id);
+                            }}
+                            className={`relative max-w-[85%] rounded-xl border px-3 py-2 transition-transform duration-200 ${message.mine ? '' : 'border-white/10 bg-[var(--bg-primary)]'} ${isReplying ? 'scale-[1.02] ring-2 ring-cyan-400/50' : ''}`}
                             style={message.mine ? { background: activeTheme.bubble, borderColor: activeTheme.bubbleBorder } : undefined}
                           >
                             {!message.mine && (
@@ -947,6 +1155,43 @@ export function HelpBotWidget() {
                             <p className="mt-1 flex items-center gap-1.5 justify-end text-[10px] text-[var(--text-muted)] text-right">
                               {shortTime(message.createdAt)}
                             </p>
+                            {message.reactions.length > 0 && (
+                              <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                {message.reactions.map((reaction) => (
+                                  <button
+                                    key={`${message.id}-${reaction.value}`}
+                                    type="button"
+                                    onClick={() => void toggleReaction('groups', message.id, reaction.value)}
+                                    disabled={reactingMessageId === message.id}
+                                    className={`rounded-full border px-1.5 py-0.5 text-[11px] leading-none ${reaction.reacted ? 'border-cyan-300/55 bg-cyan-500/18 text-cyan-100' : 'border-white/20 bg-black/20 text-white/85'} disabled:opacity-60`}
+                                  >
+                                    <span>{reaction.value}</span>
+                                    <span className="ml-1">{reaction.count}</span>
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                            {reactionPickerMessageId === message.id && (
+                              <div
+                                onClick={(event) => event.stopPropagation()}
+                                className="absolute left-1/2 top-0 z-30 inline-flex w-max max-w-[calc(100vw-28px)] -translate-x-1/2 -translate-y-[calc(100%+8px)] flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border border-white/15 bg-[#111827]/95 px-2 py-1 shadow-[0_14px_30px_rgba(0,0,0,0.45)]"
+                              >
+                                {CHAT_REACTION_OPTIONS.map((reaction) => {
+                                  const active = message.reactions.some((item) => item.value === reaction && item.reacted);
+                                  return (
+                                    <button
+                                      key={`${message.id}-${reaction}-option`}
+                                      type="button"
+                                      onClick={() => void toggleReaction('groups', message.id, reaction)}
+                                      disabled={reactingMessageId === message.id}
+                                      className={`rounded-full border px-1.5 py-0.5 text-sm leading-none transition-colors ${active ? 'border-cyan-300/55 bg-cyan-500/18' : 'border-white/15 bg-black/20'} disabled:opacity-60`}
+                                    >
+                                      {reaction}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
                           </article>
                         </motion.div>
                       );

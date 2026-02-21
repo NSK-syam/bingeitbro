@@ -6,7 +6,6 @@ import { AuthModal } from '@/components/AuthModal';
 import { BibSplash } from '@/components/BibSplash';
 import { CountryToggle } from '@/components/CountryToggle';
 import { Header } from '@/components/Header';
-import { HelpBotWidget } from '@/components/HelpBotWidget';
 import { HubTabs } from '@/components/HubTabs';
 import { MovieCalendarSpotlightPopup } from '@/components/MovieCalendarSpotlightPopup';
 import { ShowBackground } from '@/components/ShowBackground';
@@ -73,7 +72,6 @@ export default function ShowsHome() {
         defaultType="series"
       />
       {user && <MovieCalendarSpotlightPopup userId={user.id} mediaType="tv" />}
-      {user && <HelpBotWidget />}
 
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-16">
         {!user ? (
