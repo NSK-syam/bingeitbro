@@ -53,9 +53,14 @@ export function AvatarPickerModal({ isOpen, onClose, onSelect }: AvatarPickerMod
                                             >
                                                 <img
                                                     src={option.path}
-                                                    alt={`${theme.name} character`}
+                                                    alt={option.label || `${theme.name} character`}
                                                     className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-110"
                                                 />
+                                                {option.label && (
+                                                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity flex items-end p-2 pointer-events-none">
+                                                        <span className="text-[10px] sm:text-xs font-semibold text-white leading-tight drop-shadow-md">{option.label}</span>
+                                                    </div>
+                                                )}
                                             </button>
                                         ))}
                                     </div>
