@@ -1975,6 +1975,53 @@ export async function getIncomingWatchGroupInvites(
 
   const inviterIds = [...new Set(invites.map((invite) => invite.inviter_id))];
   const groupIds = [...new Set(invites.map((invite) => invite.group_id))];
+  const memberRows = await (async () => {
+    if (groupIds.length === 0) return [] as WatchGroupMemberRow[];
+    try {
+      const memberParams = new URLSearchParams({
+        select: 'group_id,user_id,role',
+        group_id: `in.(${groupIds.join(',')})`,
+        user_id: `eq.${userId}`,
+      });
+      const rows = await supabaseRestRequest<WatchGroupMemberRow[]>(
+        `watch_group_members?${memberParams.toString()}`,
+        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+        token,
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [] as WatchGroupMemberRow[];
+    }
+  })();
+  const joinedGroupIds = new Set(memberRows.map((row) => row.group_id));
+  const staleInviteIds = invites
+    .filter((invite) => joinedGroupIds.has(invite.group_id))
+    .map((invite) => invite.id);
+  if (staleInviteIds.length > 0) {
+    const staleParams = new URLSearchParams({
+      id: `in.(${staleInviteIds.join(',')})`,
+      status: 'eq.pending',
+    });
+    await supabaseRestRequest(
+      `watch_group_invites?${staleParams.toString()}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({
+          status: 'accepted',
+          updated_at: new Date().toISOString(),
+          responded_at: new Date().toISOString(),
+        }),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    ).catch(() => undefined);
+  }
+  const pendingInvites = invites.filter((invite) => !joinedGroupIds.has(invite.group_id));
+  if (pendingInvites.length === 0) return [];
 
   const [inviters, groups] = await Promise.all([
     (async () => {
@@ -2016,7 +2063,7 @@ export async function getIncomingWatchGroupInvites(
   const inviterMap = new Map(inviters.map((row) => [row.id, row]));
   const groupMap = new Map(groups.map((row) => [row.id, row]));
 
-  return invites.map((invite) => {
+  return pendingInvites.map((invite) => {
     const inviter = inviterMap.get(invite.inviter_id);
     const group = groupMap.get(invite.group_id);
     return {
@@ -2049,8 +2096,52 @@ export async function getPendingWatchGroupInvites(
   );
   const invites = Array.isArray(inviteRows) ? inviteRows : [];
   if (invites.length === 0) return [];
+  const memberRows = await (async () => {
+    try {
+      const memberParams = new URLSearchParams({
+        select: 'group_id,user_id,role',
+        group_id: `eq.${groupId}`,
+      });
+      const rows = await supabaseRestRequest<WatchGroupMemberRow[]>(
+        `watch_group_members?${memberParams.toString()}`,
+        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+        token,
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [] as WatchGroupMemberRow[];
+    }
+  })();
+  const memberIds = new Set(memberRows.map((row) => row.user_id));
+  const staleInviteIds = invites
+    .filter((invite) => memberIds.has(invite.invitee_id))
+    .map((invite) => invite.id);
+  if (staleInviteIds.length > 0) {
+    const staleParams = new URLSearchParams({
+      id: `in.(${staleInviteIds.join(',')})`,
+      status: 'eq.pending',
+    });
+    await supabaseRestRequest(
+      `watch_group_invites?${staleParams.toString()}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({
+          status: 'canceled',
+          updated_at: new Date().toISOString(),
+        }),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    ).catch(() => undefined);
+  }
+  const pendingInvites = invites.filter((invite) => !memberIds.has(invite.invitee_id));
+  if (pendingInvites.length === 0) return [];
 
-  const inviteeIds = [...new Set(invites.map((invite) => invite.invitee_id))];
+  const inviteeIds = [...new Set(pendingInvites.map((invite) => invite.invitee_id))];
   const invitees = await (async () => {
     if (inviteeIds.length === 0) return [] as Array<{ id: string; name: string; avatar: string | null }>;
     try {
@@ -2070,7 +2161,7 @@ export async function getPendingWatchGroupInvites(
   })();
   const inviteeMap = new Map(invitees.map((row) => [row.id, row]));
 
-  return invites.map((invite) => {
+  return pendingInvites.map((invite) => {
     const invitee = inviteeMap.get(invite.invitee_id);
     return {
       id: invite.id,

@@ -1156,7 +1156,6 @@ export function GroupWatchModal({
                             key={member.userId}
                             className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[var(--bg-primary)] px-2.5 py-1 text-xs text-[var(--text-secondary)]"
                           >
-                            <span>{member.avatar || ''}</span>
                             <span>{member.name}</span>
                             {member.role === 'owner' && <span className="text-indigo-200">• owner</span>}
                           </span>
@@ -1221,7 +1220,6 @@ export function GroupWatchModal({
                                 key={invite.id}
                                 className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[var(--bg-card)] px-2.5 py-1 text-xs text-[var(--text-secondary)]"
                               >
-                                <span>{invite.inviteeAvatar || ''}</span>
                                 <span>{invite.inviteeName}</span>
                                 <span className="text-amber-200">• pending</span>
                               </span>
