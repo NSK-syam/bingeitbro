@@ -1976,27 +1976,45 @@ export async function getIncomingWatchGroupInvites(
   const inviterIds = [...new Set(invites.map((invite) => invite.inviter_id))];
   const groupIds = [...new Set(invites.map((invite) => invite.group_id))];
 
-  const inviterParams = new URLSearchParams({
-    select: 'id,name,avatar',
-    id: `in.(${inviterIds.join(',')})`,
-  });
-  const inviters = await supabaseRestRequest<Array<{ id: string; name: string; avatar: string | null }>>(
-    `users?${inviterParams.toString()}`,
-    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
-    token,
-  );
-  const inviterMap = new Map((Array.isArray(inviters) ? inviters : []).map((row) => [row.id, row]));
+  const [inviters, groups] = await Promise.all([
+    (async () => {
+      if (inviterIds.length === 0) return [] as Array<{ id: string; name: string; avatar: string | null }>;
+      try {
+        const inviterParams = new URLSearchParams({
+          select: 'id,name,avatar',
+          id: `in.(${inviterIds.join(',')})`,
+        });
+        const rows = await supabaseRestRequest<Array<{ id: string; name: string; avatar: string | null }>>(
+          `users?${inviterParams.toString()}`,
+          { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+          token,
+        );
+        return Array.isArray(rows) ? rows : [];
+      } catch {
+        return [] as Array<{ id: string; name: string; avatar: string | null }>;
+      }
+    })(),
+    (async () => {
+      if (groupIds.length === 0) return [] as Array<{ id: string; name: string }>;
+      try {
+        const groupParams = new URLSearchParams({
+          select: 'id,name',
+          id: `in.(${groupIds.join(',')})`,
+        });
+        const rows = await supabaseRestRequest<Array<{ id: string; name: string }>>(
+          `watch_groups?${groupParams.toString()}`,
+          { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+          token,
+        );
+        return Array.isArray(rows) ? rows : [];
+      } catch {
+        return [] as Array<{ id: string; name: string }>;
+      }
+    })(),
+  ]);
 
-  const groupParams = new URLSearchParams({
-    select: 'id,name',
-    id: `in.(${groupIds.join(',')})`,
-  });
-  const groups = await supabaseRestRequest<Array<{ id: string; name: string }>>(
-    `watch_groups?${groupParams.toString()}`,
-    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
-    token,
-  );
-  const groupMap = new Map((Array.isArray(groups) ? groups : []).map((row) => [row.id, row]));
+  const inviterMap = new Map(inviters.map((row) => [row.id, row]));
+  const groupMap = new Map(groups.map((row) => [row.id, row]));
 
   return invites.map((invite) => {
     const inviter = inviterMap.get(invite.inviter_id);
@@ -2033,16 +2051,24 @@ export async function getPendingWatchGroupInvites(
   if (invites.length === 0) return [];
 
   const inviteeIds = [...new Set(invites.map((invite) => invite.invitee_id))];
-  const inviteeParams = new URLSearchParams({
-    select: 'id,name,avatar',
-    id: `in.(${inviteeIds.join(',')})`,
-  });
-  const invitees = await supabaseRestRequest<Array<{ id: string; name: string; avatar: string | null }>>(
-    `users?${inviteeParams.toString()}`,
-    { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
-    token,
-  );
-  const inviteeMap = new Map((Array.isArray(invitees) ? invitees : []).map((row) => [row.id, row]));
+  const invitees = await (async () => {
+    if (inviteeIds.length === 0) return [] as Array<{ id: string; name: string; avatar: string | null }>;
+    try {
+      const inviteeParams = new URLSearchParams({
+        select: 'id,name,avatar',
+        id: `in.(${inviteeIds.join(',')})`,
+      });
+      const rows = await supabaseRestRequest<Array<{ id: string; name: string; avatar: string | null }>>(
+        `users?${inviteeParams.toString()}`,
+        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+        token,
+      );
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [] as Array<{ id: string; name: string; avatar: string | null }>;
+    }
+  })();
+  const inviteeMap = new Map(invitees.map((row) => [row.id, row]));
 
   return invites.map((invite) => {
     const invitee = inviteeMap.get(invite.invitee_id);

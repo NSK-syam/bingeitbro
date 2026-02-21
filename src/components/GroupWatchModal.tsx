@@ -292,7 +292,7 @@ export function GroupWatchModal({
       const rows = await getIncomingWatchGroupInvites(user.id);
       setIncomingInvites(rows);
     } catch {
-      setIncomingInvites([]);
+      // Keep previous invites if refresh fails temporarily.
     } finally {
       setIncomingInvitesLoading(false);
     }
@@ -304,7 +304,7 @@ export function GroupWatchModal({
       const rows = await getPendingWatchGroupInvites(groupId);
       setPendingInvites(rows);
     } catch {
-      setPendingInvites([]);
+      // Keep previous pending list if refresh fails temporarily.
     } finally {
       setPendingInvitesLoading(false);
     }
@@ -428,6 +428,17 @@ export function GroupWatchModal({
     }
     void loadPendingInvites(activeGroupId);
   }, [isOpen, activeGroupId, isActiveGroupOwner, loadPendingInvites]);
+
+  useEffect(() => {
+    if (!isOpen || !user?.id) return;
+    const intervalId = window.setInterval(() => {
+      void loadIncomingInvites();
+      if (activeGroupId && isActiveGroupOwner) {
+        void loadPendingInvites(activeGroupId);
+      }
+    }, 8000);
+    return () => window.clearInterval(intervalId);
+  }, [isOpen, user?.id, activeGroupId, isActiveGroupOwner, loadIncomingInvites, loadPendingInvites]);
 
   useEffect(() => {
     if (!isOpen) {
