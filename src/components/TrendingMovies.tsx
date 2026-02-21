@@ -301,7 +301,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         } else {
           // Original discover logic when no search query
           const today = new Date().toISOString().split('T')[0];
-          const sixMonthsAgo = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          const twelveMonthsAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
           const sixMonthsFromNow = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
           const currentYear = new Date().getFullYear();
           const selectedYearNum = selectedYear ? parseInt(selectedYear, 10) : null;
@@ -315,7 +315,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                 ? { start: today, end: yearEnd }
                 : null;
 
-          const recentPart = !hasValidYear ? `&primary_release_date.gte=${sixMonthsAgo}` : '';
+          const recentPart = !hasValidYear ? `&primary_release_date.gte=${twelveMonthsAgo}` : '';
           const sortByMap: Record<string, string> = {
             date: 'primary_release_date.desc',
             rating: 'vote_average.desc',
