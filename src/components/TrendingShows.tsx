@@ -61,6 +61,10 @@ async function fetchShows(args: {
   const base = 'https://api.themoviedb.org/3';
   const q = args.searchQuery.trim();
   const hasFilters = Boolean(args.lang || args.genre || args.year || args.ott || args.sort);
+  const hasValidYear = Boolean(args.year && args.year.trim().length === 4 && !Number.isNaN(Number(args.year)));
+  const twelveMonthsAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  const recentPart = !hasValidYear ? `&first_air_date.gte=${twelveMonthsAgo}` : '';
+
   const sortParam = args.sort || 'date';
   const sortByMap: Record<string, string> = {
     date: 'first_air_date.desc',
@@ -87,10 +91,10 @@ async function fetchShows(args: {
     ]
     : (() => {
       if (!hasFilters) {
-        const popularTvBase = `${base}/discover/tv?api_key=${apiKey}&vote_average.gte=6.0&vote_count.gte=100`;
+        const popularTvBase = `${base}/discover/tv?api_key=${apiKey}&vote_average.gte=6.0&vote_count.gte=100${recentPart}`;
         return [
-          `${base}/tv/popular?api_key=${apiKey}&language=en-US&page=1`,
-          `${base}/tv/top_rated?api_key=${apiKey}&language=en-US&page=1`,
+          `${popularTvBase}&language=en-US&sort_by=popularity.desc&page=1`,
+          `${popularTvBase}&language=en-US&sort_by=vote_average.desc&page=1`,
           `${popularTvBase}&with_original_language=te&sort_by=popularity.desc&page=1`,
           `${popularTvBase}&with_original_language=hi&sort_by=popularity.desc&page=1`,
           `${popularTvBase}&with_original_language=ta&sort_by=popularity.desc&page=1`,
@@ -105,7 +109,7 @@ async function fetchShows(args: {
       const langs = args.lang ? [args.lang] : defaultLangs;
       const maxPages = 4;
       const pages = Array.from({ length: maxPages }, (_, i) => i + 1);
-      const discoverBase = `${base}/discover/tv?api_key=${apiKey}&sort_by=${sortBy}&watch_region=${args.country}&with_watch_monetization_types=flatrate&vote_average.gte=6.0&vote_count.gte=100${genrePart}${yearPart}${ottPart}`;
+      const discoverBase = `${base}/discover/tv?api_key=${apiKey}&sort_by=${sortBy}${recentPart}&watch_region=${args.country}&with_watch_monetization_types=flatrate&vote_average.gte=6.0&vote_count.gte=100${genrePart}${yearPart}${ottPart}`;
       const out: string[] = [];
       for (const lang of langs) {
         for (const page of pages) {

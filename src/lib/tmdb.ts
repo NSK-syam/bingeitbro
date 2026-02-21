@@ -667,8 +667,8 @@ export async function getTrendingToday(): Promise<NewRelease[]> {
   }
 
   try {
-    const lastYear = new Date().getFullYear() - 1;
-    const base = `api_key=${TMDB_API_KEY}&with_watch_monetization_types=flatrate&primary_release_date.gte=${lastYear}-01-01&sort_by=popularity.desc`;
+    const threeMonthsAgo = getDateDaysAgo(90);
+    const base = `api_key=${TMDB_API_KEY}&with_watch_monetization_types=flatrate&primary_release_date.gte=${threeMonthsAgo}&sort_by=popularity.desc`;
     const ratingFilter = `&vote_average.gte=6.0&vote_count.gte=100`;
 
     const [usRecent, usIndian, inRecent, inIndian] = await Promise.all([
