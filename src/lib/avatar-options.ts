@@ -71,3 +71,61 @@ export const ALL_AVATAR_EMOJIS: string[] = AVATAR_THEMES.flatMap((t) =>
 export function getRandomMovieAvatar(): string {
   return ALL_AVATAR_EMOJIS[Math.floor(Math.random() * ALL_AVATAR_EMOJIS.length)];
 }
+
+export interface ImageAvatarOption {
+  id: string;
+  path: string;
+}
+
+export interface ImageAvatarTheme {
+  name: string;
+  options: ImageAvatarOption[];
+}
+
+export const IMAGE_AVATAR_THEMES: ImageAvatarTheme[] = [
+  {
+    name: 'Stranger Things',
+    options: [
+      { id: 'st_eleven', path: '/avatars/stranger_things/eleven.svg' },
+      { id: 'st_mike', path: '/avatars/stranger_things/mike.svg' },
+      { id: 'st_will', path: '/avatars/stranger_things/will.svg' },
+      { id: 'st_lucas', path: '/avatars/stranger_things/lucas.svg' },
+    ]
+  },
+  {
+    name: 'Frankenstein',
+    options: [
+      { id: 'fr_doctor', path: '/avatars/frankenstein/doctor.svg' },
+      { id: 'fr_monster', path: '/avatars/frankenstein/monster.svg' },
+      { id: 'fr_bride', path: '/avatars/frankenstein/bride.svg' },
+      { id: 'fr_igor', path: '/avatars/frankenstein/igor.svg' },
+    ]
+  },
+  {
+    name: 'Raw',
+    options: [
+      { id: 'raw_roman', path: '/avatars/raw/roman.svg' },
+      { id: 'raw_cena', path: '/avatars/raw/cena.svg' },
+      { id: 'raw_cody', path: '/avatars/raw/cody.svg' },
+      { id: 'raw_bianca', path: '/avatars/raw/bianca.svg' },
+    ]
+  },
+  {
+    name: 'Money Heist',
+    options: [
+      { id: 'mh_dali', path: '/avatars/money_heist/dali.svg' },
+      { id: 'mh_professor', path: '/avatars/money_heist/professor.svg' },
+      { id: 'mh_tokyo', path: '/avatars/money_heist/tokyo.svg' },
+      { id: 'mh_nairobi', path: '/avatars/money_heist/nairobi.svg' },
+    ]
+  },
+  {
+    name: 'ONE PIECE',
+    options: [
+      { id: 'op_luffy', path: '/avatars/one_piece/luffy.svg' },
+      { id: 'op_zoro', path: '/avatars/one_piece/zoro.svg' },
+      { id: 'op_nami', path: '/avatars/one_piece/nami.svg' },
+      { id: 'op_sanji', path: '/avatars/one_piece/sanji.svg' },
+    ]
+  },
+];

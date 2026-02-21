@@ -10,7 +10,7 @@ import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { searchMovies, getMovieDetails, getWatchProviders, getImageUrl, getLanguageName, formatRuntime, tmdbWatchProvidersToOttLinks } from '@/lib/tmdb';
 import type { TMDBMovie } from '@/lib/tmdb';
 import { Recommendation, OTTLink } from '@/types';
-import { MovieCard, StarRating } from '@/components';
+import { MovieCard, StarRating, AvatarPickerModal } from '@/components';
 import { useWatched, useWatchlist } from '@/hooks';
 
 interface ProfilePageClientProps {
@@ -113,6 +113,31 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const [watchedItems, setWatchedItems] = useState<WatchedMovieItem[]>([]);
   const [watchedLoading, setWatchedLoading] = useState(false);
   const [watchedError, setWatchedError] = useState('');
+
+  const [avatarSaving, setAvatarSaving] = useState(false);
+  const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+
+  const handleAvatarSelect = async (path: string) => {
+    if (!user || !displayUser || !isOwnProfile) return;
+    setAvatarSaving(true);
+    try {
+      await supabaseRestRequest(
+        `users?id=eq.${user.id}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({ avatar: path }),
+          timeoutMs: 12000,
+        },
+        accessToken,
+      );
+      setProfileUser((prev) => (prev ? { ...prev, avatar: path } : prev));
+    } catch (err) {
+      console.error('Failed to update avatar:', err);
+    } finally {
+      setAvatarSaving(false);
+    }
+  };
 
   const [top10RatingsSupported, setTop10RatingsSupported] = useState(true);
   const [top10RatingsLoading, setTop10RatingsLoading] = useState(false);
@@ -403,18 +428,18 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const fallbackProfileUser: DBUser | null =
     !profileUser && isOwnId && user
       ? {
-          id: user.id,
-          email: user.email ?? '',
-          name:
-            (user.user_metadata?.full_name as string) ||
-            (user.user_metadata?.name as string) ||
-            user.email?.split('@')[0] ||
-            'User',
-          username: user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user',
-          avatar: '',
-          theme: serializeLightingTheme(DEFAULT_LIGHTING),
-          created_at: new Date().toISOString(),
-        }
+        id: user.id,
+        email: user.email ?? '',
+        name:
+          (user.user_metadata?.full_name as string) ||
+          (user.user_metadata?.name as string) ||
+          user.email?.split('@')[0] ||
+          'User',
+        username: user.email?.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user',
+        avatar: '',
+        theme: serializeLightingTheme(DEFAULT_LIGHTING),
+        created_at: new Date().toISOString(),
+      }
       : null;
 
   const displayUser = profileUser ?? fallbackProfileUser;
@@ -1294,8 +1319,27 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
       <main className="max-w-4xl mx-auto px-4 py-8">
         <div className="bg-[var(--bg-card)] rounded-2xl p-8 border border-white/10 mb-8">
           <div className="flex flex-col sm:flex-row items-center gap-6">
-            <div className="w-24 h-24 rounded-full bg-[var(--accent)] flex items-center justify-center text-5xl">
-              {displayUser.avatar}
+            <div
+              className={`relative w-24 h-24 rounded-full bg-[var(--accent)] flex items-center justify-center text-5xl flex-shrink-0 ${isOwnProfile ? 'cursor-pointer hover:ring-4 hover:ring-white/20 transition-all' : ''}`}
+              onClick={() => isOwnProfile && setIsAvatarPickerOpen(true)}
+            >
+              {displayUser.avatar?.startsWith('/') ? (
+                <img src={displayUser.avatar} alt={displayUser.name} className="w-full h-full object-cover rounded-full" />
+              ) : (
+                displayUser.avatar
+              )}
+              {isOwnProfile && (
+                <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                  <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" />
+                  </svg>
+                </div>
+              )}
+              {avatarSaving && (
+                <div className="absolute inset-0 rounded-full flex items-center justify-center bg-black/50">
+                  <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
             </div>
             <div className="text-center sm:text-left flex-1">
               <h1 className="text-3xl font-bold text-[var(--text-primary)]">{displayUser.name}</h1>
@@ -1613,7 +1657,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-4xl">
-                                  
+
                                 </div>
                               )}
                             </div>
@@ -1714,56 +1758,56 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                           ✕
                         </button>
                       )}
-                    <div className="aspect-[2/3] w-full overflow-hidden">
-                      {rec?.poster ? (
-                        <img
-                          src={rec.poster}
-                          alt={rec.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex items-center justify-center text-4xl">
-                          
-                        </div>
-                      )}
-                    </div>
-                    <div className="absolute bottom-12 right-2 flex items-center -space-x-2">
-                      {(Array.isArray(rec?.ottLinks) && rec.ottLinks.length > 0
-                        ? rec.ottLinks
-                        : [{ platform: 'OTT', url: `/movie/${rec?.id ?? ''}`, logoPath: '' }]
-                      )
-                        .filter((link, index, arr) => arr.findIndex((l) => l.platform === link.platform) === index)
-                        .slice(0, 3)
-                        .map((link) => {
-                          const logoUrl = link.logoPath ? `https://image.tmdb.org/t/p/w92${link.logoPath}` : '';
-                          return (
-                            <button
-                              key={link.platform}
-                              type="button"
-                              title={link.platform}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                const href = `/movie/${rec?.id ?? ''}`;
-                                window.location.href = href;
-                              }}
-                              className="w-6 h-6 rounded-full bg-[var(--bg-primary)]/80 border border-white/10 flex items-center justify-center overflow-hidden"
-                            >
-                              {logoUrl ? (
-                                <img src={logoUrl} alt={link.platform} className="w-4 h-4 object-contain" />
-                              ) : (
-                                <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-                                  <path d="M4 4.5a1 1 0 0 1 1.6-.8l9 6.5a1 1 0 0 1 0 1.6l-9 6.5A1 1 0 0 1 4 17.5v-13z" />
-                                </svg>
-                              )}
-                            </button>
-                          );
-                        })}
-                    </div>
-                    <div className="p-2">
-                      <p className="text-xs font-semibold text-[var(--text-primary)] line-clamp-1">
-                        {rec?.title ?? 'Unknown'}
-                      </p>
+                      <div className="aspect-[2/3] w-full overflow-hidden">
+                        {rec?.poster ? (
+                          <img
+                            src={rec.poster}
+                            alt={rec.title}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center text-4xl">
+
+                          </div>
+                        )}
+                      </div>
+                      <div className="absolute bottom-12 right-2 flex items-center -space-x-2">
+                        {(Array.isArray(rec?.ottLinks) && rec.ottLinks.length > 0
+                          ? rec.ottLinks
+                          : [{ platform: 'OTT', url: `/movie/${rec?.id ?? ''}`, logoPath: '' }]
+                        )
+                          .filter((link, index, arr) => arr.findIndex((l) => l.platform === link.platform) === index)
+                          .slice(0, 3)
+                          .map((link) => {
+                            const logoUrl = link.logoPath ? `https://image.tmdb.org/t/p/w92${link.logoPath}` : '';
+                            return (
+                              <button
+                                key={link.platform}
+                                type="button"
+                                title={link.platform}
+                                onClick={(e) => {
+                                  e.preventDefault();
+                                  e.stopPropagation();
+                                  const href = `/movie/${rec?.id ?? ''}`;
+                                  window.location.href = href;
+                                }}
+                                className="w-6 h-6 rounded-full bg-[var(--bg-primary)]/80 border border-white/10 flex items-center justify-center overflow-hidden"
+                              >
+                                {logoUrl ? (
+                                  <img src={logoUrl} alt={link.platform} className="w-4 h-4 object-contain" />
+                                ) : (
+                                  <svg className="w-3.5 h-3.5 text-white" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                                    <path d="M4 4.5a1 1 0 0 1 1.6-.8l9 6.5a1 1 0 0 1 0 1.6l-9 6.5A1 1 0 0 1 4 17.5v-13z" />
+                                  </svg>
+                                )}
+                              </button>
+                            );
+                          })}
+                      </div>
+                      <div className="p-2">
+                        <p className="text-xs font-semibold text-[var(--text-primary)] line-clamp-1">
+                          {rec?.title ?? 'Unknown'}
+                        </p>
                         <p className="text-[10px] text-[var(--text-muted)]">
                           {(pick.language || 'Unknown').toUpperCase()}
                         </p>
@@ -1938,7 +1982,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
                               <div className="min-w-0 flex-1">
                                 <p className="font-medium text-[var(--text-primary)] truncate text-sm">{movie.title}</p>
                                 <p className="text-xs text-[var(--text-muted)]">
-                                  {movie.release_date ? new Date(movie.release_date).getFullYear() : ''} • {(movie.vote_average ?? 0).toFixed(1)} 
+                                  {movie.release_date ? new Date(movie.release_date).getFullYear() : ''} • {(movie.vote_average ?? 0).toFixed(1)}
                                 </p>
                               </div>
                             </button>
@@ -1986,6 +2030,14 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             </div>
           </div>
         </>
+      )}
+
+      {isOwnProfile && (
+        <AvatarPickerModal
+          isOpen={isAvatarPickerOpen}
+          onClose={() => setIsAvatarPickerOpen(false)}
+          onSelect={handleAvatarSelect}
+        />
       )}
     </div>
   );

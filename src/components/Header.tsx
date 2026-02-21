@@ -327,8 +327,16 @@ export function Header({
                   onClick={() => setShowUserMenu(!showUserMenu)}
                   className="flex items-center gap-2 px-3 py-2 bg-[var(--bg-secondary)] rounded-full hover:bg-[var(--bg-card)] transition-colors"
                 >
-                  <div className="w-8 h-8 rounded-full bg-[var(--bg-card)] flex items-center justify-center text-lg border border-white/10">
-                    {userAvatar ? userAvatar : <span className="text-xs font-bold text-[var(--accent)]">{userName.charAt(0).toUpperCase()}</span>}
+                  <div className="w-8 h-8 rounded-full bg-[var(--bg-card)] flex items-center justify-center text-lg border border-white/10 overflow-hidden">
+                    {userAvatar ? (
+                      userAvatar.startsWith('/') ? (
+                        <img src={userAvatar} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        userAvatar
+                      )
+                    ) : (
+                      <span className="text-xs font-bold text-[var(--accent)]">{userName.charAt(0).toUpperCase()}</span>
+                    )}
                   </div>
                   <span className="hidden sm:inline text-sm text-[var(--text-primary)]">{userName}</span>
                 </button>
@@ -341,7 +349,13 @@ export function Header({
                       onClick={(e) => e.stopPropagation()}
                     >
                       <div className="px-4 py-2 border-b border-white/10 flex items-center gap-2">
-                        <span className="text-2xl">{userAvatar ?? ''}</span>
+                        {userAvatar?.startsWith('/') ? (
+                          <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-white/10">
+                            <img src={userAvatar} alt="" className="w-full h-full object-cover" />
+                          </div>
+                        ) : (
+                          <span className="text-2xl">{userAvatar ?? ''}</span>
+                        )}
                         <p className="text-sm font-medium text-[var(--text-primary)]">{userName}</p>
                       </div>
                       <button
