@@ -187,6 +187,7 @@ export async function POST(request: Request) {
       movie_year: movieYear,
       remind_at: remindAtIso,
       notified_at: null,
+      email_sent_at: null,
       canceled_at: null,
       updated_at: nowIso,
     };

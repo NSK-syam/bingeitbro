@@ -290,7 +290,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
 
         <div className="mt-6 grid gap-6 lg:grid-cols-[220px_minmax(0,1.8fr)_minmax(0,0.8fr)] items-start">
           <div className="relative">
-            <div className="rounded-2xl overflow-hidden border border-white/10 bg-black/20">
+            <div className="hidden sm:block rounded-2xl overflow-hidden border border-white/10 bg-black/20">
               <img src={poster} alt={`${title} poster`} className="w-full h-auto object-cover" />
             </div>
             <div className="mt-4 grid grid-cols-2 gap-2">

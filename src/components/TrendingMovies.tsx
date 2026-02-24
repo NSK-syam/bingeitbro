@@ -31,6 +31,8 @@ const PROVIDER_CACHE_TTL_MS = 60 * 60 * 1000;
 export type ProviderLogoItem = { url: string; name: string };
 const providerCache = new Map<string, { logos: ProviderLogoItem[]; link?: string; hasOtt: boolean; ts: number }>();
 const TMDB_LOGO_BASE = 'https://image.tmdb.org/t/p/w45';
+const CHAT_MOVIE_DRAG_MIME = 'application/x-bib-watch-group-pick';
+const CHAT_MOVIE_DRAG_TEXT_PREFIX = 'bib-chat-share:';
 
 type ProviderEntry = { provider_id?: number; provider_name?: string; logo_path?: string | null };
 type ProviderRegion = {
@@ -301,11 +303,22 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         } else {
           // Original discover logic when no search query
           const today = new Date().toISOString().split('T')[0];
-          const twelveMonthsAgo = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+          const MIN_TRENDING_RESULTS = 8;
+          const TARGET_LANGUAGE_RESULTS = 30;
+          const RELEASE_WINDOW_STEPS_DAYS = [60, 100, 150, 220, 300, 400];
           const sixMonthsFromNow = new Date(Date.now() + 180 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
           const currentYear = new Date().getFullYear();
           const selectedYearNum = selectedYear ? parseInt(selectedYear, 10) : null;
           const hasValidYear = Number.isFinite(selectedYearNum);
+          const releaseWindowCandidates = hasValidYear
+            ? [`${selectedYearNum}-01-01`]
+            : RELEASE_WINDOW_STEPS_DAYS.map((days) =>
+                new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+              );
+          let releaseWindowStart = releaseWindowCandidates[0];
+          const releaseWindowEnd = hasValidYear && selectedYearNum! < currentYear
+            ? `${selectedYearNum}-12-31`
+            : today;
           const yearEnd = `${currentYear}-12-31`;
           const upcomingWindow = !hasValidYear
             ? { start: today, end: sixMonthsFromNow }
@@ -315,7 +328,6 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                 ? { start: today, end: yearEnd }
                 : null;
 
-          const recentPart = !hasValidYear ? `&primary_release_date.gte=${twelveMonthsAgo}` : '';
           const sortByMap: Record<string, string> = {
             date: 'primary_release_date.desc',
             rating: 'vote_average.desc',
@@ -330,16 +342,14 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             : (resolvedOttProvider?.ids.IN ?? (resolvedOttProvider ? undefined : numericOtt ?? undefined));
           const ottPart = ottId ? `&with_watch_providers=${ottId}` : '';
 
-          // Released: only movies on OTT for the selected country, optionally by provider.
-          const releasedBaseUrl =
+          const buildReleasedBaseUrl = (windowStartDate: string, windowEndDate: string) =>
             `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}` +
             `&sort_by=${sortBy}` +
-            `&primary_release_date.lte=${today}` +
-            `${recentPart}` +
-            `&with_watch_monetization_types=flatrate` +
+            `&primary_release_date.gte=${windowStartDate}` +
+            `&primary_release_date.lte=${windowEndDate}` +
+            `&with_watch_monetization_types=flatrate|free|ads` +
             `&watch_region=${country}` +
-            `&vote_average.gte=6.0` +
-            `&vote_count.gte=100` +
+            `&include_adult=false` +
             `${ottPart}` +
             `${genrePart}${yearPart}`;
           const upcomingBaseUrl = upcomingWindow
@@ -349,31 +359,38 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
           const hasFilters = Boolean(selectedLang || selectedGenre || selectedYear || selectedOtt);
           // Keep request volume low; fetch a bit more so Trending feels fuller.
           // With our proxy caching + single-region fetch, this stays within limits.
-          const maxPages = hasFilters ? 3 : 2;
-          const pagesToFetch = Array.from({ length: maxPages }, (_, i) => i + 1);
+          const releasedPagePlan = selectedLang
+            ? [3, 5, 8]
+            : [hasFilters ? 3 : 2];
           // Upcoming: still capped to avoid rate limits, but allow a bit more.
           const upcomingMaxPages = (selectedLang || (selectedYearNum && selectedYearNum > currentYear)) ? 4 : 2;
           const upcomingPagesToFetch = Array.from({ length: upcomingMaxPages }, (_, i) => i + 1);
 
           // When an OTT has a language restriction (e.g. Aha = Telugu + Tamil only), use only those languages
           const ottRestrictedLangs = resolvedOttProvider?.languages ?? (numericOtt ? OTT_TO_LANGUAGES[numericOtt] : null);
-          const defaultLangs = ['en', 'hi', 'te', 'ta'];
           // If user didn't pick a language, avoid per-language fanout. We'll fetch once and
           // let the UI naturally contain mixed languages from that region.
           const langCodesToFetch: string[] = selectedLang
             ? [selectedLang]
             : (ottRestrictedLangs ? ottRestrictedLangs : ['']);
 
-          const releasedPromises: Promise<Response>[] = [];
           const upcomingPromises: Promise<Response>[] = [];
+          const fetchReleasedResponses = async (windowStartDate: string, pageCount: number) => {
+            const releasedBaseUrl = buildReleasedBaseUrl(windowStartDate, releaseWindowEnd);
+            const releasedPromises: Promise<Response>[] = [];
+            const pages = Array.from({ length: pageCount }, (_, i) => i + 1);
+            for (const lang of langCodesToFetch) {
+              for (const page of pages) {
+                const langPart = lang ? `&with_original_language=${lang}` : '';
+                releasedPromises.push(
+                  fetchTmdbWithProxy(`${releasedBaseUrl}${langPart}&page=${page}`, { signal: controller.signal })
+                );
+              }
+            }
+            return Promise.all(releasedPromises);
+          };
 
           for (const lang of langCodesToFetch) {
-            for (const page of pagesToFetch) {
-              const langPart = lang ? `&with_original_language=${lang}` : '';
-              releasedPromises.push(
-                fetchTmdbWithProxy(`${releasedBaseUrl}${langPart}&page=${page}`, { signal: controller.signal })
-              );
-            }
             for (const page of upcomingPagesToFetch) {
               if (upcomingBaseUrl) {
                 const langPart = lang ? `&with_original_language=${lang}` : '';
@@ -384,13 +401,8 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             }
           }
 
-          const [releasedResponses, upcomingResponses] = await Promise.all([
-            Promise.all(releasedPromises),
-            Promise.all(upcomingPromises),
-          ]);
-
-          const any429 = [...releasedResponses, ...upcomingResponses].some((r) => r.status === 429);
-          if (any429) {
+          const upcomingResponses = await Promise.all(upcomingPromises);
+          if (upcomingResponses.some((r) => r.status === 429)) {
             setError('TMDB is rate limiting right now. Please wait a minute and refresh.');
             setMovies([]);
             setComingSoonByLang({});
@@ -398,27 +410,65 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             return;
           }
 
-          const releasedData = await Promise.all(releasedResponses.map(r => r.json()));
           const upcomingData = await Promise.all(upcomingResponses.map(r => r.json()));
 
-          const releasedFlat = releasedData.flatMap(d => d.results || []);
-          const seenIds = new Set<number>();
-          allMovies = [];
-          releasedFlat.forEach(m => { if (!seenIds.has(m.id)) { seenIds.add(m.id); allMovies.push(m); } });
-          allMovies.sort((a, b) =>
-            new Date(b.release_date || '1900-01-01').getTime() -
-            new Date(a.release_date || '1900-01-01').getTime()
-          );
+          const parseReleasedMovies = async (responses: Response[]) => {
+            const releasedData = await Promise.all(responses.map((r) => r.json()));
+            const releasedFlat = releasedData.flatMap((d) => d.results || []);
+            const seenIds = new Set<number>();
+            const parsedMovies: TrendingMovie[] = [];
+            releasedFlat.forEach((movie: TrendingMovie) => {
+              if (!seenIds.has(movie.id)) {
+                seenIds.add(movie.id);
+                parsedMovies.push(movie);
+              }
+            });
+            parsedMovies.sort((a, b) =>
+              new Date(b.release_date || '1900-01-01').getTime() -
+              new Date(a.release_date || '1900-01-01').getTime()
+            );
+            return parsedMovies.filter((movie) => movie.poster_path);
+          };
+
+          const filterByReleaseWindow = (list: TrendingMovie[], windowStartDate: string, windowEndDate: string) => {
+            const startTs = new Date(`${windowStartDate}T00:00:00Z`).getTime();
+            const endTs = new Date(`${windowEndDate}T23:59:59Z`).getTime();
+            return list.filter((movie) => {
+              const releaseTs = Date.parse(movie.release_date || '');
+              return Number.isFinite(releaseTs) && releaseTs >= startTs && releaseTs <= endTs;
+            });
+          };
           allUpcoming = upcomingData.flatMap(d => d.results || []);
 
-          // Filter: need poster and at least some rating (no unrated movies)
-          allMovies = allMovies.filter(movie => movie.poster_path && typeof movie.vote_average === 'number' && movie.vote_average > 0);
           // Upcoming: allow unrated titles so future releases show up
           allUpcoming = allUpcoming.filter(movie => movie.poster_path);
-
-          // Ensure no movie appears in both Released and Coming Soon (dedupe by id)
-          const releasedIds = new Set(allMovies.map(m => m.id));
-          allUpcoming = allUpcoming.filter(m => !releasedIds.has(m.id));
+          let bestReleased: TrendingMovie[] = [];
+          const targetReleasedCount = selectedLang ? TARGET_LANGUAGE_RESULTS : MIN_TRENDING_RESULTS;
+          let reachedTarget = false;
+          for (const windowStartDate of releaseWindowCandidates) {
+            if (reachedTarget) break;
+            for (const pageCount of releasedPagePlan) {
+              const releasedResponses = await fetchReleasedResponses(windowStartDate, pageCount);
+              if (releasedResponses.some((r) => r.status === 429)) {
+                setError('TMDB is rate limiting right now. Please wait a minute and refresh.');
+                setMovies([]);
+                setComingSoonByLang({});
+                setLoading(false);
+                return;
+              }
+              const parsedMovies = await parseReleasedMovies(releasedResponses);
+              const candidate = filterByReleaseWindow(parsedMovies, windowStartDate, releaseWindowEnd);
+              if (candidate.length > bestReleased.length) {
+                bestReleased = candidate;
+                releaseWindowStart = windowStartDate;
+              }
+              if (candidate.length >= targetReleasedCount) {
+                reachedTarget = true;
+                break;
+              }
+            }
+          }
+          allMovies = bestReleased;
 
           const hasAnyFilters = Boolean(selectedLang || selectedGenre || selectedYear || selectedOtt);
           if (allMovies.length === 0 && !hasAnyFilters) {
@@ -428,28 +478,82 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
               `https://api.themoviedb.org/3/discover/movie` +
               `?api_key=${apiKey}` +
               `&sort_by=popularity.desc` +
-              `&primary_release_date.lte=${today}` +
-              `&vote_average.gte=6.0` +
-              `&vote_count.gte=200` +
-              `&include_adult=false` +
+              `&primary_release_date.gte=${releaseWindowStart}` +
+              `&primary_release_date.lte=${releaseWindowEnd}` +
+              `&with_watch_monetization_types=flatrate|free|ads` +
               `&watch_region=${country}` +
+              `&include_adult=false` +
               `&page=1`;
 
             const fallbackResponse = await fetchTmdbWithProxy(fallbackUrl, { signal: controller.signal });
             const fallbackData = await fallbackResponse.json();
             const fallbackMovies = (fallbackData.results || []).filter(
-              (movie: TrendingMovie) => movie.poster_path && typeof movie.vote_average === 'number' && movie.vote_average > 0
+              (movie: TrendingMovie) => movie.poster_path
             );
             if (fallbackMovies.length > 0) {
               allMovies = fallbackMovies;
             }
           }
 
+          if (selectedLang && allMovies.length < TARGET_LANGUAGE_RESULTS) {
+            // Language-specific fallback: keep language pages usable even when strict
+            // OTT discover filters are temporarily too narrow for that language.
+            const relaxedStart = hasValidYear
+              ? `${selectedYearNum}-01-01`
+              : new Date(Date.now() - 550 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const relaxedBaseUrl =
+              `https://api.themoviedb.org/3/discover/movie` +
+              `?api_key=${apiKey}` +
+              `&sort_by=popularity.desc` +
+              `&with_original_language=${selectedLang}` +
+              `&primary_release_date.gte=${relaxedStart}` +
+              `&primary_release_date.lte=${releaseWindowEnd}` +
+              `&with_watch_monetization_types=flatrate|free|ads` +
+              `&watch_region=${country}` +
+              `&include_adult=false` +
+              `${genrePart}${yearPart}${ottPart}`;
+
+            const relaxedResponses = await Promise.all(
+              Array.from({ length: hasValidYear ? 10 : 8 }, (_, i) => i + 1).map((page) =>
+                fetchTmdbWithProxy(`${relaxedBaseUrl}&page=${page}`, { signal: controller.signal }),
+              )
+            );
+            if (relaxedResponses.some((r) => r.status === 429)) {
+              setError('TMDB is rate limiting right now. Please wait a minute and refresh.');
+              setMovies([]);
+              setComingSoonByLang({});
+              setLoading(false);
+              return;
+            }
+            const relaxedData = await Promise.all(relaxedResponses.map((r) => r.json()));
+            const relaxedMovies = relaxedData
+              .flatMap((d) => d.results || [])
+              .filter((movie: TrendingMovie) => movie.poster_path);
+
+            if (relaxedMovies.length > 0) {
+              const deduped = new Map<number, TrendingMovie>();
+              for (const movie of allMovies) deduped.set(movie.id, movie);
+              for (const movie of relaxedMovies) deduped.set(movie.id, movie);
+              allMovies = Array.from(deduped.values()).sort(
+                (a, b) =>
+                  new Date(b.release_date || '1900-01-01').getTime() -
+                  new Date(a.release_date || '1900-01-01').getTime(),
+              );
+            }
+          }
+
+          // Ensure no movie appears in both Released and Coming Soon (dedupe by id)
+          const releasedIds = new Set(allMovies.map((movie) => movie.id));
+          allUpcoming = allUpcoming.filter((movie) => !releasedIds.has(movie.id));
+
           allMovies = applyClientFilters(allMovies, {
             lang: selectedLang,
             genre: selectedGenre,
             year: selectedYear,
           });
+          if (selectedLang) {
+            allMovies = allMovies.slice(0, TARGET_LANGUAGE_RESULTS);
+          }
 
           // Group upcoming movies by language
           upcomingByLang = {};
@@ -473,10 +577,6 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         }
 
         setMovies(allMovies);
-
-        if (allMovies.length === 0) {
-          setError('No results');
-        }
 
         trendingCache.set(cacheKey, { movies: allMovies, upcoming: upcomingByLang, ts: Date.now() });
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -1066,6 +1166,20 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                 href={`/movie/tmdb-${movie.id}${selectedLang ? `?from=${selectedLang}` : ''}`}
                 scroll={false}
                 prefetch={false}
+                draggable
+                onDragStart={(event) => {
+                  const releaseYear = Number.parseInt(movie.release_date?.split('-')[0] || '', 10);
+                  const payload = JSON.stringify({
+                    mediaType: 'movie',
+                    tmdbId: String(movie.id),
+                    title: movie.title,
+                    poster: movie.poster_path ? `https://image.tmdb.org/t/p/w300${movie.poster_path}` : null,
+                    releaseYear: Number.isFinite(releaseYear) ? releaseYear : null,
+                  });
+                  event.dataTransfer.effectAllowed = 'copy';
+                  event.dataTransfer.setData(CHAT_MOVIE_DRAG_MIME, payload);
+                  event.dataTransfer.setData('text/plain', `${CHAT_MOVIE_DRAG_TEXT_PREFIX}${payload}`);
+                }}
                 className="group block bg-[var(--bg-card)] rounded-xl overflow-hidden card-hover"
               >
                 <div className="relative aspect-[2/3] overflow-hidden">

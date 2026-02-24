@@ -529,7 +529,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[220px_minmax(0,1.8fr)_minmax(0,0.8fr)] items-start">
             <div>
-              <div className={`relative aspect-[2/3] rounded-xl overflow-hidden shadow-2xl shadow-black/50 ${watched ? 'ring-4 ring-green-500/50' : ''}`}>
+              <div className={`relative hidden sm:block aspect-[2/3] rounded-xl overflow-hidden shadow-2xl shadow-black/50 ${watched ? 'ring-4 ring-green-500/50' : ''}`}>
                 <PosterImage src={poster} alt={`${title} poster`} title={title} />
                 {posterOttLinks.length > 0 && (
                   <div className="absolute bottom-3 right-3 flex items-center -space-x-2">
@@ -554,7 +554,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
                   </div>
                 )}
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className="mt-4 sm:mt-4 grid grid-cols-2 gap-2">
                 <div className="flex justify-center">
                   <WatchedButton movieId={resolvedId} size="lg" showLabel />
                 </div>

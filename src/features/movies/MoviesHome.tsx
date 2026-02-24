@@ -23,6 +23,7 @@ import { createClient } from '@/lib/supabase';
 import {
   fetchFriendsList,
   getFriendRecommendationsUnreadCount,
+  getIncomingWatchGroupInvites,
   getRecentFriendRecommendations,
   getUpcomingWatchReminders,
   getMyWatchGroups,
@@ -356,8 +357,13 @@ export default function MoviesHome() {
       return;
     }
     try {
-      const groups = await getMyWatchGroups(user.id);
-      const total = groups.reduce((sum, g) => sum + (g.unseenCount || 0), 0);
+      const [groups, incomingInvites] = await Promise.all([
+        getMyWatchGroups(user.id),
+        getIncomingWatchGroupInvites(user.id),
+      ]);
+      const unseenActivity = groups.reduce((sum, g) => sum + (g.unseenCount || 0), 0);
+      const pendingInviteCount = incomingInvites.length;
+      const total = unseenActivity + pendingInviteCount;
       setGroupWatchCount(Math.min(total, 99));
     } catch {
       setGroupWatchCount(0);

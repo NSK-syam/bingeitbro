@@ -4,10 +4,10 @@ import { useEffect, useState } from 'react';
 import { getRenderProfile } from '@/lib/render-profile';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
-const CACHE_KEY = 'bib-movie-bg-posters-v3';
+const CACHE_KEY = 'bib-movie-bg-posters-v4';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 // Keep this low to avoid TMDB rate limiting on cold loads.
-const QUERY_LIMIT = 3;
+const QUERY_LIMIT = 8;
 const POSTERS_PER_QUERY = 6;
 const MAX_POSTERS = 56;
 
@@ -56,24 +56,50 @@ export function MovieBackground() {
       if (!apiKey) return;
 
       try {
+        const featuredItemQueries = [
+          // Pin RRR so it reliably appears in the background mix.
+          `https://api.themoviedb.org/3/movie/579974?api_key=${apiKey}&language=en-US`,
+        ];
+
         const queries = [
           `https://api.themoviedb.org/3/movie/popular?api_key=${apiKey}&language=en-US&region=US&page=1`,
           `https://api.themoviedb.org/3/movie/top_rated?api_key=${apiKey}&language=en-US&region=US&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=hi&sort_by=popularity.desc&page=1`,
           `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=te&sort_by=popularity.desc&page=1`,
+          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=te&sort_by=popularity.desc&page=2`,
+          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=en&sort_by=popularity.desc&page=2`,
+          `https://api.themoviedb.org/3/tv/popular?api_key=${apiKey}&language=en-US&page=1`,
+          `https://api.themoviedb.org/3/tv/top_rated?api_key=${apiKey}&language=en-US&page=1`,
+          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=hi&sort_by=popularity.desc&page=1`,
           `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=ta&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=ko&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=ja&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=es&sort_by=popularity.desc&page=1`,
         ];
 
-        const settled = await Promise.allSettled(
-          queries.slice(0, QUERY_LIMIT).map((url) =>
-            fetchTmdbWithProxy(url, { signal: controller.signal }).then((res) => res.json())
-          )
-        );
+        const queryBatch = queries.slice(0, QUERY_LIMIT);
+        const [featuredSettled, settled] = await Promise.all([
+          Promise.allSettled(
+            featuredItemQueries.map((url) =>
+              fetchTmdbWithProxy(url, { signal: controller.signal }).then((res) => res.json())
+            )
+          ),
+          queryBatch.length
+            ? Promise.allSettled(
+                queryBatch.map((url) =>
+                  fetchTmdbWithProxy(url, { signal: controller.signal }).then((res) => res.json())
+                )
+              )
+            : Promise.resolve([]),
+        ]);
 
         const allPosters: string[] = [];
+
+        for (const result of featuredSettled) {
+          if (result.status !== 'fulfilled') continue;
+          const posterPath =
+            typeof (result.value as { poster_path?: unknown })?.poster_path === 'string'
+              ? ((result.value as { poster_path: string }).poster_path)
+              : '';
+          if (posterPath) allPosters.push(posterPath);
+        }
+
         for (const result of settled) {
           if (result.status !== 'fulfilled' || !Array.isArray(result.value?.results)) continue;
           const moviePosters = result.value.results

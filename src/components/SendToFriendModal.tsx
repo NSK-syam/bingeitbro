@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthProvider';
 import {
@@ -25,6 +26,59 @@ interface SendToFriendModalProps {
     tmdbId?: string;
     // For user-created recommendations
     recommendationId?: string;
+}
+
+function isImageAvatar(value: string | null | undefined): value is string {
+    if (!value) return false;
+    const trimmed = value.trim();
+    return trimmed.startsWith('/avatars/') || trimmed.startsWith('http://') || trimmed.startsWith('https://');
+}
+
+function looksLikeAvatarPath(value: string | null | undefined): boolean {
+    if (!value) return false;
+    const trimmed = value.trim().toLowerCase();
+    return trimmed.startsWith('/avatars/') || trimmed.includes('.jpg') || trimmed.includes('.jpeg') || trimmed.includes('.png') || trimmed.includes('.webp');
+}
+
+function getFriendDisplayName(friend: FriendForSelect): string {
+    const rawName = (friend.name || '').trim();
+    if (rawName && !looksLikeAvatarPath(rawName)) return rawName;
+    const username = (friend.username || '').trim();
+    if (username) return username;
+    return 'Friend';
+}
+
+function FriendAvatarIcon({ friend }: { friend: FriendForSelect }) {
+    const avatar = (friend.avatar || '').trim();
+    const label = getFriendDisplayName(friend);
+
+    if (isImageAvatar(avatar)) {
+        return (
+            <div className="relative h-10 w-10 overflow-hidden rounded-full border border-white/10 bg-[var(--bg-card)]">
+                <Image
+                    src={avatar}
+                    alt={`${label} avatar`}
+                    fill
+                    sizes="40px"
+                    className="object-cover object-top"
+                />
+            </div>
+        );
+    }
+
+    if (avatar) {
+        return (
+            <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-card)] text-lg leading-none">
+                {avatar}
+            </span>
+        );
+    }
+
+    return (
+        <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-card)] text-sm font-semibold text-[var(--text-primary)]">
+            {label.slice(0, 1).toUpperCase()}
+        </span>
+    );
 }
 
 export function SendToFriendModal(props: SendToFriendModalProps) {
@@ -572,6 +626,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                     <div className="space-y-2 max-h-48 overflow-y-auto">
                                         {filteredFriends.map((friend) => {
                                             const alreadySent = alreadySentTo.has(friend.id);
+                                            const displayName = getFriendDisplayName(friend);
                                             return (
                                                 <button
                                                     key={friend.id}
@@ -583,9 +638,9 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                                                         }`}
                                                 >
                                                     <div className="flex items-center gap-3">
-                                                        <span className="text-2xl">{friend.avatar}</span>
+                                                        <FriendAvatarIcon friend={friend} />
                                                         <div className="text-left">
-                                                            <p className="font-medium text-[var(--text-primary)]">{friend.name}</p>
+                                                            <p className="font-medium text-[var(--text-primary)] line-clamp-1">{displayName}</p>
                                                             {friend.username && (
                                                                 <p className="text-xs text-[var(--text-muted)]">@{friend.username}</p>
                                                             )}

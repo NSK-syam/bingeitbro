@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import Image from 'next/image';
-import { type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from './AuthProvider';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
@@ -20,6 +20,7 @@ import {
   addWatchGroupPick,
   clearWatchGroupPickVote,
   createWatchGroup,
+  deleteWatchGroupPick,
   fetchFriendsList,
   getChatTheme,
   getWatchGroupMessages,
@@ -29,8 +30,10 @@ import {
   markWatchGroupPickWatched,
   getWatchGroupMembers,
   getPendingWatchGroupInvites,
+  cancelWatchGroupInvite,
   getWatchGroupPicks,
   leaveWatchGroup,
+  removeWatchGroupMember,
   respondToWatchGroupInvite,
   renameWatchGroup,
   setChatTheme,
@@ -90,6 +93,33 @@ function normalizeLanguage(code: string): string {
   return c ? c.toUpperCase() : 'NA';
 }
 
+function dayKey(dateString: string | null): string {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '';
+  return `${date.getFullYear()}-${date.getMonth() + 1}-${date.getDate()}`;
+}
+
+function chatDayLabel(dateString: string | null): string {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (Number.isNaN(date.getTime())) return '';
+
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const target = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+  const diffDays = Math.round((today.getTime() - target.getTime()) / 86400000);
+
+  if (diffDays === 0) return 'Today';
+  if (diffDays === 1) return 'Yesterday';
+  if (diffDays > 1 && diffDays < 7) return target.toLocaleDateString([], { weekday: 'long' });
+
+  const sameYear = target.getFullYear() === today.getFullYear();
+  return target.toLocaleDateString([], sameYear
+    ? { month: 'short', day: 'numeric' }
+    : { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 export function GroupWatchModal({
   isOpen,
   onClose,
@@ -124,6 +154,7 @@ export function GroupWatchModal({
   const [incomingInvitesLoading, setIncomingInvitesLoading] = useState(false);
   const [pendingInvites, setPendingInvites] = useState<WatchGroupPendingInvite[]>([]);
   const [pendingInvitesLoading, setPendingInvitesLoading] = useState(false);
+  const [sidebarFolder, setSidebarFolder] = useState<'members' | 'pending' | null>(null);
   const [themeLang, setThemeLang] = useState<'English' | 'Telugu'>(() => {
     if (typeof window === 'undefined') return 'English';
     const stored = window.localStorage.getItem(THEME_LANG_STORAGE_KEY);
@@ -155,6 +186,8 @@ export function GroupWatchModal({
   const [inviteUserId, setInviteUserId] = useState('');
   const [sendingInvite, setSendingInvite] = useState(false);
   const [respondingInviteId, setRespondingInviteId] = useState<string | null>(null);
+  const [removingMemberId, setRemovingMemberId] = useState<string | null>(null);
+  const [cancelingPendingInviteId, setCancelingPendingInviteId] = useState<string | null>(null);
 
   const [mediaType, setMediaType] = useState<'movie' | 'show'>('movie');
   const [pickQuery, setPickQuery] = useState('');
@@ -164,6 +197,7 @@ export function GroupWatchModal({
   const [addingPickId, setAddingPickId] = useState<number | null>(null);
   const [votingPickId, setVotingPickId] = useState<string | null>(null);
   const [markingWatchedPickId, setMarkingWatchedPickId] = useState<string | null>(null);
+  const [deletingPickId, setDeletingPickId] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const searchInputRef = useRef<HTMLInputElement>(null);
@@ -185,20 +219,29 @@ export function GroupWatchModal({
   const isActiveGroupOwner = Boolean(
     activeGroup && user && activeGroup.ownerId === user.id,
   );
+  const memberIdSet = useMemo(() => new Set(members.map((member) => member.userId)), [members]);
+  const joinedGroupIds = useMemo(() => new Set(groups.map((group) => group.id)), [groups]);
+  const visibleIncomingInvites = useMemo(
+    () => incomingInvites.filter((invite) => !joinedGroupIds.has(invite.groupId)),
+    [incomingInvites, joinedGroupIds],
+  );
+  const visiblePendingInvites = useMemo(
+    () => pendingInvites.filter((invite) => !memberIdSet.has(invite.inviteeId)),
+    [pendingInvites, memberIdSet],
+  );
 
   const filteredFriends = useMemo(() => {
-    const memberIds = new Set(members.map((m) => m.userId));
-    const pendingInviteeIds = new Set(pendingInvites.map((invite) => invite.inviteeId));
+    const pendingInviteeIds = new Set(visiblePendingInvites.map((invite) => invite.inviteeId));
     const query = friendSearch.trim().toLowerCase();
     return friends
-      .filter((friend) => !memberIds.has(friend.id) && !pendingInviteeIds.has(friend.id))
+      .filter((friend) => !memberIdSet.has(friend.id) && !pendingInviteeIds.has(friend.id))
       .filter((friend) => {
         if (!query) return true;
         const username = friend.username?.toLowerCase() ?? '';
         return friend.name.toLowerCase().includes(query) || username.includes(query);
       })
       .sort((a, b) => a.name.localeCompare(b.name));
-  }, [friends, members, pendingInvites, friendSearch]);
+  }, [friends, memberIdSet, visiblePendingInvites, friendSearch]);
 
   const groupMentionTargets = useMemo<MentionTarget[]>(
     () =>
@@ -422,6 +465,12 @@ export function GroupWatchModal({
   }, [activeGroup]);
 
   useEffect(() => {
+    if (!isActiveGroupOwner && sidebarFolder === 'pending') {
+      setSidebarFolder(null);
+    }
+  }, [isActiveGroupOwner, sidebarFolder]);
+
+  useEffect(() => {
     if (!isOpen || !activeGroupId || !isActiveGroupOwner) {
       setPendingInvites([]);
       return;
@@ -468,6 +517,7 @@ export function GroupWatchModal({
       setAddingPickId(null);
       setVotingPickId(null);
       setMarkingWatchedPickId(null);
+      setDeletingPickId(null);
       setRespondingInviteId(null);
       setPendingInvites([]);
       setIncomingInvites([]);
@@ -647,6 +697,43 @@ export function GroupWatchModal({
     }
   };
 
+  const handleRemoveMember = async (member: WatchGroupMember) => {
+    if (!user || !activeGroup || !isActiveGroupOwner) return;
+    if (member.role === 'owner') return;
+    setError('');
+    setSuccess('');
+    setRemovingMemberId(member.userId);
+    try {
+      await removeWatchGroupMember(activeGroup.id, member.userId);
+      await Promise.all([
+        loadActiveGroupData(activeGroup.id),
+        loadPendingInvites(activeGroup.id),
+        loadGroups(activeGroup.id),
+      ]);
+      setSuccess(`${member.name} removed from group.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to remove member.');
+    } finally {
+      setRemovingMemberId(null);
+    }
+  };
+
+  const handleCancelPendingInvite = async (invite: WatchGroupPendingInvite) => {
+    if (!activeGroup || !isActiveGroupOwner) return;
+    setError('');
+    setSuccess('');
+    setCancelingPendingInviteId(invite.id);
+    try {
+      await cancelWatchGroupInvite(invite.id, activeGroup.id);
+      await loadPendingInvites(activeGroup.id);
+      setSuccess(`Canceled invite for ${invite.inviteeName}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to cancel invite.');
+    } finally {
+      setCancelingPendingInviteId(null);
+    }
+  };
+
   const handleRespondInvite = async (
     invite: WatchGroupIncomingInvite,
     decision: 'accepted' | 'rejected',
@@ -656,12 +743,13 @@ export function GroupWatchModal({
     setError('');
     setSuccess('');
     try {
-      const response = await respondToWatchGroupInvite(invite.id, decision);
+      const response = await respondToWatchGroupInvite(invite.id, decision, user.id);
       if (decision === 'accepted') {
         setSuccess(`You joined "${invite.groupName}".`);
       } else {
         setSuccess(`Invite to "${invite.groupName}" declined.`);
       }
+      setIncomingInvites((prev) => prev.filter((row) => row.id !== invite.id));
 
       await loadIncomingInvites();
       await loadGroups(decision === 'accepted' ? response.groupId : undefined);
@@ -747,6 +835,29 @@ export function GroupWatchModal({
       }
     } finally {
       setMarkingWatchedPickId(null);
+    }
+  };
+
+  const handleDeletePick = async (pick: WatchGroupPick) => {
+    if (!user) return;
+    const canDelete = pick.senderId === user.id || isActiveGroupOwner;
+    if (!canDelete) return;
+    const confirmed = window.confirm(`Delete "${pick.title}" from this group?`);
+    if (!confirmed) return;
+
+    setDeletingPickId(pick.id);
+    setError('');
+    setSuccess('');
+    try {
+      await deleteWatchGroupPick(pick.id);
+      setSuccess('Pick removed from group.');
+      if (activeGroupId) {
+        await loadActiveGroupData(activeGroupId);
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete pick.');
+    } finally {
+      setDeletingPickId(null);
     }
   };
 
@@ -935,10 +1046,10 @@ export function GroupWatchModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center p-4 sm:p-6">
+    <div className="fixed inset-0 z-[90] flex items-stretch justify-center p-0 sm:items-center sm:p-6">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-md" onClick={onClose} />
       <div
-        className="relative w-full max-w-6xl max-h-[90vh] overflow-y-auto rounded-3xl border border-indigo-300/20 bg-[var(--bg-card)] p-6 sm:p-7 shadow-[0_30px_90px_rgba(0,0,0,0.55)]"
+        className="relative h-[100dvh] w-full max-w-6xl max-h-[100dvh] overflow-y-auto overscroll-contain border border-indigo-300/20 bg-[var(--bg-card)] px-4 pb-8 pt-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)] sm:h-auto sm:max-h-[90vh] sm:rounded-3xl sm:p-7"
         onClick={(e) => {
           e.stopPropagation();
           setChatMentionQuery(null);
@@ -949,7 +1060,7 @@ export function GroupWatchModal({
         <button
           type="button"
           onClick={onClose}
-          className="absolute top-4 right-4 w-10 h-10 rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+          className="absolute right-3 top-[max(0.75rem,env(safe-area-inset-top))] h-10 w-10 rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] transition-colors hover:text-[var(--text-primary)] sm:right-4 sm:top-4"
           aria-label="Close group watch"
         >
           <svg className="w-5 h-5 mx-auto" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -957,9 +1068,9 @@ export function GroupWatchModal({
           </svg>
         </button>
 
-        <div className="mb-6">
+        <div className="mb-5 pr-11 sm:mb-6 sm:pr-0">
           <p className="text-[11px] uppercase tracking-[0.24em] text-indigo-200/85">Group Watch</p>
-          <h2 className="mt-2 text-2xl sm:text-3xl font-bold text-[var(--text-primary)]">Create groups, share picks, vote together</h2>
+          <h2 className="mt-2 text-xl font-bold text-[var(--text-primary)] sm:text-3xl">Create groups, share picks, vote together</h2>
           <p className="mt-2 text-sm text-[var(--text-muted)]">
             Add movie or show picks to your group and let everyone upvote or downvote what to watch next.
           </p>
@@ -1081,51 +1192,203 @@ export function GroupWatchModal({
               </section>
             )}
 
-            <section className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
-              <div className="flex items-center justify-between mb-3">
-                <p className="text-sm font-semibold text-[var(--text-primary)]">Invites</p>
-                {incomingInvitesLoading && (
-                  <span className="text-xs text-[var(--text-muted)]">Loading…</span>
-                )}
-              </div>
-              {incomingInvites.length === 0 ? (
-                <p className="text-sm text-[var(--text-muted)]">No pending group invites.</p>
-              ) : (
-                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                  {incomingInvites.map((invite) => (
-                    <div
-                      key={invite.id}
-                      className="rounded-xl border border-white/10 bg-[var(--bg-primary)] px-3 py-2"
-                    >
-                      <p className="text-sm font-medium text-[var(--text-primary)] line-clamp-1">
-                        {invite.groupName}
-                      </p>
-                      <p className="text-xs text-[var(--text-muted)] mt-0.5">
-                        From {invite.inviterName}
-                      </p>
-                      <div className="mt-2 flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => void handleRespondInvite(invite, 'accepted')}
-                          disabled={respondingInviteId === invite.id}
-                          className="rounded-lg bg-emerald-400/90 px-2.5 py-1.5 text-xs font-semibold text-[#0b1327] disabled:opacity-50"
-                        >
-                          Accept
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleRespondInvite(invite, 'rejected')}
-                          disabled={respondingInviteId === invite.id}
-                          className="rounded-lg border border-white/15 bg-[var(--bg-card)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-secondary)] disabled:opacity-50"
-                        >
-                          Reject
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+            {activeGroup && (
+              <section className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
+                <p className="text-sm font-semibold text-[var(--text-primary)] mb-3">Group folders</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSidebarFolder((prev) => (prev === 'members' ? null : 'members'))}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors ${
+                      sidebarFolder === 'members'
+                        ? 'border-indigo-300/70 bg-indigo-500/18'
+                        : 'border-white/10 bg-[var(--bg-primary)] hover:border-indigo-300/35'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold text-[var(--text-primary)]">Group members</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">{members.length}</p>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSidebarFolder((prev) => (prev === 'pending' ? null : 'pending'))}
+                    disabled={!isActiveGroupOwner}
+                    className={`rounded-lg border px-3 py-2 text-left transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                      sidebarFolder === 'pending'
+                        ? 'border-amber-300/60 bg-amber-500/15'
+                        : 'border-white/10 bg-[var(--bg-primary)] hover:border-amber-300/35'
+                    }`}
+                  >
+                    <p className="text-xs font-semibold text-[var(--text-primary)]">Pending invites</p>
+                    <p className="text-[11px] text-[var(--text-muted)]">
+                      {isActiveGroupOwner ? visiblePendingInvites.length : 'Owner only'}
+                    </p>
+                  </button>
                 </div>
-              )}
-            </section>
+                {sidebarFolder ? (
+                  <div className="mt-3 rounded-xl border border-white/10 bg-[var(--bg-primary)] px-2.5 py-2">
+                    {sidebarFolder === 'members' ? (
+                      membersLoading ? (
+                        <p className="px-1 text-xs text-[var(--text-muted)]">Loading members...</p>
+                      ) : members.length === 0 ? (
+                        <p className="px-1 text-xs text-[var(--text-muted)]">No members yet.</p>
+                      ) : (
+                        <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                          {members.map((member) => (
+                            <div
+                              key={member.userId}
+                              className="flex items-center justify-between rounded-lg border border-white/10 bg-[var(--bg-card)] px-2 py-1.5"
+                            >
+                              <div className="min-w-0">
+                                <span className="truncate text-xs text-[var(--text-primary)] block">{member.name}</span>
+                                {member.username && (
+                                  <span className="truncate text-[10px] text-[var(--text-muted)] block">
+                                    @{member.username}
+                                  </span>
+                                )}
+                              </div>
+                              {member.role === 'owner' ? (
+                                <span className="ml-2 shrink-0 text-[10px] uppercase tracking-[0.08em] text-indigo-200">
+                                  Owner
+                                </span>
+                              ) : isActiveGroupOwner ? (
+                                <button
+                                  type="button"
+                                  onClick={() => void handleRemoveMember(member)}
+                                  disabled={removingMemberId === member.userId}
+                                  className="ml-2 shrink-0 rounded-md border border-rose-300/25 bg-rose-500/10 px-2 py-0.5 text-[10px] font-semibold text-rose-200 hover:bg-rose-500/20 disabled:opacity-50"
+                                >
+                                  {removingMemberId === member.userId ? 'Removing...' : 'Remove'}
+                                </button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )
+                    ) : !isActiveGroupOwner ? (
+                      <p className="px-1 text-xs text-[var(--text-muted)]">Only group owners can view pending invites.</p>
+                    ) : pendingInvitesLoading ? (
+                      <p className="px-1 text-xs text-[var(--text-muted)]">Loading pending invites...</p>
+                    ) : visiblePendingInvites.length === 0 ? (
+                      <p className="px-1 text-xs text-[var(--text-muted)]">No pending invites.</p>
+                    ) : (
+                      <div className="max-h-36 overflow-y-auto space-y-1 pr-1">
+                        {visiblePendingInvites.map((invite) => (
+                          <div
+                            key={invite.id}
+                            className="flex items-center justify-between rounded-lg border border-white/10 bg-[var(--bg-card)] px-2 py-1.5"
+                          >
+                            <div className="min-w-0">
+                              <span className="truncate text-xs text-[var(--text-primary)] block">{invite.inviteeName}</span>
+                              <span className="text-[10px] uppercase tracking-[0.08em] text-amber-200 block">
+                                Pending
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => void handleCancelPendingInvite(invite)}
+                              disabled={cancelingPendingInviteId === invite.id}
+                              className="ml-2 shrink-0 rounded-md border border-amber-300/25 bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-100 hover:bg-amber-500/20 disabled:opacity-50"
+                            >
+                              {cancelingPendingInviteId === invite.id ? 'Canceling...' : 'Cancel'}
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className="mt-3 px-1 text-xs text-[var(--text-muted)]">Tap a folder to view the list.</p>
+                )}
+              </section>
+            )}
+
+            {activeGroup && isActiveGroupOwner && (
+              <section className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
+                <p className="text-sm font-semibold text-[var(--text-primary)] mb-3">
+                  Invite friends (private group)
+                </p>
+                <div className="grid gap-2">
+                  <input
+                    type="text"
+                    value={friendSearch}
+                    onChange={(e) => setFriendSearch(e.target.value)}
+                    placeholder="Search your friends..."
+                    className="rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
+                  />
+                  <select
+                    value={inviteUserId}
+                    onChange={(e) => setInviteUserId(e.target.value)}
+                    className="rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
+                  >
+                    <option value="">Choose friend</option>
+                    {filteredFriends.map((friend) => (
+                      <option key={friend.id} value={friend.id}>
+                        {friend.name}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={handleSendInvite}
+                    disabled={!inviteUserId || sendingInvite}
+                    className="rounded-lg bg-indigo-400/90 px-3 py-2 text-sm font-semibold text-[#0b1327] disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {sendingInvite ? 'Sending…' : 'Send invite'}
+                  </button>
+                </div>
+                <p className="mt-2 text-xs text-[var(--text-muted)]">
+                  Invited users must accept before they can see this group.
+                </p>
+              </section>
+            )}
+
+            {(incomingInvitesLoading || visibleIncomingInvites.length > 0) && (
+              <section className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <p className="text-sm font-semibold text-[var(--text-primary)]">Invites</p>
+                  {incomingInvitesLoading && (
+                    <span className="text-xs text-[var(--text-muted)]">Loading…</span>
+                  )}
+                </div>
+                {visibleIncomingInvites.length === 0 ? (
+                  <p className="text-sm text-[var(--text-muted)]">No pending group invites.</p>
+                ) : (
+                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                    {visibleIncomingInvites.map((invite) => (
+                      <div
+                        key={invite.id}
+                        className="rounded-xl border border-white/10 bg-[var(--bg-primary)] px-3 py-2"
+                      >
+                        <p className="text-sm font-medium text-[var(--text-primary)] line-clamp-1">
+                          {invite.groupName}
+                        </p>
+                        <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                          From {invite.inviterName}
+                        </p>
+                        <div className="mt-2 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => void handleRespondInvite(invite, 'accepted')}
+                            disabled={respondingInviteId === invite.id}
+                            className="rounded-lg bg-emerald-400/90 px-2.5 py-1.5 text-xs font-semibold text-[#0b1327] disabled:opacity-50"
+                          >
+                            Accept
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => void handleRespondInvite(invite, 'rejected')}
+                            disabled={respondingInviteId === invite.id}
+                            className="rounded-lg border border-white/15 bg-[var(--bg-card)] px-2.5 py-1.5 text-xs font-semibold text-[var(--text-secondary)] disabled:opacity-50"
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
           </aside>
 
           <section className="space-y-5 min-w-0">
@@ -1144,91 +1407,6 @@ export function GroupWatchModal({
                       </p>
                     </div>
                   </div>
-
-                  <div className="mt-4">
-                    <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">Members</p>
-                    {membersLoading ? (
-                      <p className="text-sm text-[var(--text-muted)]">Loading members…</p>
-                    ) : (
-                      <div className="flex flex-wrap gap-2">
-                        {members.map((member) => (
-                          <span
-                            key={member.userId}
-                            className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[var(--bg-primary)] px-2.5 py-1 text-xs text-[var(--text-secondary)]"
-                          >
-                            <span>{member.name}</span>
-                            {member.role === 'owner' && <span className="text-indigo-200">• owner</span>}
-                          </span>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  {isActiveGroupOwner && (
-                    <div className="mt-4 rounded-xl border border-white/10 bg-[var(--bg-primary)] p-3">
-                      <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)] mb-2">
-                        Invite friends (private group)
-                      </p>
-                      <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_150px_auto]">
-                        <input
-                          type="text"
-                          value={friendSearch}
-                          onChange={(e) => setFriendSearch(e.target.value)}
-                          placeholder="Search your friends…"
-                          className="rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
-                        />
-                        <select
-                          value={inviteUserId}
-                          onChange={(e) => setInviteUserId(e.target.value)}
-                          className="rounded-lg border border-white/10 bg-[var(--bg-card)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-indigo-400/55"
-                        >
-                          <option value="">Choose friend</option>
-                          {filteredFriends.map((friend) => (
-                            <option key={friend.id} value={friend.id}>
-                              {friend.name}
-                            </option>
-                          ))}
-                        </select>
-                        <button
-                          type="button"
-                          onClick={handleSendInvite}
-                          disabled={!inviteUserId || sendingInvite}
-                          className="rounded-lg bg-indigo-400/90 px-3 py-2 text-sm font-semibold text-[#0b1327] disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {sendingInvite ? 'Sending…' : 'Send invite'}
-                        </button>
-                      </div>
-                      <p className="mt-2 text-xs text-[var(--text-muted)]">
-                        Invited users must accept before they can see this group.
-                      </p>
-
-                      <div className="mt-3 border-t border-white/10 pt-3">
-                        <div className="flex items-center justify-between mb-2">
-                          <p className="text-xs uppercase tracking-[0.14em] text-[var(--text-muted)]">
-                            Pending invites
-                          </p>
-                          {pendingInvitesLoading && (
-                            <span className="text-[11px] text-[var(--text-muted)]">Loading…</span>
-                          )}
-                        </div>
-                        {pendingInvites.length === 0 ? (
-                          <p className="text-sm text-[var(--text-muted)]">No pending invites.</p>
-                        ) : (
-                          <div className="flex flex-wrap gap-2">
-                            {pendingInvites.map((invite) => (
-                              <span
-                                key={invite.id}
-                                className="inline-flex items-center gap-1.5 rounded-full border border-white/10 bg-[var(--bg-card)] px-2.5 py-1 text-xs text-[var(--text-secondary)]"
-                              >
-                                <span>{invite.inviteeName}</span>
-                                <span className="text-amber-200">• pending</span>
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
                 </div>
 
                 <div className="rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/70 p-4">
@@ -1315,7 +1493,7 @@ export function GroupWatchModal({
                   {visiblePicks.length === 0 ? (
                     <p className="text-sm text-[var(--text-muted)]">No picks yet. Add the first movie or show above.</p>
                   ) : (
-                    <div className="space-y-3 max-h-[45vh] overflow-y-auto pr-1">
+                    <div className="space-y-3 max-h-[38vh] overflow-y-auto pr-1 sm:max-h-[45vh]">
                       {visiblePicks.map((pick) => (
                         <article
                           key={pick.id}
@@ -1358,7 +1536,7 @@ export function GroupWatchModal({
                               <p className="mt-1 text-[11px] text-[var(--text-muted)]">
                                 Watched {pick.watchedCount}/{getRequiredWatchedCount(pick)}
                               </p>
-                              <div className="mt-2 flex items-center gap-2">
+                              <div className="mt-2 flex flex-wrap items-center gap-2">
                                 <button
                                   type="button"
                                   onClick={() => handleAttachPickToChat(pick)}
@@ -1393,7 +1571,26 @@ export function GroupWatchModal({
                                 >
                                   {pick.watchedByMe ? 'Watched' : markingWatchedPickId === pick.id ? 'Saving...' : 'Mark watched'}
                                 </button>
+                                {(user?.id === pick.senderId || isActiveGroupOwner) && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeletePick(pick)}
+                                    disabled={deletingPickId === pick.id}
+                                    className="px-2.5 py-1 rounded-lg text-xs font-semibold border border-rose-300/35 bg-rose-500/12 text-rose-100 hover:border-rose-200/55 transition-colors disabled:opacity-50"
+                                  >
+                                    {deletingPickId === pick.id
+                                      ? 'Deleting...'
+                                      : user?.id === pick.senderId
+                                        ? 'Remove mine'
+                                        : 'Delete'}
+                                  </button>
+                                )}
                               </div>
+                              {(user?.id === pick.senderId || isActiveGroupOwner) && (
+                                <p className="mt-1 text-[11px] text-[var(--text-muted)]">
+                                  You can remove picks you added.
+                                </p>
+                              )}
                               <p className="mt-2 text-[11px] text-[var(--text-muted)]">
                                 Drag this card into group chat to share it.
                               </p>
@@ -1414,7 +1611,10 @@ export function GroupWatchModal({
                         <div className="relative">
                           <button
                             type="button"
-                            onClick={() => setShowThemePicker((prev) => !prev)}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              setShowThemePicker((prev) => !prev);
+                            }}
                             className="h-8 px-2 rounded-full border border-cyan-300/50 bg-cyan-500/15 text-cyan-200 hover:text-cyan-100 hover:border-cyan-300/80 hover:bg-cyan-500/25 transition-colors flex items-center gap-1 text-[11px] font-semibold tracking-wide"
                             aria-label="Change group chat theme"
                             title="Change theme"
@@ -1422,7 +1622,10 @@ export function GroupWatchModal({
                             Theme
                           </button>
                           {showThemePicker && (
-                            <div className="absolute right-0 top-10 z-50 w-[min(90vw,420px)] rounded-2xl border border-white/15 bg-[#090d19]/98 backdrop-blur-3xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] p-3 overflow-hidden flex flex-col max-h-[60vh]">
+                            <div
+                              onClick={(event) => event.stopPropagation()}
+                              className="absolute right-0 top-10 z-50 w-[min(calc(100vw-1rem),420px)] rounded-2xl border border-white/15 bg-[#090d19]/98 backdrop-blur-3xl shadow-[0_24px_60px_rgba(0,0,0,0.65)] p-3 overflow-hidden flex flex-col max-h-[60vh]"
+                            >
                               <div className="flex items-center justify-between mb-3 border-b border-white/10 pb-2">
                                 <p className="text-[10px] uppercase tracking-[0.18em] text-[var(--text-muted)]">Group Theme</p>
                                 <div className="flex bg-[#050917]/80 rounded-lg p-0.5 border border-white/10">
@@ -1483,6 +1686,171 @@ export function GroupWatchModal({
                     </div>
                   </div>
 
+                  {chatMessages.length === 0 ? (
+                    <p className="text-sm text-[var(--text-muted)]">No messages yet. Start the conversation.</p>
+                  ) : (
+                    <div
+                      ref={chatContainerRef}
+                      className="max-h-[42vh] space-y-2.5 overflow-y-auto pr-1 rounded-xl p-2 sm:max-h-[26rem]"
+                      style={{ background: activeTheme.bg }}
+                    >
+                      {chatMessages.map((message, index) => {
+                        const showBody =
+                          message.body.trim().length > 0 &&
+                          !(
+                            message.sharedMovie &&
+                            message.body.toLowerCase().startsWith('shared movie:')
+                          );
+                        const isReplying = replyingToMessage?.id === message.id;
+                        const prevMessage = index > 0 ? chatMessages[index - 1] : null;
+                        const showDaySeparator = !prevMessage || dayKey(prevMessage.createdAt) !== dayKey(message.createdAt);
+                        const replyMessage = message.replyToId
+                          ? chatMessages.find((m) => m.id === message.replyToId)
+                          : null;
+                        const replyText = replyMessage?.body.trim()
+                          || replyMessage?.sharedMovie?.title
+                          || 'Attachment';
+                        return (
+                          <Fragment key={message.id}>
+                            {showDaySeparator && (
+                              <div className="my-1 flex justify-center">
+                                <span className="rounded-2xl border border-white/10 bg-white/90 px-4 py-1.5 text-xs font-semibold text-zinc-900 shadow-sm">
+                                  {chatDayLabel(message.createdAt)}
+                                </span>
+                              </div>
+                            )}
+                            <motion.div
+                              layout
+                              drag="x"
+                              dragConstraints={{ left: 0, right: 0 }}
+                              dragElastic={{ right: 0.2, left: 0 }}
+                              onDragEnd={(_, info) => {
+                                if (info.offset.x > 50) {
+                                  setReplyingToMessage(message);
+                                  if (typeof navigator !== 'undefined' && navigator.vibrate) {
+                                    navigator.vibrate(50);
+                                  }
+                                }
+                              }}
+                              className={`flex items-end gap-2 ${message.mine ? 'justify-end' : 'justify-start'}`}
+                            >
+                              {!message.mine && (
+                                <div className="h-7 w-7 shrink-0 rounded-full border border-white/15 bg-[var(--bg-primary)] flex items-center justify-center text-[11px] font-semibold text-[var(--text-secondary)]">
+                                  {(message.senderName || 'M').slice(0, 1).toUpperCase()}
+                                </div>
+                              )}
+                              <article
+                              onPointerDown={() => startReactionLongPress(message.id)}
+                              onPointerUp={clearReactionLongPress}
+                              onPointerCancel={clearReactionLongPress}
+                              onPointerLeave={clearReactionLongPress}
+                              onContextMenu={(event) => {
+                                event.preventDefault();
+                                clearReactionLongPress();
+                                setReactionPickerMessageId(message.id);
+                              }}
+                              className={`relative max-w-[86%] rounded-2xl border px-3 py-2.5 transition-transform duration-200 ${message.mine
+                                  ? ''
+                                  : 'border-white/10 bg-[var(--bg-primary)]'
+                                } ${isReplying ? 'scale-[1.01] ring-2 ring-cyan-400/45' : ''}`}
+                              style={message.mine ? { background: activeTheme.bubble, borderColor: activeTheme.bubbleBorder } : undefined}
+                            >
+                              {!message.mine && (
+                                <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
+                                  {message.senderName}
+                                </p>
+                              )}
+                              {message.replyToId && (
+                                <div className="mb-2 rounded-lg border-l-2 border-cyan-400/70 bg-black/25 px-2 py-1.5">
+                                  <p className="text-[10px] font-semibold text-cyan-200/85">
+                                    {replyMessage?.senderName || 'Replied message'}
+                                  </p>
+                                  <p className="text-[11px] text-white/75 line-clamp-2">
+                                    {replyText}
+                                  </p>
+                                </div>
+                              )}
+                              {message.sharedMovie && (
+                                <Link
+                                  href={message.sharedMovie.mediaType === 'movie' ? `/movie/${message.sharedMovie.tmdbId}` : `/show/${message.sharedMovie.tmdbId}`}
+                                  className="mb-2 block rounded-xl border border-white/10 bg-[var(--bg-card)]/90 p-2 hover:border-indigo-300/45 transition-colors"
+                                  title={`Open ${message.sharedMovie.title}`}
+                                >
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="relative h-14 w-10 rounded-md overflow-hidden bg-black/20 shrink-0">
+                                      {message.sharedMovie.poster ? (
+                                        <Image src={message.sharedMovie.poster} alt={message.sharedMovie.title} fill sizes="80px" className="object-cover" />
+                                      ) : (
+                                        <div className="w-full h-full" />
+                                      )}
+                                    </div>
+                                    <div className="min-w-0">
+                                      <p className="text-[11px] uppercase tracking-[0.12em] text-indigo-200/75">Shared pick</p>
+                                      <p className="text-sm font-semibold text-[var(--text-primary)] line-clamp-1">
+                                        {message.sharedMovie.title}
+                                      </p>
+                                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
+                                        {message.sharedMovie.mediaType === 'movie' ? 'Movie' : 'Show'} · {message.sharedMovie.releaseYear ?? 'Unknown'}
+                                      </p>
+                                    </div>
+                                  </div>
+                                </Link>
+                              )}
+                              {showBody && (
+                                <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">
+                                  {renderMessageBody(message.body)}
+                                </p>
+                              )}
+                              <p className="mt-1 text-[10px] text-[var(--text-muted)] text-right">
+                                {new Date(message.createdAt).toLocaleTimeString([], {
+                                  hour: '2-digit',
+                                  minute: '2-digit',
+                                })}
+                              </p>
+                              {message.reactions.length > 0 && (
+                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                                  {message.reactions.map((reaction) => (
+                                    <button
+                                      key={`${message.id}-${reaction.value}`}
+                                      type="button"
+                                      onClick={() => void handleToggleChatReaction(message.id, reaction.value)}
+                                      disabled={reactingMessageId === message.id}
+                                      className={`rounded-full border px-1.5 py-0.5 text-[11px] leading-none ${reaction.reacted ? 'border-cyan-300/55 bg-cyan-500/18 text-cyan-100' : 'border-white/20 bg-black/20 text-white/85'} disabled:opacity-60`}
+                                    >
+                                      <span>{reaction.value}</span>
+                                      <span className="ml-1">{reaction.count}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              {reactionPickerMessageId === message.id && (
+                                <div
+                                  onClick={(event) => event.stopPropagation()}
+                                  className="absolute left-1/2 top-0 z-30 inline-flex w-max max-w-[calc(100vw-28px)] -translate-x-1/2 -translate-y-[calc(100%+8px)] flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border border-white/15 bg-[#111827]/95 px-2 py-1 shadow-[0_14px_30px_rgba(0,0,0,0.45)]"
+                                >
+                                  {CHAT_REACTION_OPTIONS.map((reaction) => {
+                                    const active = message.reactions.some((item) => item.value === reaction && item.reacted);
+                                    return (
+                                      <button
+                                        key={`${message.id}-${reaction}-option`}
+                                        type="button"
+                                        onClick={() => void handleToggleChatReaction(message.id, reaction)}
+                                        disabled={reactingMessageId === message.id}
+                                        className={`rounded-full border px-1.5 py-0.5 text-sm leading-none transition-colors ${active ? 'border-cyan-300/55 bg-cyan-500/18' : 'border-white/15 bg-black/20'} disabled:opacity-60`}
+                                      >
+                                        {reaction}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                              </article>
+                            </motion.div>
+                          </Fragment>
+                        );
+                      })}
+                    </div>
+                  )}
                   <div
                     onDragOver={(event) => {
                       if (!Array.from(event.dataTransfer.types).includes(GROUP_PICK_DRAG_MIME)) return;
@@ -1491,7 +1859,7 @@ export function GroupWatchModal({
                     }}
                     onDragLeave={() => setChatDropActive(false)}
                     onDrop={handleChatDrop}
-                    className={`mb-3 rounded-2xl border p-3 transition-colors ${chatDropActive
+                    className={`mt-3 rounded-2xl border p-3 transition-colors ${chatDropActive
                         ? 'border-indigo-300/55 bg-indigo-500/12'
                         : 'border-white/10 bg-[var(--bg-primary)]/70'
                       }`}
@@ -1650,162 +2018,6 @@ export function GroupWatchModal({
                       Drop a pick here to share it in chat. Mobile users can use Share to chat.
                     </p>
                   </div>
-
-                  {chatMessages.length === 0 ? (
-                    <p className="text-sm text-[var(--text-muted)]">No messages yet. Start the conversation.</p>
-                  ) : (
-                    <div
-                      ref={chatContainerRef}
-                      className="max-h-[26rem] overflow-y-auto pr-1 space-y-2.5 rounded-xl p-2"
-                      style={{ background: activeTheme.bg }}
-                    >
-                      {chatMessages.map((message) => {
-                        const showBody =
-                          message.body.trim().length > 0 &&
-                          !(
-                            message.sharedMovie &&
-                            message.body.toLowerCase().startsWith('shared movie:')
-                          );
-                        const isReplying = replyingToMessage?.id === message.id;
-                        const replyMessage = message.replyToId
-                          ? chatMessages.find((m) => m.id === message.replyToId)
-                          : null;
-                        const replyText = replyMessage?.body.trim()
-                          || replyMessage?.sharedMovie?.title
-                          || 'Attachment';
-                        return (
-                          <motion.div
-                            key={message.id}
-                            layout
-                            drag="x"
-                            dragConstraints={{ left: 0, right: 0 }}
-                            dragElastic={{ right: 0.2, left: 0 }}
-                            onDragEnd={(_, info) => {
-                              if (info.offset.x > 50) {
-                                setReplyingToMessage(message);
-                                if (typeof navigator !== 'undefined' && navigator.vibrate) {
-                                  navigator.vibrate(50);
-                                }
-                              }
-                            }}
-                            className={`flex items-end gap-2 ${message.mine ? 'justify-end' : 'justify-start'}`}
-                          >
-                            {!message.mine && (
-                              <div className="h-7 w-7 shrink-0 rounded-full border border-white/15 bg-[var(--bg-primary)] flex items-center justify-center text-[11px] font-semibold text-[var(--text-secondary)]">
-                                {(message.senderName || 'M').slice(0, 1).toUpperCase()}
-                              </div>
-                            )}
-                            <article
-                              onPointerDown={() => startReactionLongPress(message.id)}
-                              onPointerUp={clearReactionLongPress}
-                              onPointerCancel={clearReactionLongPress}
-                              onPointerLeave={clearReactionLongPress}
-                              onContextMenu={(event) => {
-                                event.preventDefault();
-                                clearReactionLongPress();
-                                setReactionPickerMessageId(message.id);
-                              }}
-                              className={`relative max-w-[86%] rounded-2xl border px-3 py-2.5 transition-transform duration-200 ${message.mine
-                                  ? ''
-                                  : 'border-white/10 bg-[var(--bg-primary)]'
-                                } ${isReplying ? 'scale-[1.01] ring-2 ring-cyan-400/45' : ''}`}
-                              style={message.mine ? { background: activeTheme.bubble, borderColor: activeTheme.bubbleBorder } : undefined}
-                            >
-                              {!message.mine && (
-                                <p className="text-[11px] font-semibold text-[var(--text-secondary)] mb-1">
-                                  {message.senderName}
-                                </p>
-                              )}
-                              {message.replyToId && (
-                                <div className="mb-2 rounded-lg border-l-2 border-cyan-400/70 bg-black/25 px-2 py-1.5">
-                                  <p className="text-[10px] font-semibold text-cyan-200/85">
-                                    {replyMessage?.senderName || 'Replied message'}
-                                  </p>
-                                  <p className="text-[11px] text-white/75 line-clamp-2">
-                                    {replyText}
-                                  </p>
-                                </div>
-                              )}
-                              {message.sharedMovie && (
-                                <Link
-                                  href={message.sharedMovie.mediaType === 'movie' ? `/movie/${message.sharedMovie.tmdbId}` : `/show/${message.sharedMovie.tmdbId}`}
-                                  className="mb-2 block rounded-xl border border-white/10 bg-[var(--bg-card)]/90 p-2 hover:border-indigo-300/45 transition-colors"
-                                  title={`Open ${message.sharedMovie.title}`}
-                                >
-                                  <div className="flex items-center gap-2.5">
-                                    <div className="relative h-14 w-10 rounded-md overflow-hidden bg-black/20 shrink-0">
-                                      {message.sharedMovie.poster ? (
-                                        <Image src={message.sharedMovie.poster} alt={message.sharedMovie.title} fill sizes="80px" className="object-cover" />
-                                      ) : (
-                                        <div className="w-full h-full" />
-                                      )}
-                                    </div>
-                                    <div className="min-w-0">
-                                      <p className="text-[11px] uppercase tracking-[0.12em] text-indigo-200/75">Shared pick</p>
-                                      <p className="text-sm font-semibold text-[var(--text-primary)] line-clamp-1">
-                                        {message.sharedMovie.title}
-                                      </p>
-                                      <p className="text-[11px] text-[var(--text-muted)] mt-0.5">
-                                        {message.sharedMovie.mediaType === 'movie' ? 'Movie' : 'Show'} · {message.sharedMovie.releaseYear ?? 'Unknown'}
-                                      </p>
-                                    </div>
-                                  </div>
-                                </Link>
-                              )}
-                              {showBody && (
-                                <p className="text-sm text-[var(--text-primary)] whitespace-pre-wrap break-words">
-                                  {renderMessageBody(message.body)}
-                                </p>
-                              )}
-                              <p className="mt-1 text-[10px] text-[var(--text-muted)] text-right">
-                                {new Date(message.createdAt).toLocaleTimeString([], {
-                                  hour: '2-digit',
-                                  minute: '2-digit',
-                                })}
-                              </p>
-                              {message.reactions.length > 0 && (
-                                <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
-                                  {message.reactions.map((reaction) => (
-                                    <button
-                                      key={`${message.id}-${reaction.value}`}
-                                      type="button"
-                                      onClick={() => void handleToggleChatReaction(message.id, reaction.value)}
-                                      disabled={reactingMessageId === message.id}
-                                      className={`rounded-full border px-1.5 py-0.5 text-[11px] leading-none ${reaction.reacted ? 'border-cyan-300/55 bg-cyan-500/18 text-cyan-100' : 'border-white/20 bg-black/20 text-white/85'} disabled:opacity-60`}
-                                    >
-                                      <span>{reaction.value}</span>
-                                      <span className="ml-1">{reaction.count}</span>
-                                    </button>
-                                  ))}
-                                </div>
-                              )}
-                              {reactionPickerMessageId === message.id && (
-                                <div
-                                  onClick={(event) => event.stopPropagation()}
-                                  className="absolute left-1/2 top-0 z-30 inline-flex w-max max-w-[calc(100vw-28px)] -translate-x-1/2 -translate-y-[calc(100%+8px)] flex-nowrap items-center gap-1.5 overflow-x-auto rounded-full border border-white/15 bg-[#111827]/95 px-2 py-1 shadow-[0_14px_30px_rgba(0,0,0,0.45)]"
-                                >
-                                  {CHAT_REACTION_OPTIONS.map((reaction) => {
-                                    const active = message.reactions.some((item) => item.value === reaction && item.reacted);
-                                    return (
-                                      <button
-                                        key={`${message.id}-${reaction}-option`}
-                                        type="button"
-                                        onClick={() => void handleToggleChatReaction(message.id, reaction)}
-                                        disabled={reactingMessageId === message.id}
-                                        className={`rounded-full border px-1.5 py-0.5 text-sm leading-none transition-colors ${active ? 'border-cyan-300/55 bg-cyan-500/18' : 'border-white/15 bg-black/20'} disabled:opacity-60`}
-                                      >
-                                        {reaction}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              )}
-                            </article>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  )}
                   <p className="mt-2 text-[11px] text-[var(--text-muted)]">
                     Only accepted members in this group can read and send chat messages.
                   </p>

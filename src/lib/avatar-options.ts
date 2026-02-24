@@ -108,6 +108,35 @@ export const IMAGE_AVATAR_THEMES: ImageAvatarTheme[] = [
     ]
   },
   {
+    name: 'Top English Web Series',
+    options: [
+      { id: 'eng_series_1', path: '/avatars/english_web_series/a_knight_of_the_seven_kingdoms.jpg', label: `A Knight of the Seven Kingdoms` },
+      { id: 'eng_series_2', path: '/avatars/english_web_series/supernatural.jpg', label: `Supernatural` },
+      { id: 'eng_series_3', path: '/avatars/english_web_series/grey_s_anatomy.jpg', label: `Grey's Anatomy` },
+      { id: 'eng_series_4', path: '/avatars/english_web_series/the_simpsons.jpg', label: `The Simpsons` },
+      { id: 'eng_series_5', path: '/avatars/english_web_series/the_rookie.jpg', label: `The Rookie` },
+      { id: 'eng_series_6', path: '/avatars/english_web_series/family_guy.jpg', label: `Family Guy` },
+      { id: 'eng_series_7', path: '/avatars/english_web_series/stranger_things.jpg', label: `Stranger Things` },
+      { id: 'eng_series_8', path: '/avatars/english_web_series/law_order_special_victims_unit.jpg', label: `Law & Order: Special Victims Unit` },
+      { id: 'eng_series_9', path: '/avatars/english_web_series/game_of_thrones.jpg', label: `Game of Thrones` },
+      { id: 'eng_series_10', path: '/avatars/english_web_series/ncis.jpg', label: `NCIS` },
+      { id: 'eng_series_11', path: '/avatars/english_web_series/law_order.jpg', label: `Law & Order` },
+      { id: 'eng_series_12', path: '/avatars/english_web_series/house.jpg', label: `House` },
+      { id: 'eng_series_13', path: '/avatars/english_web_series/raw.jpg', label: `Raw` },
+      { id: 'eng_series_14', path: '/avatars/english_web_series/watch_what_happens_live_with_andy_cohen.jpg', label: `Watch What Happens Live with Andy Cohen` },
+      { id: 'eng_series_15', path: '/avatars/english_web_series/breaking_bad.jpg', label: `Breaking Bad` },
+      { id: 'eng_series_16', path: '/avatars/english_web_series/the_daily_show.jpg', label: `The Daily Show` },
+      { id: 'eng_series_17', path: '/avatars/english_web_series/smallville.jpg', label: `Smallville` },
+      { id: 'eng_series_18', path: '/avatars/english_web_series/csi_crime_scene_investigation.jpg', label: `CSI: Crime Scene Investigation` },
+      { id: 'eng_series_19', path: '/avatars/english_web_series/criminal_minds.jpg', label: `Criminal Minds` },
+      { id: 'eng_series_20', path: '/avatars/english_web_series/friends.jpg', label: `Friends` },
+      { id: 'eng_series_21', path: '/avatars/english_web_series/bones.jpg', label: `Bones` },
+      { id: 'eng_series_22', path: '/avatars/english_web_series/modern_family.jpg', label: `Modern Family` },
+      { id: 'eng_series_23', path: '/avatars/english_web_series/56_days.jpg', label: `56 Days` },
+      { id: 'eng_series_24', path: '/avatars/english_web_series/shameless.jpg', label: `Shameless` }
+    ]
+  },
+  {
     name: 'Top Telugu Movies',
     options: [
       { id: 'prabhas_1', path: '/avatars/telugu_movies/prabhas_1.jpg', label: `Bāhubali 2: The Conclusion` },
@@ -122,12 +151,24 @@ export const IMAGE_AVATAR_THEMES: ImageAvatarTheme[] = [
       { id: 'ram_1', path: '/avatars/telugu_movies/ram_1.jpg', label: `RRR` },
       { id: 'ram_2', path: '/avatars/telugu_movies/ram_2.jpg', label: `Game Changer` },
       { id: 'ram_3', path: '/avatars/telugu_movies/ram_3.jpg', label: `Magadheera` },
-      { id: 'ntr_1', path: '/avatars/telugu_movies/ntr_1.jpg', label: `RRR` },
       { id: 'ntr_2', path: '/avatars/telugu_movies/ntr_2.jpg', label: `Devara: Part 1` },
       { id: 'ntr_3', path: '/avatars/telugu_movies/ntr_3.jpg', label: `Oosaravelli` },
       { id: 'pawan_1', path: '/avatars/telugu_movies/pawan_1.jpg', label: `Gabbar Singh` },
       { id: 'pawan_2', path: '/avatars/telugu_movies/pawan_2.jpg', label: `Komaram Puli` },
       { id: 'pawan_3', path: '/avatars/telugu_movies/pawan_3.jpg', label: `Tholi Prema` }
+    ]
+  },
+  {
+    name: 'Nani Movies',
+    options: [
+      { id: 'nani_1', path: '/avatars/telugu_movies/hi_nanna.jpg', label: `Hi Nanna` },
+      { id: 'nani_2', path: '/avatars/telugu_movies/hit_the_third_case.jpg', label: `HIT: The Third Case` },
+      { id: 'nani_3', path: '/avatars/telugu_movies/eega.jpg', label: `Eega` },
+      { id: 'nani_4', path: '/avatars/telugu_movies/tuck_jagadish.jpg', label: `Tuck Jagadish` },
+      { id: 'nani_5', path: '/avatars/telugu_movies/hit_the_2nd_case.jpg', label: `HIT: The 2nd Case` },
+      { id: 'nani_6', path: '/avatars/telugu_movies/v.jpg', label: `V` },
+      { id: 'nani_7', path: '/avatars/telugu_movies/nenu_local.jpg', label: `Nenu Local` },
+      { id: 'nani_8', path: '/avatars/telugu_movies/dasara.jpg', label: `Dasara` }
     ]
   }
 ];

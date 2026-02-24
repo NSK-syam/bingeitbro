@@ -7,6 +7,7 @@ const siteUrl =
 
 export default function robots(): MetadataRoute.Robots {
   return {
+    host: siteUrl,
     rules: [
       {
         userAgent: '*',

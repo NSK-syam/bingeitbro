@@ -30,6 +30,7 @@ export function getSupabaseAccessToken(): string | null {
 }
 
 const DEFAULT_TIMEOUT_MS = 25000;
+let chatThemeSyncUnsupported = false;
 
 export async function supabaseRestRequest<T>(
   path: string,
@@ -95,22 +96,33 @@ export interface FriendForSelect extends DBUser {
 
 // ─── Chat Themes ─────────────────────────────────────────────────────────────
 export async function getChatTheme(chatId: string): Promise<string | null> {
+  if (chatThemeSyncUnsupported || !supabaseUrl || !supabaseAnonKey) return null;
   const url = `${supabaseUrl}/rest/v1/chat_themes?chat_id=eq.${chatId}&select=theme_id`;
-  const response = await fetch(url, {
-    headers: {
-      apikey: supabaseAnonKey,
-      Authorization: `Bearer ${supabaseAnonKey}`,
-      'Content-Type': 'application/json',
-    },
-  });
+  try {
+    const response = await fetch(url, {
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${supabaseAnonKey}`,
+        'Content-Type': 'application/json',
+      },
+    });
 
-  if (!response.ok) return null;
-  const data = await response.json();
-  if (!data || data.length === 0) return null;
-  return data[0].theme_id;
+    if (!response.ok) {
+      if (response.status === 404) {
+        chatThemeSyncUnsupported = true;
+      }
+      return null;
+    }
+    const data = await response.json();
+    if (!data || data.length === 0) return null;
+    return data[0].theme_id;
+  } catch {
+    return null;
+  }
 }
 
 export async function setChatTheme(chatId: string, themeId: string): Promise<void> {
+  if (chatThemeSyncUnsupported || !supabaseUrl || !supabaseAnonKey) return;
   const url = `${supabaseUrl}/rest/v1/chat_themes`;
 
   // Upsert the theme for this chat
@@ -129,6 +141,10 @@ export async function setChatTheme(chatId: string, themeId: string): Promise<voi
   });
 
   if (!response.ok) {
+    if (response.status === 404) {
+      chatThemeSyncUnsupported = true;
+      return;
+    }
     const errorBody = await response.text();
     console.error('Failed to set chat theme:', errorBody);
     throw new Error('Could not synchronize chat theme');
@@ -228,6 +244,7 @@ export interface DirectMessage {
   senderName: string;
   senderAvatar: string | null;
   body: string;
+  sharedMovie?: WatchGroupSharedMovie | null;
   replyToId?: string | null;
   reactions: ChatMessageReaction[];
   createdAt: string;
@@ -255,8 +272,13 @@ type DirectMessageRow = {
   id: string;
   sender_id: string;
   recipient_id: string;
-  body: string;
+  body: string | null;
   reply_to_id?: string | null;
+  shared_media_type?: 'movie' | 'show' | null;
+  shared_tmdb_id?: string | null;
+  shared_title?: string | null;
+  shared_poster?: string | null;
+  shared_release_year?: number | null;
   created_at: string;
 };
 
@@ -1254,30 +1276,76 @@ export async function sendDirectMessage(input: {
   recipientId: string;
   body: string;
   replyToId?: string | null;
+  sharedMovie?: WatchGroupSharedMovie | null;
 }): Promise<void> {
   const token = ensureAuthedToken();
   const body = input.body.trim();
-  if (!body) {
+  const sharedMovie = input.sharedMovie
+    ? {
+      mediaType: input.sharedMovie.mediaType,
+      tmdbId: input.sharedMovie.tmdbId.trim().slice(0, 64),
+      title: input.sharedMovie.title.trim().slice(0, 200),
+      poster: input.sharedMovie.poster?.trim().slice(0, 500) ?? null,
+      releaseYear: input.sharedMovie.releaseYear ?? null,
+    }
+    : null;
+  if (!body && !sharedMovie) {
     throw new Error('Message cannot be empty.');
   }
-  await supabaseRestRequest(
-    'direct_messages',
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Prefer: 'return=minimal',
+  try {
+    await supabaseRestRequest(
+      'direct_messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({
+          sender_id: input.senderId,
+          recipient_id: input.recipientId,
+          body: body ? body.slice(0, 1200) : null,
+          reply_to_id: input.replyToId ?? null,
+          shared_media_type: sharedMovie?.mediaType ?? null,
+          shared_tmdb_id: sharedMovie?.tmdbId ?? null,
+          shared_title: sharedMovie?.title ?? null,
+          shared_poster: sharedMovie?.poster ?? null,
+          shared_release_year: sharedMovie?.releaseYear ?? null,
+        }),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
       },
-      body: JSON.stringify({
-        sender_id: input.senderId,
-        recipient_id: input.recipientId,
-        body: body.slice(0, 1200),
-        reply_to_id: input.replyToId ?? null,
-      }),
-      timeoutMs: DEFAULT_TIMEOUT_MS,
-    },
-    token,
-  );
+      token,
+    );
+  } catch (err) {
+    const message = err instanceof Error ? err.message.toLowerCase() : '';
+    const missingSharedColumns =
+      message.includes('shared_media_type') ||
+      message.includes('shared_tmdb_id') ||
+      message.includes('shared_title') ||
+      message.includes('schema cache');
+    if (!sharedMovie || !missingSharedColumns) {
+      throw err;
+    }
+
+    await supabaseRestRequest(
+      'direct_messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({
+          sender_id: input.senderId,
+          recipient_id: input.recipientId,
+          body: body ? body.slice(0, 1200) : `Shared movie: ${sharedMovie.title}`.slice(0, 1200),
+          reply_to_id: input.replyToId ?? null,
+        }),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    );
+  }
 }
 
 export async function getDirectMessagesWithUser(
@@ -1286,17 +1354,36 @@ export async function getDirectMessagesWithUser(
 ): Promise<DirectMessage[]> {
   const token = ensureAuthedToken();
   try {
-    const params = new URLSearchParams({
-      select: 'id,sender_id,recipient_id,body,reply_to_id,created_at',
-      or: `(and(sender_id.eq.${currentUserId},recipient_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},recipient_id.eq.${currentUserId}))`,
-      order: 'created_at.asc',
-      limit: '200',
-    });
-    const rows = await supabaseRestRequest<DirectMessageRow[]>(
-      `direct_messages?${params.toString()}`,
-      { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
-      token,
-    );
+    const makeParams = (includeSharedColumns: boolean) =>
+      new URLSearchParams({
+        select: includeSharedColumns
+          ? 'id,sender_id,recipient_id,body,reply_to_id,shared_media_type,shared_tmdb_id,shared_title,shared_poster,shared_release_year,created_at'
+          : 'id,sender_id,recipient_id,body,reply_to_id,created_at',
+        or: `(and(sender_id.eq.${currentUserId},recipient_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},recipient_id.eq.${currentUserId}))`,
+        order: 'created_at.asc',
+        limit: '200',
+      });
+    let rows: DirectMessageRow[];
+    try {
+      rows = await supabaseRestRequest<DirectMessageRow[]>(
+        `direct_messages?${makeParams(true).toString()}`,
+        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+        token,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message.toLowerCase() : '';
+      const missingSharedColumns =
+        message.includes('shared_media_type') ||
+        message.includes('shared_tmdb_id') ||
+        message.includes('shared_title') ||
+        message.includes('schema cache');
+      if (!missingSharedColumns) throw err;
+      rows = await supabaseRestRequest<DirectMessageRow[]>(
+        `direct_messages?${makeParams(false).toString()}`,
+        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+        token,
+      );
+    }
     const messages = Array.isArray(rows) ? rows : [];
     if (messages.length === 0) return [];
 
@@ -1333,13 +1420,24 @@ export async function getDirectMessagesWithUser(
 
     return messages.map((msg) => {
       const sender = userMap.get(msg.sender_id);
+      const sharedMovie =
+        msg.shared_media_type && msg.shared_tmdb_id && msg.shared_title
+          ? {
+            mediaType: msg.shared_media_type,
+            tmdbId: msg.shared_tmdb_id,
+            title: msg.shared_title,
+            poster: msg.shared_poster ?? null,
+            releaseYear: msg.shared_release_year ?? null,
+          }
+          : null;
       return {
         id: msg.id,
         senderId: msg.sender_id,
         recipientId: msg.recipient_id,
         senderName: sender?.name || 'Member',
         senderAvatar: sender?.avatar ?? null,
-        body: msg.body,
+        body: msg.body ?? '',
+        sharedMovie,
         replyToId: msg.reply_to_id ?? null,
         reactions: reactionsByMessage.get(msg.id) ?? [],
         createdAt: msg.created_at,
@@ -1416,22 +1514,61 @@ export async function toggleDirectMessageReaction(input: {
   );
 }
 
+export async function deleteDirectMessage(input: {
+  messageId: string;
+  userId: string;
+}): Promise<void> {
+  const token = ensureAuthedToken();
+  const params = new URLSearchParams({
+    id: `eq.${input.messageId}`,
+    sender_id: `eq.${input.userId}`,
+  });
+  await supabaseRestRequest(
+    `direct_messages?${params.toString()}`,
+    {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
+
 export async function getDirectChatThreads(
   currentUserId: string,
 ): Promise<DirectMessageThread[]> {
   const token = ensureAuthedToken();
   try {
-    const params = new URLSearchParams({
-      select: 'id,sender_id,recipient_id,body,created_at',
-      or: `(sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId})`,
-      order: 'created_at.desc',
-      limit: '400',
-    });
-    const rows = await supabaseRestRequest<DirectMessageRow[]>(
-      `direct_messages?${params.toString()}`,
-      { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
-      token,
-    );
+    const makeParams = (includeSharedColumns: boolean) =>
+      new URLSearchParams({
+        select: includeSharedColumns
+          ? 'id,sender_id,recipient_id,body,shared_media_type,shared_tmdb_id,shared_title,created_at'
+          : 'id,sender_id,recipient_id,body,created_at',
+        or: `(sender_id.eq.${currentUserId},recipient_id.eq.${currentUserId})`,
+        order: 'created_at.desc',
+        limit: '400',
+      });
+    let rows: DirectMessageRow[];
+    try {
+      rows = await supabaseRestRequest<DirectMessageRow[]>(
+        `direct_messages?${makeParams(true).toString()}`,
+        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+        token,
+      );
+    } catch (err) {
+      const message = err instanceof Error ? err.message.toLowerCase() : '';
+      const missingSharedColumns =
+        message.includes('shared_media_type') ||
+        message.includes('shared_tmdb_id') ||
+        message.includes('shared_title') ||
+        message.includes('schema cache');
+      if (!missingSharedColumns) throw err;
+      rows = await supabaseRestRequest<DirectMessageRow[]>(
+        `direct_messages?${makeParams(false).toString()}`,
+        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+        token,
+      );
+    }
     const messages = Array.isArray(rows) ? rows : [];
     if (messages.length === 0) return [];
 
@@ -1470,7 +1607,7 @@ export async function getDirectChatThreads(
           peerUsername: peer?.username ?? null,
           peerAvatar: peer?.avatar ?? null,
           latestMessageId: message.id,
-          latestBody: message.body,
+          latestBody: message.body || (message.shared_title ? `Shared: ${message.shared_title}` : 'Message'),
           latestCreatedAt: message.created_at,
           latestFromMe: message.sender_id === currentUserId,
         } satisfies DirectMessageThread;
@@ -1891,6 +2028,25 @@ export async function leaveWatchGroup(groupId: string, userId: string): Promise<
   );
 }
 
+export async function removeWatchGroupMember(groupId: string, memberUserId: string): Promise<void> {
+  const token = ensureAuthedToken();
+  const params = new URLSearchParams({
+    group_id: `eq.${groupId}`,
+    user_id: `eq.${memberUserId}`,
+  });
+  await supabaseRestRequest(
+    `watch_group_members?${params.toString()}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Prefer: 'return=minimal',
+      },
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
+
 export async function sendWatchGroupInvite(input: {
   groupId: string;
   inviterId: string;
@@ -2175,37 +2331,217 @@ export async function getPendingWatchGroupInvites(
   });
 }
 
-export async function respondToWatchGroupInvite(
-  inviteId: string,
-  decision: 'accepted' | 'rejected',
-): Promise<{ inviteId: string; groupId: string; status: 'accepted' | 'rejected' }> {
+export async function cancelWatchGroupInvite(inviteId: string, groupId?: string): Promise<void> {
   const token = ensureAuthedToken();
-  const rows = await supabaseRestRequest<Array<{ invite_id: string; group_id: string; status: string }>>(
-    'rpc/respond_watch_group_invite',
+  const patchParams = new URLSearchParams({
+    id: `eq.${inviteId}`,
+    status: 'eq.pending',
+  });
+  if (groupId) {
+    patchParams.set('group_id', `eq.${groupId}`);
+  }
+  await supabaseRestRequest(
+    `watch_group_invites?${patchParams.toString()}`,
     {
-      method: 'POST',
+      method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        Prefer: 'return=representation',
+        Prefer: 'return=minimal',
       },
       body: JSON.stringify({
-        p_invite_id: inviteId,
-        p_decision: decision,
+        status: 'canceled',
+        updated_at: new Date().toISOString(),
       }),
       timeoutMs: DEFAULT_TIMEOUT_MS,
     },
     token,
   );
+}
 
-  const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
-  if (!row || (row.status !== 'accepted' && row.status !== 'rejected')) {
-    throw new Error('Failed to respond to invite.');
+export async function respondToWatchGroupInvite(
+  inviteId: string,
+  decision: 'accepted' | 'rejected',
+  currentUserId: string,
+): Promise<{ inviteId: string; groupId: string; status: 'accepted' | 'rejected' }> {
+  const token = ensureAuthedToken();
+  try {
+    const rows = await supabaseRestRequest<Array<{ invite_id: string; group_id: string; status: string }>>(
+      'rpc/respond_watch_group_invite',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({
+          p_invite_id: inviteId,
+          p_decision: decision,
+        }),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    );
+
+    const row = Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+    if (!row || (row.status !== 'accepted' && row.status !== 'rejected')) {
+      throw new Error('Failed to respond to invite.');
+    }
+    return {
+      inviteId: row.invite_id,
+      groupId: row.group_id,
+      status: row.status,
+    };
+  } catch (rpcErr) {
+    const message = rpcErr instanceof Error ? rpcErr.message.toLowerCase() : '';
+    const shouldNotFallback =
+      message.includes('jwt') ||
+      message.includes('token') ||
+      message.includes('not authenticated');
+    if (shouldNotFallback) {
+      throw rpcErr;
+    }
+
+    const inviteParams = new URLSearchParams({
+      select: 'id,group_id,inviter_id,invitee_id,status',
+      id: `eq.${inviteId}`,
+      limit: '1',
+    });
+    const inviteRows = await supabaseRestRequest<Array<{
+      id: string;
+      group_id: string;
+      inviter_id: string;
+      invitee_id: string;
+      status: string;
+    }>>(
+      `watch_group_invites?${inviteParams.toString()}`,
+      { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+      token,
+    );
+    const invite = Array.isArray(inviteRows) && inviteRows.length > 0 ? inviteRows[0] : null;
+    if (!invite) {
+      throw new Error('Invite not found.');
+    }
+    if (invite.invitee_id !== currentUserId) {
+      throw new Error('Not allowed to respond to this invite.');
+    }
+
+    if (invite.status === 'accepted' || invite.status === 'rejected') {
+      if (decision === 'accepted' && invite.status === 'accepted') {
+        const membershipCheckParams = new URLSearchParams({
+          select: 'group_id,user_id,role',
+          group_id: `eq.${invite.group_id}`,
+          user_id: `eq.${invite.invitee_id}`,
+          limit: '1',
+        });
+        const existingMembership = await supabaseRestRequest<WatchGroupMemberRow[]>(
+          `watch_group_members?${membershipCheckParams.toString()}`,
+          { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+          token,
+        ).catch(() => [] as WatchGroupMemberRow[]);
+        const hasMembership = Array.isArray(existingMembership) && existingMembership.length > 0;
+        if (!hasMembership) {
+          const memberConflictParams = new URLSearchParams({ on_conflict: 'group_id,user_id' });
+          await supabaseRestRequest(
+            `watch_group_members?${memberConflictParams.toString()}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Prefer: 'resolution=merge-duplicates,return=minimal',
+              },
+              body: JSON.stringify({
+                group_id: invite.group_id,
+                user_id: invite.invitee_id,
+                role: 'member',
+              }),
+              timeoutMs: DEFAULT_TIMEOUT_MS,
+            },
+            token,
+          );
+        }
+      }
+      return {
+        inviteId: invite.id,
+        groupId: invite.group_id,
+        status: invite.status,
+      };
+    }
+    if (invite.status !== 'pending') {
+      throw new Error('Invite is no longer pending.');
+    }
+
+    if (decision === 'accepted') {
+      const memberConflictParams = new URLSearchParams({ on_conflict: 'group_id,user_id' });
+      try {
+        await supabaseRestRequest(
+          `watch_group_members?${memberConflictParams.toString()}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Prefer: 'resolution=merge-duplicates,return=minimal',
+            },
+            body: JSON.stringify({
+              group_id: invite.group_id,
+              user_id: invite.invitee_id,
+              role: 'member',
+            }),
+            timeoutMs: DEFAULT_TIMEOUT_MS,
+          },
+          token,
+        );
+      } catch (memberErr) {
+        const memberMessage = memberErr instanceof Error ? memberErr.message : 'Membership insert failed.';
+        throw new Error(`Unable to accept invite right now. ${memberMessage}`);
+      }
+    }
+
+    const patchParams = new URLSearchParams({
+      id: `eq.${invite.id}`,
+      status: 'eq.pending',
+    });
+    const patchedRows = await supabaseRestRequest<Array<{ id: string; group_id: string; status: string }>>(
+      `watch_group_invites?${patchParams.toString()}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          Prefer: 'return=representation',
+        },
+        body: JSON.stringify({
+          status: decision,
+          updated_at: new Date().toISOString(),
+          responded_at: new Date().toISOString(),
+        }),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    );
+    const patched = Array.isArray(patchedRows) && patchedRows.length > 0 ? patchedRows[0] : null;
+    if (patched && (patched.status === 'accepted' || patched.status === 'rejected')) {
+      return {
+        inviteId: patched.id,
+        groupId: patched.group_id,
+        status: patched.status,
+      };
+    }
+
+    const finalRows = await supabaseRestRequest<Array<{ id: string; group_id: string; status: string }>>(
+      `watch_group_invites?${inviteParams.toString()}`,
+      { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+      token,
+    );
+    const finalInvite = Array.isArray(finalRows) && finalRows.length > 0 ? finalRows[0] : null;
+    if (!finalInvite || (finalInvite.status !== 'accepted' && finalInvite.status !== 'rejected')) {
+      throw new Error('Invite response could not be confirmed.');
+    }
+
+    return {
+      inviteId: finalInvite.id,
+      groupId: finalInvite.group_id,
+      status: finalInvite.status,
+    };
   }
-  return {
-    inviteId: row.invite_id,
-    groupId: row.group_id,
-    status: row.status,
-  };
 }
 
 export async function addWatchGroupPick(input: {
@@ -2237,6 +2573,24 @@ export async function addWatchGroupPick(input: {
         release_year: input.releaseYear ?? null,
         note: input.note?.trim() ? input.note.trim().slice(0, 400) : null,
       }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
+
+export async function deleteWatchGroupPick(pickId: string): Promise<void> {
+  const token = ensureAuthedToken();
+  const params = new URLSearchParams({
+    id: `eq.${pickId}`,
+  });
+  await supabaseRestRequest(
+    `watch_group_picks?${params.toString()}`,
+    {
+      method: 'DELETE',
+      headers: {
+        Prefer: 'return=minimal',
+      },
       timeoutMs: DEFAULT_TIMEOUT_MS,
     },
     token,
@@ -2696,6 +3050,26 @@ export async function toggleWatchGroupMessageReaction(input: {
         reaction,
         updated_at: new Date().toISOString(),
       }),
+      timeoutMs: DEFAULT_TIMEOUT_MS,
+    },
+    token,
+  );
+}
+
+export async function deleteWatchGroupMessage(input: {
+  messageId: string;
+  userId: string;
+}): Promise<void> {
+  const token = ensureAuthedToken();
+  const params = new URLSearchParams({
+    id: `eq.${input.messageId}`,
+    sender_id: `eq.${input.userId}`,
+  });
+  await supabaseRestRequest(
+    `watch_group_messages?${params.toString()}`,
+    {
+      method: 'DELETE',
+      headers: { Prefer: 'return=minimal' },
       timeoutMs: DEFAULT_TIMEOUT_MS,
     },
     token,

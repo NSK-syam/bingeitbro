@@ -26,6 +26,28 @@ type RatingRow = {
   rating: number;
 };
 
+function looksLikeAvatarPath(value: string | null | undefined): boolean {
+  const v = (value ?? '').trim().toLowerCase();
+  return v.startsWith('/avatars/') || v.endsWith('.jpg') || v.endsWith('.jpeg') || v.endsWith('.png') || v.endsWith('.webp');
+}
+
+function resolveProfileCardName(user: PlaylistRow['users']): string {
+  const rawName = (user?.name ?? '').trim();
+  if (rawName && !looksLikeAvatarPath(rawName)) return rawName;
+  const username = (user?.username ?? '').trim();
+  if (username) return username;
+  return 'User';
+}
+
+function resolveProfileCardAvatar(user: PlaylistRow['users']): { imagePath: string; glyph: string } {
+  const rawAvatar = (user?.avatar ?? '').trim();
+  if (rawAvatar.startsWith('/')) return { imagePath: rawAvatar, glyph: '' };
+  if (rawAvatar) return { imagePath: '', glyph: rawAvatar };
+  const rawName = (user?.name ?? '').trim();
+  if (rawName.startsWith('/avatars/')) return { imagePath: rawName, glyph: '' };
+  return { imagePath: '', glyph: '' };
+}
+
 function detectPlatform(url: string): string {
   try {
     const u = new URL(url);
@@ -394,8 +416,8 @@ export default function SongsHome() {
               ) : (
                 grouped.map((g) => {
                   const u = g.user;
-                  const name = u?.name || 'User';
-                  const avatar = u?.avatar || '';
+                  const name = resolveProfileCardName(u);
+                  const avatarDisplay = resolveProfileCardAvatar(u);
                   const stats = ratingByUser[g.userId] ?? { avg: 0, count: 0, mine: 0 };
                   const isMe = Boolean(user?.id && user.id === g.userId);
                   return (
@@ -403,7 +425,15 @@ export default function SongsHome() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex items-center gap-3 min-w-0">
                           <div className="h-11 w-11 rounded-2xl bg-black/25 border border-white/10 grid place-items-center text-xl">
-                            {avatar}
+                            {avatarDisplay.imagePath ? (
+                              <img
+                                src={avatarDisplay.imagePath}
+                                alt={name}
+                                className="h-full w-full rounded-2xl object-cover object-top bg-[var(--bg-card)]"
+                              />
+                            ) : (
+                              avatarDisplay.glyph || name.slice(0, 1).toUpperCase()
+                            )}
                           </div>
                           <div className="min-w-0">
                             <div className="text-base font-semibold text-[var(--text-primary)] truncate">

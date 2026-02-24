@@ -350,7 +350,7 @@ export function ScheduleWatchModal({
                       idx === highlightIndex ? 'bg-cyan-500/20' : 'hover:bg-white/5',
                     ].join(' ')}
                   >
-                    <div className="w-10 h-14 rounded-md overflow-hidden bg-[var(--bg-primary)]/60 flex-shrink-0">
+                    <div className="relative w-10 h-14 rounded-md overflow-hidden bg-[var(--bg-primary)]/60 flex-shrink-0">
                       {poster ? (
                         <Image src={poster} alt={movie.title} fill sizes="(max-width: 768px) 80px, 120px" className="object-cover" />
                       ) : (
@@ -371,7 +371,7 @@ export function ScheduleWatchModal({
         </div>
 
         <div className="mt-5 grid gap-4 sm:grid-cols-[140px_minmax(0,1fr)] items-start">
-          <div className="w-[140px] aspect-[2/3] rounded-xl overflow-hidden bg-[var(--bg-secondary)]/70 border border-white/10">
+          <div className="relative w-[140px] aspect-[2/3] rounded-xl overflow-hidden bg-[var(--bg-secondary)]/70 border border-white/10">
             {selectedPoster ? (
               <Image src={selectedPoster} alt={selected?.title || 'Selected movie'} fill sizes="140px" className="object-cover" />
             ) : (
@@ -445,7 +445,7 @@ export function ScheduleWatchModal({
                   key={item.id}
                   className="flex items-center gap-3 rounded-xl border border-white/10 bg-[var(--bg-card)]/70 p-2.5"
                 >
-                  <div className="w-10 h-14 rounded-md overflow-hidden bg-[var(--bg-primary)]/50 flex-shrink-0">
+                  <div className="relative w-10 h-14 rounded-md overflow-hidden bg-[var(--bg-primary)]/50 flex-shrink-0">
                     {item.moviePoster ? (
                       <Image src={item.moviePoster} alt={item.movieTitle} fill sizes="80px" className="object-cover" />
                     ) : (

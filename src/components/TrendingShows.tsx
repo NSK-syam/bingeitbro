@@ -20,6 +20,8 @@ const showCache = new Map<string, { items: TrendingShow[]; ts: number }>();
 type ProviderLogoItem = { name: string; url: string };
 const PROVIDER_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const providerCache = new Map<string, { logos: ProviderLogoItem[]; link?: string; ts: number }>();
+const CHAT_MOVIE_DRAG_MIME = 'application/x-bib-watch-group-pick';
+const CHAT_MOVIE_DRAG_TEXT_PREFIX = 'bib-chat-share:';
 
 const TV_GENRES: Array<{ id: number; name: string }> = [
   { id: 10759, name: 'Action & Adventure' },
@@ -789,6 +791,19 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
               key={show.id}
               href={href}
               prefetch={false}
+              draggable
+              onDragStart={(event) => {
+                const payload = JSON.stringify({
+                  mediaType: 'show',
+                  tmdbId: String(show.id),
+                  title: show.name,
+                  poster,
+                  releaseYear: year ?? null,
+                });
+                event.dataTransfer.effectAllowed = 'copy';
+                event.dataTransfer.setData(CHAT_MOVIE_DRAG_MIME, payload);
+                event.dataTransfer.setData('text/plain', `${CHAT_MOVIE_DRAG_TEXT_PREFIX}${payload}`);
+              }}
               className="group relative bg-[var(--bg-card)] rounded-xl overflow-hidden border border-white/10 hover:border-white/20 transition-colors"
               style={{ animationDelay: `${Math.min(idx, 12) * 45}ms` }}
             >

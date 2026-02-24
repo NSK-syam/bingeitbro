@@ -5,16 +5,40 @@ import { HelpBotWidget } from "@/components/HelpBotWidget";
 
 // System font stack so build works without network (no Google Fonts fetch)
 const fontClass = "font-sans antialiased";
+const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "https://bingeitbro.com";
+const bingVerification = (process.env.NEXT_PUBLIC_BING_VERIFICATION || process.env.BING_VERIFICATION || "").trim();
+const googleVerification = (process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || process.env.GOOGLE_SITE_VERIFICATION || "").trim();
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://bingeitbro.com"),
+  metadataBase: new URL(siteUrl),
+  alternates: {
+    canonical: "/",
+  },
   title: {
     default: "BiB - Binge it bro",
     template: "%s | BiB - Binge it bro",
   },
   applicationName: "BiB - Binge it bro",
+  creator: "BiB",
+  publisher: "BiB",
+  referrer: "origin-when-cross-origin",
   description:
     "Discover what to watch next with personalized movie and series recommendations from your friends. Binge it bro.",
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      "max-image-preview": "large",
+      "max-snippet": -1,
+      "max-video-preview": -1,
+    },
+  },
+  verification: {
+    ...(googleVerification ? { google: googleVerification } : {}),
+    ...(bingVerification ? { other: { "msvalidate.01": bingVerification } } : {}),
+  },
   icons: {
     // Make icon candidates explicit for crawlers (Google requires multiples of 48px).
     icon: [
@@ -35,8 +59,11 @@ export const metadata: Metadata = {
   ],
   openGraph: {
     title: "BiB - Binge it bro",
-    description: "Friends recommend, you watch",
+    description: "Find your next movie or show from friend recommendations in seconds. Save picks, skip endless scrolling, and binge smarter.",
     type: "website",
+    url: "/",
+    siteName: "BiB - Binge it bro",
+    locale: "en_US",
     images: [
       {
         url: "/social-card-1200x630.jpg?v=20260215b",
@@ -50,7 +77,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "BiB - Binge it bro",
-    description: "Friends recommend, you watch",
+    description: "Find your next movie or show from friend recommendations in seconds.",
     images: [
       {
         url: "/social-card-1200x630.jpg?v=20260215b",

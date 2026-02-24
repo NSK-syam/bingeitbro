@@ -181,20 +181,36 @@ export function Header({
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between h-16 sm:h-20">
           {/* Logo */}
-          <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-[var(--accent)]/20 ring-1 ring-white/10">
-              <img
-                src="/bib-logo.png"
-                alt="BiB"
-                className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
-              />
-            </div>
-            <div className="hidden sm:flex flex-col leading-tight">
-              <span className="text-sm font-semibold text-[var(--text-primary)]">Binge It Bro</span>
-              <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]">BiB</span>
-            </div>
-            <span className="sr-only">Binge It Bro</span>
-          </Link>
+          <div className="flex items-center gap-2 sm:gap-3">
+            <Link href="/" className="flex items-center gap-3 group">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl overflow-hidden flex-shrink-0 shadow-lg shadow-[var(--accent)]/20 ring-1 ring-white/10">
+                <img
+                  src="/bib-logo.png"
+                  alt="BiB"
+                  className="w-full h-full object-cover object-center group-hover:scale-105 transition-transform duration-300"
+                />
+              </div>
+              <div className="hidden sm:flex flex-col leading-tight">
+                <span className="text-sm font-semibold text-[var(--text-primary)]">Binge It Bro</span>
+                <span className="text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]">BiB</span>
+              </div>
+              <span className="sr-only">Binge It Bro</span>
+            </Link>
+            <a
+              href="https://www.instagram.com/bingeitbroo?igsh=dThqdnhkNmtwa2h4"
+              target="_blank"
+              rel="noopener noreferrer"
+              aria-label="Follow BiB on Instagram"
+              title="Instagram"
+              className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-pink-300/25 bg-gradient-to-br from-fuchsia-500/15 via-pink-500/10 to-orange-400/15 text-pink-100 hover:border-pink-200/50 hover:text-white transition-colors"
+            >
+              <svg viewBox="0 0 24 24" className="h-4.5 w-4.5" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                <rect x="3.5" y="3.5" width="17" height="17" rx="5" />
+                <circle cx="12" cy="12" r="4.1" />
+                <circle cx="17.3" cy="6.8" r="0.9" fill="currentColor" stroke="none" />
+              </svg>
+            </a>
+          </div>
 
           {/* Actions */}
           <div className="flex items-center gap-3">
@@ -330,7 +346,7 @@ export function Header({
                   <div className="w-8 h-8 rounded-full bg-[var(--bg-card)] flex items-center justify-center text-lg border border-white/10 overflow-hidden">
                     {userAvatar ? (
                       userAvatar.startsWith('/') ? (
-                        <img src={userAvatar} alt="" className="w-full h-full object-cover" />
+                        <img src={userAvatar} alt="" className="w-full h-full object-cover object-[center_18%] bg-[var(--bg-card)]" />
                       ) : (
                         userAvatar
                       )
@@ -351,7 +367,7 @@ export function Header({
                       <div className="px-4 py-2 border-b border-white/10 flex items-center gap-2">
                         {userAvatar?.startsWith('/') ? (
                           <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 border border-white/10">
-                            <img src={userAvatar} alt="" className="w-full h-full object-cover" />
+                            <img src={userAvatar} alt="" className="w-full h-full object-cover object-[center_18%] bg-[var(--bg-card)]" />
                           </div>
                         ) : (
                           <span className="text-2xl">{userAvatar ?? ''}</span>

@@ -17,6 +17,9 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Generated deploy/build artifacts and local scripts:
+    ".open-next/**",
+    "wrangler.jsonc.tmp-*",
   ]),
 ]);
 

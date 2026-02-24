@@ -73,6 +73,10 @@ const parseLightingTheme = (raw: string | null | undefined): LightingState => {
 
 const serializeLightingTheme = (s: LightingState) => `${s.mode}:${clamp(Math.round(s.intensity), 0, 100)}`;
 const normalizeUsername = (value: string) => value.trim().toLowerCase().replace(/[^a-z0-9_]/g, '');
+const looksLikeAvatarPath = (value: string | null | undefined) => {
+  const v = (value ?? '').trim().toLowerCase();
+  return v.startsWith('/avatars/') || v.endsWith('.jpg') || v.endsWith('.jpeg') || v.endsWith('.png') || v.endsWith('.webp');
+};
 
 export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const { user, loading: authLoading } = useAuth();
@@ -444,6 +448,25 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
   const displayUser = profileUser ?? fallbackProfileUser;
   const isOwnProfile = Boolean(user && displayUser && user.id === displayUser.id);
+  const safeDisplayName = useMemo(() => {
+    const rawName = (displayUser?.name ?? '').trim();
+    if (rawName && !looksLikeAvatarPath(rawName)) return rawName;
+    const username = (displayUser?.username ?? '').trim();
+    if (username) return username;
+    return 'User';
+  }, [displayUser]);
+  const displayAvatarPath = useMemo(() => {
+    const avatar = (displayUser?.avatar ?? '').trim();
+    if (avatar.startsWith('/')) return avatar;
+    const fallbackPath = (displayUser?.name ?? '').trim();
+    if (fallbackPath.startsWith('/avatars/')) return fallbackPath;
+    return '';
+  }, [displayUser]);
+  const displayAvatarGlyph = useMemo(() => {
+    const avatar = (displayUser?.avatar ?? '').trim();
+    if (!avatar || avatar.startsWith('/')) return '';
+    return avatar;
+  }, [displayUser]);
 
   useEffect(() => {
     if (!displayUser) return;
@@ -1323,10 +1346,14 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
               className={`relative w-24 h-24 rounded-full bg-[var(--accent)] flex items-center justify-center text-5xl flex-shrink-0 ${isOwnProfile ? 'cursor-pointer hover:ring-4 hover:ring-white/20 transition-all' : ''}`}
               onClick={() => isOwnProfile && setIsAvatarPickerOpen(true)}
             >
-              {displayUser.avatar?.startsWith('/') ? (
-                <img src={displayUser.avatar} alt={displayUser.name} className="w-full h-full object-cover rounded-full" />
+              {displayAvatarPath ? (
+                <img
+                  src={displayAvatarPath}
+                  alt={safeDisplayName}
+                  className="w-full h-full rounded-full object-cover object-[center_18%] bg-[var(--bg-secondary)]"
+                />
               ) : (
-                displayUser.avatar
+                displayAvatarGlyph || safeDisplayName.slice(0, 1).toUpperCase()
               )}
               {isOwnProfile && (
                 <div className="absolute inset-0 bg-black/40 rounded-full flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
@@ -1342,7 +1369,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
               )}
             </div>
             <div className="text-center sm:text-left flex-1">
-              <h1 className="text-3xl font-bold text-[var(--text-primary)]">{displayUser.name}</h1>
+              <h1 className="text-3xl font-bold text-[var(--text-primary)]">{safeDisplayName}</h1>
               <div className="mt-2 flex flex-wrap items-center gap-2 justify-center sm:justify-start">
                 {!isEditingUsername ? (
                   <>
@@ -1486,7 +1513,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-5">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">
-                {displayUser.name}'s Top 10
+                {displayUser.name}&rsquo;s Top 10
               </p>
               <h2 className="text-xl font-bold text-[var(--text-primary)]">Top 10 Picks</h2>
             </div>

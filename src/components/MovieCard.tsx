@@ -13,6 +13,9 @@ import { SendToFriendModal } from './SendToFriendModal';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
 import { normalizeWatchProviderKey } from '@/lib/tmdb';
 
+const CHAT_MOVIE_DRAG_MIME = 'application/x-bib-watch-group-pick';
+const CHAT_MOVIE_DRAG_TEXT_PREFIX = 'bib-chat-share:';
+
 // Relative time helper
 function getRelativeTime(dateString: string): string {
   const date = new Date(dateString);
@@ -132,6 +135,19 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
     <Link
       href={`${detailBase}/${id}`}
       prefetch={false}
+      draggable
+      onDragStart={(event) => {
+        const payload = JSON.stringify({
+          mediaType: type === 'series' ? 'show' : 'movie',
+          tmdbId: String(tmdbId ?? id),
+          title,
+          poster: poster || null,
+          releaseYear: year ?? null,
+        });
+        event.dataTransfer.effectAllowed = 'copy';
+        event.dataTransfer.setData(CHAT_MOVIE_DRAG_MIME, payload);
+        event.dataTransfer.setData('text/plain', `${CHAT_MOVIE_DRAG_TEXT_PREFIX}${payload}`);
+      }}
       className={`group block bg-[var(--bg-card)] rounded-xl overflow-hidden card-hover opacity-0 animate-fade-in-up stagger-${Math.min(index + 1, 6)} ${watched ? 'ring-2 ring-green-500/30' : ''}`}
     >
       {/* Poster */}

@@ -19,11 +19,12 @@ begin
       url := 'https://bingeitbro.com/api/watch-reminders/dispatch-emails',
       headers := jsonb_build_object(
         'Content-Type', 'application/json',
-        'x-watch-reminder-secret', 'bib_wr_v1_9f2d7c4a1e8b6f3d0a5c9e2f7b4d8a1c6e3f0b9d2a7c4e1f'
+        'x-watch-reminder-secret', '794f320f6ed3aade78eb0ce41c9630362629f6ebc5ca52aa795ced2f8ad9904d'
       ),
       body := jsonb_build_object(
-        'limit', 100
-      )
+        'limit', 25
+      ),
+      timeout_milliseconds := 30000
     );
   exception when others then
     -- Never fail cron loop because of transient HTTP failures.
