@@ -224,7 +224,7 @@ export async function searchMovies(query: string, page: number = 1): Promise<TMD
       throw new Error(`TMDB API error: ${response.status}`);
     }
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error('Error searching movies:', error);
     return null;
@@ -246,7 +246,7 @@ export async function searchTV(query: string, page: number = 1): Promise<TMDBTVS
       throw new Error(`TMDB API error: ${response.status}`);
     }
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error('Error searching TV shows:', error);
     return null;
@@ -268,7 +268,7 @@ export async function getMovieDetails(movieId: number): Promise<TMDBMovieDetails
       throw new Error(`TMDB API error: ${response.status}`);
     }
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error('Error fetching movie details:', error);
     return null;
@@ -290,7 +290,7 @@ export async function getTVDetails(tvId: number): Promise<TMDBTVDetails | null> 
       throw new Error(`TMDB API error: ${response.status}`);
     }
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error('Error fetching TV details:', error);
     return null;
@@ -312,7 +312,7 @@ export async function getWatchProviders(movieId: number): Promise<TMDBWatchProvi
       throw new Error(`TMDB API error: ${response.status}`);
     }
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error('Error fetching watch providers:', error);
     return null;
@@ -334,7 +334,7 @@ export async function getTVWatchProviders(tvId: number): Promise<TMDBWatchProvid
       throw new Error(`TMDB API error: ${response.status}`);
     }
 
-    return response.json();
+    return await response.json();
   } catch (error) {
     console.error('Error fetching TV watch providers:', error);
     return null;

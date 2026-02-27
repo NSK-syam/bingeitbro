@@ -781,7 +781,8 @@ export default function MoviesHome() {
             </div>
 
             {/* Main Tabs - Trending and Friends */}
-            <div className="flex flex-wrap items-center gap-2 mb-6">
+            <div className="mb-6 rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-2.5 shadow-[0_18px_42px_rgba(0,0,0,0.22)] sm:flex sm:items-start sm:justify-between sm:gap-3">
+              <div className="flex flex-wrap items-center gap-2 sm:flex-1">
               {/* Button design: consistent pill height, glassy surface, bold active state */}
               {/*
                 Keep styles local to avoid refactors across the app.
@@ -791,6 +792,7 @@ export default function MoviesHome() {
                 onClick={() => setActiveView('trending')}
                 className={[
                   'h-11 px-5 rounded-full inline-flex items-center gap-2',
+                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
                   'text-sm font-semibold',
                   'transition-all select-none',
                   'backdrop-blur-xl border shadow-[0_10px_30px_rgba(0,0,0,0.28)]',
@@ -813,6 +815,7 @@ export default function MoviesHome() {
                 onClick={() => setActiveView('friends')}
                 className={[
                   'h-11 px-5 rounded-full inline-flex items-center gap-2',
+                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
                   'text-sm font-semibold',
                   'transition-all select-none',
                   'backdrop-blur-xl border shadow-[0_10px_30px_rgba(0,0,0,0.28)]',
@@ -840,6 +843,7 @@ export default function MoviesHome() {
                 onClick={() => setShowBingeCalculator(true)}
                 className={[
                   'h-11 px-5 rounded-full inline-flex items-center gap-2',
+                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
                   'text-sm font-semibold',
                   'transition-all select-none',
                   'bg-gradient-to-r from-violet-600/35 to-fuchsia-600/35 text-fuchsia-100 border border-fuchsia-300/30 backdrop-blur-xl shadow-[0_10px_30px_rgba(124,58,237,0.28)]',
@@ -859,6 +863,7 @@ export default function MoviesHome() {
                 onClick={() => setShowScheduleWatch(true)}
                 className={[
                   'h-11 px-5 rounded-full inline-flex items-center gap-2 relative',
+                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
                   'text-sm font-semibold',
                   'transition-all select-none',
                   'bg-gradient-to-r from-cyan-500/40 to-blue-600/40 text-cyan-100 border border-cyan-300/35 backdrop-blur-xl shadow-[0_10px_30px_rgba(14,165,233,0.24)]',
@@ -882,6 +887,7 @@ export default function MoviesHome() {
                 onClick={() => setShowGroupWatch(true)}
                 className={[
                   'h-11 px-5 rounded-full inline-flex items-center gap-2 relative',
+                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
                   'text-sm font-semibold',
                   'transition-all select-none',
                   'bg-gradient-to-r from-indigo-500/40 to-fuchsia-600/40 text-indigo-100 border border-indigo-300/35 backdrop-blur-xl shadow-[0_10px_30px_rgba(99,102,241,0.26)]',
@@ -906,6 +912,7 @@ export default function MoviesHome() {
                 href="/trivia"
                 className={[
                   'h-11 px-5 rounded-full inline-flex items-center gap-2',
+                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
                   'text-sm font-semibold',
                   'transition-all select-none',
                   'bg-gradient-to-r from-emerald-500/40 to-lime-500/35 text-emerald-50 border border-emerald-200/30 backdrop-blur-xl shadow-[0_10px_30px_rgba(16,185,129,0.22)]',
@@ -926,14 +933,15 @@ export default function MoviesHome() {
                 Weekly Trivia
               </Link>
 
-              {isValentinesDay && (
+                  {isValentinesDay && (
                 <button
                   onClick={() => {
                     setValentineOpenSignal((n) => n + 1);
                   }}
-                  className={[
-                    'h-11 px-5 rounded-full inline-flex items-center gap-2',
-                    'text-sm font-semibold',
+                    className={[
+                      'h-11 px-5 rounded-full inline-flex items-center gap-2',
+                      'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
+                      'text-sm font-semibold',
                     'transition-all select-none',
                     'bg-gradient-to-r from-rose-500/55 to-pink-500/55 text-rose-50 border border-rose-200/45 backdrop-blur-xl shadow-[0_10px_30px_rgba(244,63,94,0.28)]',
                     'hover:from-rose-400/65 hover:to-pink-400/65 hover:border-rose-100/65',
@@ -946,8 +954,10 @@ export default function MoviesHome() {
                 </button>
               )}
 
+              </div>
+
               {/* Country (affects OTT logos) */}
-              <div className="flex items-center gap-2 sm:ml-auto">
+              <div className="mt-2 pt-2 border-t border-white/10 flex items-center justify-between gap-2 sm:mt-0 sm:pt-0 sm:border-t-0 sm:justify-end sm:shrink-0">
                 <span className="text-xs text-[var(--text-muted)] hidden sm:block">Country</span>
                 <CountryToggle value={country} onChange={setCountry} />
               </div>

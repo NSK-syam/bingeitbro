@@ -96,6 +96,16 @@ body {
 @media (max-width: 768px) {
   .poster-bg-grid {
     grid-template-columns: repeat(5, 1fr);
+    opacity: 0.34;
+  }
+
+  .poster-bg-overlay {
+    background: linear-gradient(
+      to bottom,
+      rgba(10, 10, 12, 0.56) 0%,
+      rgba(10, 10, 12, 0.78) 48%,
+      rgba(10, 10, 12, 0.9) 100%
+    );
   }
 }
 

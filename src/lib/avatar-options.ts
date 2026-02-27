@@ -155,12 +155,7 @@ export const IMAGE_AVATAR_THEMES: ImageAvatarTheme[] = [
       { id: 'ntr_3', path: '/avatars/telugu_movies/ntr_3.jpg', label: `Oosaravelli` },
       { id: 'pawan_1', path: '/avatars/telugu_movies/pawan_1.jpg', label: `Gabbar Singh` },
       { id: 'pawan_2', path: '/avatars/telugu_movies/pawan_2.jpg', label: `Komaram Puli` },
-      { id: 'pawan_3', path: '/avatars/telugu_movies/pawan_3.jpg', label: `Tholi Prema` }
-    ]
-  },
-  {
-    name: 'Nani Movies',
-    options: [
+      { id: 'pawan_3', path: '/avatars/telugu_movies/pawan_3.jpg', label: `Tholi Prema` },
       { id: 'nani_1', path: '/avatars/telugu_movies/hi_nanna.jpg', label: `Hi Nanna` },
       { id: 'nani_2', path: '/avatars/telugu_movies/hit_the_third_case.jpg', label: `HIT: The Third Case` },
       { id: 'nani_3', path: '/avatars/telugu_movies/eega.jpg', label: `Eega` },

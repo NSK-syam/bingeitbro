@@ -1213,9 +1213,15 @@ export function HelpBotWidget() {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to send message.';
       const low = message.toLowerCase();
-      if (low.includes('direct_messages')) {
+      const directTableMissing =
+        low.includes('direct_messages') &&
+        (low.includes('does not exist') || low.includes('relation') || low.includes('not found'));
+      const groupTableMissing =
+        low.includes('watch_group_messages') &&
+        (low.includes('does not exist') || low.includes('relation') || low.includes('not found'));
+      if (directTableMissing) {
         setError('Direct chat migration is missing. Run direct messages migration SQL first.');
-      } else if (low.includes('watch_group_messages')) {
+      } else if (groupTableMissing) {
         setError('Group chat migration is missing. Run group chat migration SQL first.');
       } else {
         setError(message);

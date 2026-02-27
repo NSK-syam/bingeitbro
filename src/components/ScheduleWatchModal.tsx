@@ -32,10 +32,15 @@ function toYear(value?: string): number | null {
 }
 
 function defaultInputValue() {
-  const nextHour = new Date();
-  nextHour.setMinutes(0, 0, 0);
-  nextHour.setHours(nextHour.getHours() + 1);
-  return formatLocalDateTimeInput(nextHour);
+  // Keep a small lead time but avoid hour-jumps that feel wrong on mobile wheel pickers.
+  const nextSlot = new Date();
+  nextSlot.setSeconds(0, 0);
+  nextSlot.setMinutes(nextSlot.getMinutes() + 15);
+  const remainder = nextSlot.getMinutes() % 5;
+  if (remainder !== 0) {
+    nextSlot.setMinutes(nextSlot.getMinutes() + (5 - remainder));
+  }
+  return formatLocalDateTimeInput(nextSlot);
 }
 
 function toIsoFromInput(value: string): string | null {
@@ -75,6 +80,7 @@ export function ScheduleWatchModal({
   const [loading, setLoading] = useState(false);
   const [selected, setSelected] = useState<SearchMovie | null>(null);
   const [remindAt, setRemindAt] = useState(defaultInputValue);
+  const [minRemindAt, setMinRemindAt] = useState(defaultInputValue);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
@@ -94,6 +100,18 @@ export function ScheduleWatchModal({
       hour: 'numeric',
       minute: '2-digit',
     });
+
+  const remindAtPreview = useMemo(() => {
+    const parsed = parseLocalDateTimeInput(remindAt);
+    if (!parsed) return '';
+    return parsed.toLocaleString([], {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+    });
+  }, [remindAt]);
 
   const loadScheduled = async () => {
     setScheduledLoading(true);
@@ -128,10 +146,12 @@ export function ScheduleWatchModal({
 
   useEffect(() => {
     if (!isOpen) {
+      const nextDefault = defaultInputValue();
       setQuery('');
       setResults([]);
       setSelected(null);
-      setRemindAt(defaultInputValue());
+      setRemindAt(nextDefault);
+      setMinRemindAt(nextDefault);
       setSaving(false);
       setLoading(false);
       setError('');
@@ -399,9 +419,13 @@ export function ScheduleWatchModal({
                 type="datetime-local"
                 value={remindAt}
                 onChange={(e) => setRemindAt(e.target.value)}
-                min={defaultInputValue()}
+                min={minRemindAt}
+                step={60}
                 className="mt-2 w-full rounded-2xl border border-white/10 bg-[var(--bg-secondary)] px-4 py-2.5 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-cyan-400/60"
               />
+              {remindAtPreview && (
+                <p className="mt-2 text-xs text-cyan-100/80">Selected local time: {remindAtPreview}</p>
+              )}
               <p className="mt-2 text-xs text-[var(--text-muted)]">Your timezone: {userTimeZone}</p>
             </div>
 

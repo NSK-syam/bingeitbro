@@ -31,6 +31,32 @@ export function getSupabaseAccessToken(): string | null {
 
 const DEFAULT_TIMEOUT_MS = 25000;
 let chatThemeSyncUnsupported = false;
+let directMessagesOptionalColumnsUnsupported = false;
+const DIRECT_MESSAGES_OPTIONAL_COLUMNS_UNSUPPORTED_KEY = supabaseProjectRef
+  ? `bib-${supabaseProjectRef}-direct-messages-legacy-schema`
+  : 'bib-direct-messages-legacy-schema';
+
+function hydrateDirectMessagesOptionalColumnsUnsupported(): void {
+  if (directMessagesOptionalColumnsUnsupported || typeof window === 'undefined') return;
+  try {
+    const raw = window.sessionStorage.getItem(DIRECT_MESSAGES_OPTIONAL_COLUMNS_UNSUPPORTED_KEY);
+    if (raw === '1') {
+      directMessagesOptionalColumnsUnsupported = true;
+    }
+  } catch {
+    // Ignore storage read failures; runtime can still detect and cache in memory.
+  }
+}
+
+function markDirectMessagesOptionalColumnsUnsupported(): void {
+  directMessagesOptionalColumnsUnsupported = true;
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(DIRECT_MESSAGES_OPTIONAL_COLUMNS_UNSUPPORTED_KEY, '1');
+  } catch {
+    // Ignore storage write failures; in-memory fallback still prevents repeat errors this session.
+  }
+}
 
 export async function supabaseRestRequest<T>(
   path: string,
@@ -1267,8 +1293,59 @@ function isMissingDirectMessagesTableError(err: unknown): boolean {
   const message = err instanceof Error ? err.message.toLowerCase() : '';
   return (
     message.includes('direct_messages') &&
-    (message.includes('does not exist') || message.includes('schema cache'))
+    (message.includes('does not exist') ||
+      message.includes('relation') ||
+      message.includes('not found')) &&
+    !message.includes('reply_to_id') &&
+    !message.includes('shared_media_type') &&
+    !message.includes('shared_tmdb_id') &&
+    !message.includes('shared_title') &&
+    !message.includes('shared_poster') &&
+    !message.includes('shared_release_year')
   );
+}
+
+function isMissingDirectMessageOptionalColumnsError(err: unknown): boolean {
+  const message = err instanceof Error ? err.message.toLowerCase() : '';
+  return (
+    message.includes('schema cache') ||
+    message.includes('bad request') ||
+    message.includes('reply_to_id') ||
+    message.includes('shared_media_type') ||
+    message.includes('shared_tmdb_id') ||
+    message.includes('shared_title') ||
+    message.includes('shared_poster') ||
+    message.includes('shared_release_year') ||
+    (message.includes('column') && message.includes('direct_messages'))
+  );
+}
+
+const LEGACY_DIRECT_REPLY_PREFIX = '[[bib_reply_to:';
+
+function encodeLegacyDirectReplyBody(body: string, replyToId?: string | null): string {
+  const trimmedReplyId = (replyToId ?? '').trim();
+  if (!trimmedReplyId) return body;
+  return `${LEGACY_DIRECT_REPLY_PREFIX}${trimmedReplyId}]]\n${body}`;
+}
+
+function decodeLegacyDirectReplyBody(body: string | null | undefined): {
+  body: string;
+  replyToId: string | null;
+} {
+  const raw = (body ?? '').trimStart();
+  if (!raw.startsWith(LEGACY_DIRECT_REPLY_PREFIX)) {
+    return { body: body ?? '', replyToId: null };
+  }
+  const prefixEnd = raw.indexOf(']]');
+  if (prefixEnd === -1) {
+    return { body: body ?? '', replyToId: null };
+  }
+  const replyToId = raw.slice(LEGACY_DIRECT_REPLY_PREFIX.length, prefixEnd).trim();
+  const withoutPrefix = raw.slice(prefixEnd + 2).replace(/^\n+/, '');
+  return {
+    body: withoutPrefix,
+    replyToId: replyToId || null,
+  };
 }
 
 export async function sendDirectMessage(input: {
@@ -1278,6 +1355,7 @@ export async function sendDirectMessage(input: {
   replyToId?: string | null;
   sharedMovie?: WatchGroupSharedMovie | null;
 }): Promise<void> {
+  hydrateDirectMessagesOptionalColumnsUnsupported();
   const token = ensureAuthedToken();
   const body = input.body.trim();
   const sharedMovie = input.sharedMovie
@@ -1291,6 +1369,29 @@ export async function sendDirectMessage(input: {
     : null;
   if (!body && !sharedMovie) {
     throw new Error('Message cannot be empty.');
+  }
+  if (directMessagesOptionalColumnsUnsupported) {
+    const fallbackBody = body
+      ? body.slice(0, 1200)
+      : `Shared movie: ${sharedMovie?.title ?? 'Movie'}`.slice(0, 1200);
+    await supabaseRestRequest(
+      'direct_messages',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Prefer: 'return=minimal',
+        },
+        body: JSON.stringify({
+          sender_id: input.senderId,
+          recipient_id: input.recipientId,
+          body: encodeLegacyDirectReplyBody(fallbackBody, input.replyToId),
+        }),
+        timeoutMs: DEFAULT_TIMEOUT_MS,
+      },
+      token,
+    );
+    return;
   }
   try {
     await supabaseRestRequest(
@@ -1317,16 +1418,14 @@ export async function sendDirectMessage(input: {
       token,
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message.toLowerCase() : '';
-    const missingSharedColumns =
-      message.includes('shared_media_type') ||
-      message.includes('shared_tmdb_id') ||
-      message.includes('shared_title') ||
-      message.includes('schema cache');
-    if (!sharedMovie || !missingSharedColumns) {
+    if (!isMissingDirectMessageOptionalColumnsError(err)) {
       throw err;
     }
+    markDirectMessagesOptionalColumnsUnsupported();
 
+    const fallbackBody = body
+      ? body.slice(0, 1200)
+      : `Shared movie: ${sharedMovie?.title ?? 'Movie'}`.slice(0, 1200);
     await supabaseRestRequest(
       'direct_messages',
       {
@@ -1338,8 +1437,7 @@ export async function sendDirectMessage(input: {
         body: JSON.stringify({
           sender_id: input.senderId,
           recipient_id: input.recipientId,
-          body: body ? body.slice(0, 1200) : `Shared movie: ${sharedMovie.title}`.slice(0, 1200),
-          reply_to_id: input.replyToId ?? null,
+          body: encodeLegacyDirectReplyBody(fallbackBody, input.replyToId),
         }),
         timeoutMs: DEFAULT_TIMEOUT_MS,
       },
@@ -1352,6 +1450,7 @@ export async function getDirectMessagesWithUser(
   currentUserId: string,
   peerUserId: string,
 ): Promise<DirectMessage[]> {
+  hydrateDirectMessagesOptionalColumnsUnsupported();
   const token = ensureAuthedToken();
   try {
     const makeParams = (includeSharedColumns: boolean) =>
@@ -1363,26 +1462,35 @@ export async function getDirectMessagesWithUser(
         order: 'created_at.asc',
         limit: '200',
       });
+    const legacyParams = new URLSearchParams({
+      select: 'id,sender_id,recipient_id,body,created_at',
+      or: `(and(sender_id.eq.${currentUserId},recipient_id.eq.${peerUserId}),and(sender_id.eq.${peerUserId},recipient_id.eq.${currentUserId}))`,
+      order: 'created_at.asc',
+      limit: '200',
+    });
     let rows: DirectMessageRow[];
-    try {
+    if (directMessagesOptionalColumnsUnsupported) {
       rows = await supabaseRestRequest<DirectMessageRow[]>(
-        `direct_messages?${makeParams(true).toString()}`,
+        `direct_messages?${legacyParams.toString()}`,
         { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
         token,
       );
-    } catch (err) {
-      const message = err instanceof Error ? err.message.toLowerCase() : '';
-      const missingSharedColumns =
-        message.includes('shared_media_type') ||
-        message.includes('shared_tmdb_id') ||
-        message.includes('shared_title') ||
-        message.includes('schema cache');
-      if (!missingSharedColumns) throw err;
-      rows = await supabaseRestRequest<DirectMessageRow[]>(
-        `direct_messages?${makeParams(false).toString()}`,
-        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
-        token,
-      );
+    } else {
+      try {
+        rows = await supabaseRestRequest<DirectMessageRow[]>(
+          `direct_messages?${makeParams(true).toString()}`,
+          { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+          token,
+        );
+      } catch (err) {
+        if (!isMissingDirectMessageOptionalColumnsError(err)) throw err;
+        markDirectMessagesOptionalColumnsUnsupported();
+        rows = await supabaseRestRequest<DirectMessageRow[]>(
+          `direct_messages?${legacyParams.toString()}`,
+          { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+          token,
+        );
+      }
     }
     const messages = Array.isArray(rows) ? rows : [];
     if (messages.length === 0) return [];
@@ -1419,6 +1527,7 @@ export async function getDirectMessagesWithUser(
     }
 
     return messages.map((msg) => {
+      const decodedLegacy = decodeLegacyDirectReplyBody(msg.body);
       const sender = userMap.get(msg.sender_id);
       const sharedMovie =
         msg.shared_media_type && msg.shared_tmdb_id && msg.shared_title
@@ -1436,9 +1545,9 @@ export async function getDirectMessagesWithUser(
         recipientId: msg.recipient_id,
         senderName: sender?.name || 'Member',
         senderAvatar: sender?.avatar ?? null,
-        body: msg.body ?? '',
+        body: decodedLegacy.body,
         sharedMovie,
-        replyToId: msg.reply_to_id ?? null,
+        replyToId: msg.reply_to_id ?? decodedLegacy.replyToId ?? null,
         reactions: reactionsByMessage.get(msg.id) ?? [],
         createdAt: msg.created_at,
         mine: msg.sender_id === currentUserId,
@@ -1537,6 +1646,7 @@ export async function deleteDirectMessage(input: {
 export async function getDirectChatThreads(
   currentUserId: string,
 ): Promise<DirectMessageThread[]> {
+  hydrateDirectMessagesOptionalColumnsUnsupported();
   const token = ensureAuthedToken();
   try {
     const makeParams = (includeSharedColumns: boolean) =>
@@ -1549,25 +1659,28 @@ export async function getDirectChatThreads(
         limit: '400',
       });
     let rows: DirectMessageRow[];
-    try {
-      rows = await supabaseRestRequest<DirectMessageRow[]>(
-        `direct_messages?${makeParams(true).toString()}`,
-        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
-        token,
-      );
-    } catch (err) {
-      const message = err instanceof Error ? err.message.toLowerCase() : '';
-      const missingSharedColumns =
-        message.includes('shared_media_type') ||
-        message.includes('shared_tmdb_id') ||
-        message.includes('shared_title') ||
-        message.includes('schema cache');
-      if (!missingSharedColumns) throw err;
+    if (directMessagesOptionalColumnsUnsupported) {
       rows = await supabaseRestRequest<DirectMessageRow[]>(
         `direct_messages?${makeParams(false).toString()}`,
         { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
         token,
       );
+    } else {
+      try {
+        rows = await supabaseRestRequest<DirectMessageRow[]>(
+          `direct_messages?${makeParams(true).toString()}`,
+          { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+          token,
+        );
+      } catch (err) {
+        if (!isMissingDirectMessageOptionalColumnsError(err)) throw err;
+        markDirectMessagesOptionalColumnsUnsupported();
+        rows = await supabaseRestRequest<DirectMessageRow[]>(
+          `direct_messages?${makeParams(false).toString()}`,
+          { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+          token,
+        );
+      }
     }
     const messages = Array.isArray(rows) ? rows : [];
     if (messages.length === 0) return [];
@@ -1601,13 +1714,15 @@ export async function getDirectChatThreads(
         const message = latestByPeer.get(peerId);
         if (!message) return null;
         const peer = userMap.get(peerId);
+        const decodedLegacy = decodeLegacyDirectReplyBody(message.body);
         return {
           peerId,
           peerName: peer?.name || 'Member',
           peerUsername: peer?.username ?? null,
           peerAvatar: peer?.avatar ?? null,
           latestMessageId: message.id,
-          latestBody: message.body || (message.shared_title ? `Shared: ${message.shared_title}` : 'Message'),
+          latestBody:
+            decodedLegacy.body || (message.shared_title ? `Shared: ${message.shared_title}` : 'Message'),
           latestCreatedAt: message.created_at,
           latestFromMe: message.sender_id === currentUserId,
         } satisfies DirectMessageThread;

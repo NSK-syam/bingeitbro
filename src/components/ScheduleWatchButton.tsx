@@ -32,10 +32,14 @@ function fromLocalInputValue(value: string): string | null {
 }
 
 function getDefaultInputValue(): string {
-  const nextHour = new Date();
-  nextHour.setMinutes(0, 0, 0);
-  nextHour.setHours(nextHour.getHours() + 1);
-  return toLocalInputValue(nextHour.toISOString());
+  const nextSlot = new Date();
+  nextSlot.setSeconds(0, 0);
+  nextSlot.setMinutes(nextSlot.getMinutes() + 15);
+  const remainder = nextSlot.getMinutes() % 5;
+  if (remainder !== 0) {
+    nextSlot.setMinutes(nextSlot.getMinutes() + (5 - remainder));
+  }
+  return toLocalInputValue(nextSlot.toISOString());
 }
 
 function formatReminder(value: string): string {
@@ -61,6 +65,7 @@ export function ScheduleWatchButton({
   const [loadingReminder, setLoadingReminder] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [remindAtInput, setRemindAtInput] = useState(getDefaultInputValue);
+  const [minRemindAtInput, setMinRemindAtInput] = useState(getDefaultInputValue);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,6 +125,7 @@ export function ScheduleWatchButton({
     } else {
       setRemindAtInput(getDefaultInputValue());
     }
+    setMinRemindAtInput(getDefaultInputValue());
     setIsOpen(true);
   };
 
@@ -252,7 +258,8 @@ export function ScheduleWatchButton({
                 type="datetime-local"
                 value={remindAtInput}
                 onChange={(e) => setRemindAtInput(e.target.value)}
-                min={getDefaultInputValue()}
+                min={minRemindAtInput}
+                step={60}
                 className="w-full rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-3 py-2.5 text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               />
               <p className="text-xs text-[var(--text-muted)] mt-2">

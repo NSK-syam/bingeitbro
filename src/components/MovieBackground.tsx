@@ -4,14 +4,28 @@ import { useEffect, useState } from 'react';
 import { getRenderProfile } from '@/lib/render-profile';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
-const CACHE_KEY = 'bib-movie-bg-posters-v4';
+const CACHE_KEY = 'bib-movie-bg-posters-v5';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 // Keep this low to avoid TMDB rate limiting on cold loads.
 const QUERY_LIMIT = 8;
 const POSTERS_PER_QUERY = 6;
 const MAX_POSTERS = 56;
+const MIN_RENDER_POSTERS = 24;
 
 let inMemoryCache: { posters: string[]; ts: number } | null = null;
+
+function normalizePosterPool(input: string[]): string[] {
+  if (input.length === 0) return [];
+  const base = [...input];
+  if (base.length >= MIN_RENDER_POSTERS) return base.slice(0, MAX_POSTERS);
+
+  // Ensure we always have enough cards to fill the background grid, even when TMDB returns few posters.
+  const expanded: string[] = [];
+  while (expanded.length < MIN_RENDER_POSTERS) {
+    expanded.push(...base.sort(() => Math.random() - 0.5));
+  }
+  return expanded.slice(0, Math.min(MAX_POSTERS, MIN_RENDER_POSTERS));
+}
 
 export function MovieBackground() {
   const [posters, setPosters] = useState<string[]>([]);
@@ -111,8 +125,9 @@ export function MovieBackground() {
 
         const deduped = Array.from(new Set(allPosters));
         const shuffled = deduped.sort(() => Math.random() - 0.5).slice(0, MAX_POSTERS);
-        inMemoryCache = { posters: shuffled, ts: Date.now() };
-        setPosters(shuffled);
+        const normalized = normalizePosterPool(shuffled);
+        inMemoryCache = { posters: normalized, ts: Date.now() };
+        setPosters(normalized);
         try {
           window.sessionStorage.setItem(CACHE_KEY, JSON.stringify(inMemoryCache));
         } catch {

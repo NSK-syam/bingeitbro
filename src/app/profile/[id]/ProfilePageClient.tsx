@@ -1061,15 +1061,31 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   useEffect(() => {
     if (!topSearchOpen || !topSearchQuery.trim()) {
       setTopSearchResults([]);
+      setTopSearching(false);
       return;
     }
+    let cancelled = false;
     const timer = setTimeout(async () => {
+      if (cancelled) return;
       setTopSearching(true);
-      const data = await searchMovies(topSearchQuery.trim());
-      setTopSearchResults(data?.results ?? []);
-      setTopSearching(false);
+      try {
+        const data = await searchMovies(topSearchQuery.trim());
+        if (!cancelled) {
+          setTopSearchResults(data?.results ?? []);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setTopSearchResults([]);
+          setTopError(err instanceof Error ? err.message : 'Failed to search movies');
+        }
+      } finally {
+        if (!cancelled) setTopSearching(false);
+      }
     }, 400);
-    return () => clearTimeout(timer);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
   }, [topSearchQuery, topSearchOpen]);
 
   const handleSelectMovieFromSearch = useCallback(async (movie: TMDBMovie) => {
