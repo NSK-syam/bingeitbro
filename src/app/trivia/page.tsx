@@ -38,11 +38,65 @@ function formatMs(ms: number): string {
   return `${m}:${String(r).padStart(2, '0')}`;
 }
 
-function medal(rank: number) {
-  if (rank === 1) return '';
-  if (rank === 2) return '';
-  if (rank === 3) return '';
-  return '';
+function getTitleInitials(title: string): string {
+  const parts = title.trim().split(/\s+/).filter(Boolean).slice(0, 2);
+  if (parts.length === 0) return '??';
+  return parts.map((part) => part.charAt(0).toUpperCase()).join('');
+}
+
+function resolveAvatarImageSrc(avatar: string | null | undefined): string | null {
+  const value = (avatar ?? '').trim();
+  if (!value) return null;
+  if (value.startsWith('data:image/')) return value;
+  if (value.startsWith('http://') || value.startsWith('https://')) return value;
+  if (value.startsWith('/')) return value;
+  return null;
+}
+
+function resolveAvatarText(
+  avatar: string | null | undefined,
+  fallbackInitial: string,
+): string {
+  const value = (avatar ?? '').trim();
+  if (!value) return fallbackInitial;
+  if (value.includes('/') || value.includes('.') || value.length > 4) return fallbackInitial;
+  return value;
+}
+
+function LeaderboardAvatar({
+  avatar,
+  name,
+  sizeClass,
+  textClass,
+}: {
+  avatar: string | null;
+  name: string;
+  sizeClass: string;
+  textClass: string;
+}) {
+  const [imageFailed, setImageFailed] = useState(false);
+  const fallbackInitial = name.trim().charAt(0).toUpperCase() || '?';
+  const src = resolveAvatarImageSrc(avatar);
+  const text = resolveAvatarText(avatar, fallbackInitial);
+
+  return (
+    <div
+      className={`${sizeClass} rounded-full bg-black/35 border border-white/10 flex items-center justify-center overflow-hidden ${textClass}`}
+      aria-hidden
+    >
+      {src && !imageFailed ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={src}
+          alt={name}
+          className="w-full h-full object-cover"
+          onError={() => setImageFailed(true)}
+        />
+      ) : (
+        <span>{text}</span>
+      )}
+    </div>
+  );
 }
 
 export default function TriviaPage() {
@@ -263,7 +317,7 @@ export default function TriviaPage() {
                   'h-10 px-4 rounded-full border backdrop-blur-xl transition-all select-none',
                   'text-sm font-semibold',
                   lang === l.code
-                    ? `bg-gradient-to-r ${l.glow} text-[#0b0d12] border-white/20 shadow-[0_14px_40px_rgba(0,0,0,0.35)]`
+                    ? 'bg-amber-400/12 text-amber-100 border-amber-300/35 shadow-[0_14px_40px_rgba(0,0,0,0.22)]'
                     : 'bg-[var(--bg-secondary)]/70 text-[var(--text-primary)] border-white/10 hover:border-white/20 hover:bg-[var(--bg-card)]',
                 ].join(' ')}
               >
@@ -287,7 +341,7 @@ export default function TriviaPage() {
                 className={[
                   'h-10 px-5 rounded-full font-extrabold text-sm transition-all',
                   'border border-white/10 shadow-[0_12px_40px_rgba(0,0,0,0.35)]',
-                  `bg-gradient-to-r ${activeLangMeta.glow} text-[#0b0d12]`,
+                  'bg-[var(--accent)] text-[#0b0d12]',
                   'hover:brightness-110 active:scale-[0.99] disabled:opacity-60',
                 ].join(' ')}
               >
@@ -368,7 +422,7 @@ export default function TriviaPage() {
                             disabled={submitting || !!submittedId}
                             className={[
                               'h-10 px-5 rounded-full font-extrabold text-sm transition-all',
-                              `bg-gradient-to-r ${activeLangMeta.glow} text-[#0b0d12]`,
+                              'bg-[var(--accent)] text-[#0b0d12]',
                               'border border-white/10 hover:brightness-110 disabled:opacity-60',
                             ].join(' ')}
                           >
@@ -391,8 +445,8 @@ export default function TriviaPage() {
                 ) : !startedAt ? (
                   <div className="py-16 text-center">
                     <div className="mx-auto max-w-md">
-                      <div className={`h-20 w-20 mx-auto rounded-3xl bg-gradient-to-br ${activeLangMeta.glow} shadow-[0_30px_80px_rgba(0,0,0,0.4)] flex items-center justify-center text-3xl`}>
-                        
+                      <div className="mx-auto inline-flex items-center rounded-full border border-amber-300/25 bg-amber-400/10 px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.22em] text-amber-100">
+                        10 quick questions
                       </div>
                       <h2 className="mt-5 text-2xl font-extrabold">Ready for this week&apos;s 10?</h2>
                       <p className="mt-2 text-sm text-[var(--text-muted)]">
@@ -403,7 +457,7 @@ export default function TriviaPage() {
                         onClick={start}
                         className={[
                           'mt-6 h-11 px-6 rounded-full font-extrabold text-sm transition-all',
-                          `bg-gradient-to-r ${activeLangMeta.glow} text-[#0b0d12]`,
+                          'bg-[var(--accent)] text-[#0b0d12]',
                           'border border-white/10 shadow-[0_14px_40px_rgba(0,0,0,0.35)] hover:brightness-110 active:scale-[0.99]',
                         ].join(' ')}
                       >
@@ -424,7 +478,9 @@ export default function TriviaPage() {
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={q.poster} alt={q.title} className="w-full h-full object-cover" />
                         ) : (
-                          <div className="w-full h-full flex items-center justify-center text-xl"></div>
+                          <div className="w-full h-full flex items-center justify-center bg-[linear-gradient(180deg,rgba(245,158,11,0.14),rgba(15,23,42,0.4))] text-sm font-extrabold tracking-[0.12em] text-amber-100">
+                            {getTitleInitials(q.title)}
+                          </div>
                         )}
                       </div>
                       <div className="flex-1">
@@ -455,7 +511,7 @@ export default function TriviaPage() {
                             <div className="flex items-center justify-between gap-3">
                               <span className="text-sm font-semibold">{opt}</span>
                               {selected ? (
-                                <span className={`px-2 py-1 rounded-full text-[10px] font-extrabold bg-gradient-to-r ${activeLangMeta.glow} text-[#0b0d12]`}>
+                                <span className="px-2 py-1 rounded-full text-[10px] font-extrabold bg-amber-400/12 border border-amber-300/30 text-amber-100">
                                   Selected
                                 </span>
                               ) : null}
@@ -483,7 +539,7 @@ export default function TriviaPage() {
                         disabled={!answered}
                         className={[
                           'h-10 px-5 rounded-full font-extrabold text-sm transition-all',
-                          `bg-gradient-to-r ${activeLangMeta.glow} text-[#0b0d12]`,
+                          'bg-[var(--accent)] text-[#0b0d12]',
                           'border border-white/10 hover:brightness-110 disabled:opacity-60',
                         ].join(' ')}
                       >
@@ -538,66 +594,44 @@ export default function TriviaPage() {
                       Run the Supabase trivia SQL to enable leaderboard RPCs.
                     </p>
                   </div>
-                ) : leaderboard.length === 0 ? (
+                ) : top3.length === 0 ? (
                   <div className="text-sm text-[var(--text-muted)]">
                     No attempts yet. Be the first this week.
                   </div>
                 ) : (
                   <>
-                    {/* Winner panel */}
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-3">
                       {top3.map((entry, idx) => (
                         <div
-                          key={entry.userId}
-                          className={[
-                            'rounded-2xl border border-white/10 bg-black/25 p-4 relative overflow-hidden',
-                            idx === 0 ? 'sm:col-span-3' : '',
-                          ].join(' ')}
+                          key={`${entry.userId}:${entry.createdAt}`}
+                          className="rounded-2xl border border-white/10 bg-black/25 p-4 relative overflow-hidden"
                         >
-                          <div className={`absolute -top-20 -right-24 h-52 w-52 rounded-full blur-3xl opacity-40 bg-gradient-to-br ${activeLangMeta.glow}`} />
-                          <div className="relative flex items-center gap-3">
-                            <div className="w-10 h-10 rounded-full bg-black/35 border border-white/10 flex items-center justify-center text-lg">
-                              {entry.avatar ?? entry.name.charAt(0).toUpperCase()}
+                          {idx === 0 ? (
+                            <div className={`absolute -top-20 -right-24 h-52 w-52 rounded-full blur-3xl opacity-40 bg-gradient-to-br ${activeLangMeta.glow}`} />
+                          ) : null}
+                          <div className="relative flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="w-7 text-xs font-extrabold text-[var(--text-muted)] tabular-nums">
+                                {idx + 1}
+                              </div>
+                              <LeaderboardAvatar
+                                avatar={entry.avatar}
+                                name={entry.name}
+                                sizeClass="w-12 h-12"
+                                textClass="text-lg"
+                              />
+                              <div className="min-w-0">
+                                <p className="text-lg font-extrabold truncate">{entry.name}</p>
+                                <p className="text-sm text-[var(--text-muted)] truncate">@{entry.username ?? 'user'}</p>
+                              </div>
                             </div>
-                            <div className="min-w-0">
-                              <p className="text-sm font-extrabold truncate">
-                                {medal(idx + 1)} {entry.name}
-                              </p>
-                              <p className="text-xs text-[var(--text-muted)] truncate">
-                                @{entry.username ?? 'user'} · {entry.score}/10 · {formatMs(entry.durationMs)}
-                              </p>
+                            <div className="text-right flex-shrink-0">
+                              <p className="text-2xl font-extrabold tabular-nums">{entry.score}/10</p>
+                              <p className="text-sm text-[var(--text-muted)] tabular-nums">{formatMs(entry.durationMs)}</p>
                             </div>
                           </div>
                         </div>
                       ))}
-                    </div>
-
-                    <div className="mt-5 overflow-hidden rounded-2xl border border-white/10">
-                      <div className="max-h-[420px] overflow-y-auto">
-                        {leaderboard.map((entry, i) => (
-                          <div
-                            key={`${entry.userId}:${entry.createdAt}`}
-                            className="flex items-center justify-between gap-3 px-4 py-3 border-b border-white/5 bg-black/10"
-                          >
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-7 text-xs font-extrabold text-[var(--text-muted)] tabular-nums">
-                                {i + 1}
-                              </div>
-                              <div className="w-9 h-9 rounded-full bg-black/35 border border-white/10 flex items-center justify-center text-sm">
-                                {entry.avatar ?? entry.name.charAt(0).toUpperCase()}
-                              </div>
-                              <div className="min-w-0">
-                                <p className="text-sm font-semibold truncate">{entry.name}</p>
-                                <p className="text-xs text-[var(--text-muted)] truncate">@{entry.username ?? 'user'}</p>
-                              </div>
-                            </div>
-                            <div className="text-right flex-shrink-0">
-                              <p className="text-sm font-extrabold tabular-nums">{entry.score}/10</p>
-                              <p className="text-xs text-[var(--text-muted)] tabular-nums">{formatMs(entry.durationMs)}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
                     </div>
                   </>
                 )}
@@ -615,4 +649,3 @@ export default function TriviaPage() {
     </div>
   );
 }
-

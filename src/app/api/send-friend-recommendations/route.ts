@@ -88,7 +88,13 @@ export async function POST(request: Request) {
         recommendation_id: r.recommendation_id != null ? String(r.recommendation_id) : null,
         tmdb_id: typeof r.tmdb_id === 'number' ? r.tmdb_id : null,
         movie_title,
-        movie_poster: poster.startsWith('https://image.tmdb.org/') ? poster : '',
+        movie_poster: (() => {
+          if (!poster) return '';
+          if (poster.startsWith('data:')) return '';
+          if (poster.startsWith('/')) return poster;
+          if (!/^https?:\/\//i.test(poster)) return '';
+          return poster;
+        })(),
         movie_year: typeof r.movie_year === 'number' ? r.movie_year : null,
         personal_message: String(r.personal_message ?? '').trim().slice(0, 200),
         remind_at: (() => {
@@ -217,7 +223,7 @@ export async function POST(request: Request) {
             ? 'Server is busy. Please try again in a moment.'
             : row.remind_at && /remind_at|schema cache|column/i.test(lastMessage)
               ? 'Reminder columns are missing in Supabase. Run supabase-friend-recommendation-reminders.sql and try again.'
-              : lastMessage;
+              : 'Something went wrong. Please try again.';
         return NextResponse.json({ message: userMessage, code: lastCode }, { status: 500 });
       }
       sent += 1;
@@ -238,7 +244,9 @@ export async function POST(request: Request) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error('[send-friend-recommendations] Unexpected error', err);
-    const safe = /out of memory/i.test(msg) ? 'Request failed. Please try again.' : msg;
+    const safe = /out of memory/i.test(msg)
+      ? 'Request failed. Please try again.'
+      : 'Something went wrong. Please try again.';
     return NextResponse.json({ message: safe }, { status: 500 });
   }
 }

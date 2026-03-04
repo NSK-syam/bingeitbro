@@ -29,7 +29,7 @@ export function CountryToggle({ value, onChange, size = 'sm' }: CountryTogglePro
         aria-pressed={value === 'IN'}
         title="India"
       >
-        🇮🇳 India
+        India
       </button>
       <button
         type="button"
@@ -44,9 +44,8 @@ export function CountryToggle({ value, onChange, size = 'sm' }: CountryTogglePro
         aria-pressed={value === 'US'}
         title="USA"
       >
-        🇺🇸 USA
+        USA
       </button>
     </div>
   );
 }
-

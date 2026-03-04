@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 type TimeUnit = 'day' | 'week' | 'month' | 'year';
 
@@ -84,8 +84,6 @@ export function BingeCalculatorModal({
   const rootRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const apiKey = (process.env.NEXT_PUBLIC_TMDB_API_KEY || '').trim();
-
   useEffect(() => {
     if (!isOpen) return;
     setTimeout(() => inputRef.current?.focus(), 0);
@@ -117,11 +115,6 @@ export function BingeCalculatorModal({
   // Debounced suggestion search (TV)
   useEffect(() => {
     if (!isOpen) return;
-    if (!apiKey) {
-      setSuggestions([]);
-      setSuggestionOpen(false);
-      return;
-    }
     const q = query.trim();
     if (q.length < 2) {
       setSuggestions([]);
@@ -134,7 +127,11 @@ export function BingeCalculatorModal({
     const t = window.setTimeout(async () => {
       try {
         const res = await fetchTmdbWithProxy(
-          `https://api.themoviedb.org/3/search/tv?api_key=${apiKey}&query=${encodeURIComponent(q)}&page=1&include_adult=false`
+          buildTmdbV3Url('/3/search/tv', {
+            query: q,
+            page: 1,
+            include_adult: 'false',
+          })
         );
         const data = (await res.json()) as SearchTvResponse;
         const list: TvSuggestion[] = Array.isArray(data?.results)
@@ -167,19 +164,15 @@ export function BingeCalculatorModal({
       cancelled = true;
       window.clearTimeout(t);
     };
-  }, [apiKey, isOpen, query]);
+  }, [isOpen, query]);
 
   const selectSuggestion = async (s: TvSuggestion) => {
     setDetailsError('');
     setSelected(null);
     setSuggestionOpen(false);
     setQuery(s.name);
-    if (!apiKey) {
-      setDetailsError('TMDB API key missing. Add NEXT_PUBLIC_TMDB_API_KEY.');
-      return;
-    }
     try {
-      const res = await fetchTmdbWithProxy(`https://api.themoviedb.org/3/tv/${s.id}?api_key=${apiKey}`);
+      const res = await fetchTmdbWithProxy(buildTmdbV3Url(`/3/tv/${s.id}`));
       const raw = (await res.json()) as unknown;
       if (!isRecord(raw)) {
         setDetailsError('Could not load show details. Try another show.');
@@ -278,13 +271,6 @@ export function BingeCalculatorModal({
             Search any movie or TV show, pick a time window, get a simple yes or no plus a watch plan.
           </p>
         </div>
-
-        {!apiKey && (
-          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">
-            Missing `NEXT_PUBLIC_TMDB_API_KEY`.
-          </div>
-        )}
-
         <div className="mt-6">
           <label className="text-sm font-medium text-[var(--text-primary)]">Movie or TV show</label>
           <div className="relative mt-2">

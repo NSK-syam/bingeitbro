@@ -9,12 +9,16 @@ type RecommendationInput = {
   recipient_id: string;
   movie_title: string;
   movie_year?: number | null;
+  movie_poster?: string | null;
+  tmdb_id?: number | string | null;
+  recommendation_id?: string | null;
   personal_message?: string | null;
 };
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL ?? '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim();
 const unosendApiKey = (process.env.UNOSEND_API_KEY ?? '').trim();
+const tmdbApiKey = (process.env.TMDB_API_KEY ?? process.env.NEXT_PUBLIC_TMDB_API_KEY ?? '').trim();
 const EMAIL_RE = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/i;
 const normalizeEmailHeader = (value: string) => {
   const trimmed = value.trim();
@@ -51,6 +55,17 @@ const siteUrl =
   process.env.SITE_URL ??
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://bingeitbro.com');
 
+function sanitizePosterUrl(posterUrl: string | null | undefined): string {
+  const trimmed = String(posterUrl ?? '').trim();
+  if (!trimmed || trimmed.length > 500) return '';
+  const normalizedSiteUrl = String(siteUrl).replace(/\/+$/, '');
+  if (trimmed.startsWith('/')) return normalizedSiteUrl ? `${normalizedSiteUrl}${trimmed}` : '';
+  if (/^https:\/\//i.test(trimmed)) return trimmed;
+  if (/^http:\/\//i.test(trimmed)) return trimmed;
+  if (normalizedSiteUrl && trimmed.startsWith(`${normalizedSiteUrl}/`)) return trimmed;
+  return '';
+}
+
 function getBearerToken(request: Request): string | null {
   const header = request.headers.get('authorization') || request.headers.get('Authorization');
   if (!header) return null;
@@ -65,6 +80,35 @@ const UNOSEND_FETCH_OPTIONS = {
   retries: 2,
   retryDelayMs: 350,
 } as const;
+const TMDB_FETCH_OPTIONS = {
+  timeoutMs: 5000,
+  retries: 1,
+  retryDelayMs: 200,
+} as const;
+
+async function fetchTmdbPosterById(tmdbId: number): Promise<string> {
+  if (!tmdbApiKey || !Number.isFinite(tmdbId) || tmdbId <= 0) return '';
+
+  const encodedApiKey = encodeURIComponent(tmdbApiKey);
+  const endpoints = [`movie/${tmdbId}`, `tv/${tmdbId}`];
+
+  for (const endpoint of endpoints) {
+    const response = await fetchWithTimeoutRetry(
+      `https://api.themoviedb.org/3/${endpoint}?api_key=${encodedApiKey}&language=en-US`,
+      { method: 'GET' },
+      TMDB_FETCH_OPTIONS,
+    );
+    if (!response.ok) continue;
+
+    const data = (await response.json().catch(() => null)) as { poster_path?: unknown } | null;
+    const posterPath = typeof data?.poster_path === 'string' ? data.poster_path : '';
+    if (posterPath) {
+      return `https://image.tmdb.org/t/p/w500${posterPath}`;
+    }
+  }
+
+  return '';
+}
 
 async function unosendRequest(path: string, payload: unknown) {
   const response = await fetchWithTimeoutRetry(`${unosendBaseUrl}${path}`, {
@@ -129,6 +173,17 @@ export async function POST(request: Request) {
       recipient_id: rec.recipient_id,
       movie_title: rec.movie_title,
       movie_year: rec.movie_year ?? null,
+      movie_poster: sanitizePosterUrl(rec.movie_poster),
+      tmdb_id:
+        typeof rec.tmdb_id === 'number'
+          ? rec.tmdb_id
+          : typeof rec.tmdb_id === 'string' && /^\d+$/.test(rec.tmdb_id.trim())
+            ? Number(rec.tmdb_id.trim())
+            : null,
+      recommendation_id:
+        typeof rec.recommendation_id === 'string'
+          ? rec.recommendation_id.trim().slice(0, 120) || null
+          : null,
       personal_message: rec.personal_message ?? null,
     }))
     .slice(0, 50);
@@ -165,6 +220,53 @@ export async function POST(request: Request) {
     return NextResponse.json({ sent: 0, skipped: recommendations.length }, { status: 200 });
   }
 
+  const recommendationPosterMap = new Map<string, string>();
+  const recommendationIds = [
+    ...new Set(filtered.map((rec) => rec.recommendation_id).filter(Boolean) as string[]),
+  ];
+  if (recommendationIds.length > 0) {
+    const { data: recommendationRows } = await supabase
+      .from('recommendations')
+      .select('id,poster')
+      .in('id', recommendationIds);
+
+    for (const row of recommendationRows ?? []) {
+      if (typeof row.id !== 'string') continue;
+      const poster = sanitizePosterUrl(
+        typeof row.poster === 'string' || row.poster == null ? row.poster : null,
+      );
+      if (poster) {
+        recommendationPosterMap.set(row.id, poster);
+      }
+    }
+  }
+
+  const tmdbPosterCache = new Map<number, string>();
+  const resolvedRecommendations = await Promise.all(
+    filtered.map(async (rec) => {
+      let resolvedPoster = rec.movie_poster;
+
+      if (!resolvedPoster && rec.recommendation_id) {
+        resolvedPoster = recommendationPosterMap.get(rec.recommendation_id) ?? '';
+      }
+
+      if (!resolvedPoster && rec.tmdb_id != null) {
+        if (tmdbPosterCache.has(rec.tmdb_id)) {
+          resolvedPoster = tmdbPosterCache.get(rec.tmdb_id) ?? '';
+        } else {
+          const fetchedPoster = sanitizePosterUrl(await fetchTmdbPosterById(rec.tmdb_id));
+          tmdbPosterCache.set(rec.tmdb_id, fetchedPoster);
+          resolvedPoster = fetchedPoster;
+        }
+      }
+
+      return {
+        ...rec,
+        movie_poster: resolvedPoster,
+      };
+    }),
+  );
+
   const { data: senderProfile } = await supabase
     .from('users')
     .select('name')
@@ -185,7 +287,7 @@ export async function POST(request: Request) {
     (recipients ?? []).map((recipient) => [recipient.id, recipient]),
   );
 
-  const emails = filtered.flatMap((rec) => {
+  const emails = resolvedRecommendations.flatMap((rec) => {
     const recipient = recipientMap.get(rec.recipient_id);
     if (!recipient?.email) return [];
 
@@ -211,6 +313,7 @@ export async function POST(request: Request) {
       recipientName: recipient.name || 'there',
       title: `${senderName} sent you a recommendation`,
       intro: 'Your friend thinks this one is worth your time.',
+      posterUrl: rec.movie_poster || undefined,
       spotlightLabel: 'Movie Pick',
       spotlightValue: movieLabel,
       messageLabel: message ? 'Personal Note' : undefined,

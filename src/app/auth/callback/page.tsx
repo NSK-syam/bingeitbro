@@ -4,6 +4,17 @@ import { Suspense, useEffect, useState } from 'react';
 import Link from 'next/link';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 
+function safeRedirect(raw: string): string {
+  if (!raw || !raw.startsWith('/') || raw.startsWith('//')) return '/';
+  try {
+    const parsed = new URL(raw, 'http://localhost');
+    if (parsed.hostname !== 'localhost') return '/';
+    return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+  } catch {
+    return '/';
+  }
+}
+
 function AuthCallbackContent() {
   const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -12,14 +23,7 @@ function AuthCallbackContent() {
     const params = new URLSearchParams(window.location.search);
     const errorParam = params.get('error');
     const errorDescription = params.get('error_description');
-    const rawNext = params.get('next') ?? '/';
-    const next =
-      typeof rawNext === 'string' &&
-      rawNext.startsWith('/') &&
-      !rawNext.startsWith('//') &&
-      !rawNext.startsWith('/\\\\')
-        ? rawNext
-        : '/';
+    const next = safeRedirect(params.get('next') ?? '/');
     const code = params.get('code');
 
     if (errorParam) {

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Image from 'next/image';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import {
   deleteWatchReminder,
   getUpcomingWatchReminders,
@@ -89,7 +89,6 @@ export function ScheduleWatchModal({
   const [scheduledLoading, setScheduledLoading] = useState(false);
   const [removingMovieId, setRemovingMovieId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const tmdbApiKey = (process.env.NEXT_PUBLIC_TMDB_API_KEY || '').trim();
   const userTimeZone = useMemo(() => getResolvedTimeZone(), []);
 
   const formatScheduleTime = (value: string) =>
@@ -162,10 +161,6 @@ export function ScheduleWatchModal({
 
   useEffect(() => {
     if (!isOpen) return;
-    if (!tmdbApiKey) {
-      setResults([]);
-      return;
-    }
     const q = query.trim();
     if (q.length < 2) {
       setResults([]);
@@ -178,7 +173,11 @@ export function ScheduleWatchModal({
       setLoading(true);
       try {
         const response = await fetchTmdbWithProxy(
-          `https://api.themoviedb.org/3/search/movie?api_key=${tmdbApiKey}&query=${encodeURIComponent(q)}&page=1&include_adult=false`,
+          buildTmdbV3Url('/3/search/movie', {
+            query: q,
+            page: 1,
+            include_adult: false,
+          }),
         );
         const data = (await response.json().catch(() => ({}))) as { results?: unknown[] };
         const list = Array.isArray(data.results) ? data.results : [];
@@ -216,7 +215,7 @@ export function ScheduleWatchModal({
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [isOpen, query, tmdbApiKey]);
+  }, [isOpen, query]);
 
   const selectedPoster = useMemo(() => {
     if (!selected?.poster_path) return '';
@@ -310,12 +309,6 @@ export function ScheduleWatchModal({
             Search a movie, select it, choose date & time, and BiB reminds you to watch.
           </p>
         </div>
-
-        {!tmdbApiKey && (
-          <div className="mt-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            Missing `NEXT_PUBLIC_TMDB_API_KEY`.
-          </div>
-        )}
 
         <div className="mt-6">
           <label className="text-sm font-medium text-[var(--text-primary)]">Search movie</label>

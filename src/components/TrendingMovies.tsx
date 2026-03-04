@@ -6,7 +6,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { SendToFriendModal } from './SendToFriendModal';
 import { useAuth } from './AuthProvider';
-import { getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, normalizeWatchProviderKey, resolveOttProvider, type TMDBWatchProviders } from '@/lib/tmdb';
+import { getDirectOttLink, getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, normalizeWatchProviderKey, resolveOttProvider, type TMDBWatchProviders } from '@/lib/tmdb';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
 
@@ -232,13 +232,6 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
     const controller = new AbortController();
 
     async function loadMovies() {
-      const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-      if (!apiKey) {
-        setError('API key missing');
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
       setError('');
 
@@ -270,7 +263,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
 
         // If there's a search query, use the search API instead of discover
         if (searchQuery && searchQuery.trim()) {
-          const searchUrl = `https://api.themoviedb.org/3/search/movie?api_key=${apiKey}&query=${encodeURIComponent(searchQuery)}&page=1&include_adult=false`;
+          const searchUrl = `https://api.themoviedb.org/3/search/movie?query=${encodeURIComponent(searchQuery)}&page=1&include_adult=false`;
           const response = await fetchTmdbWithProxy(searchUrl, { signal: controller.signal });
           const data = await response.json();
 
@@ -343,7 +336,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
           const ottPart = ottId ? `&with_watch_providers=${ottId}` : '';
 
           const buildReleasedBaseUrl = (windowStartDate: string, windowEndDate: string) =>
-            `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}` +
+            `https://api.themoviedb.org/3/discover/movie?` +
             `&sort_by=${sortBy}` +
             `&primary_release_date.gte=${windowStartDate}` +
             `&primary_release_date.lte=${windowEndDate}` +
@@ -353,7 +346,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             `${ottPart}` +
             `${genrePart}${yearPart}`;
           const upcomingBaseUrl = upcomingWindow
-            ? `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&sort_by=primary_release_date.asc&primary_release_date.gte=${upcomingWindow.start}&primary_release_date.lte=${upcomingWindow.end}${genrePart}${selectedYear ? `&primary_release_year=${selectedYear}` : ''}`
+            ? `https://api.themoviedb.org/3/discover/movie?sort_by=primary_release_date.asc&primary_release_date.gte=${upcomingWindow.start}&primary_release_date.lte=${upcomingWindow.end}${genrePart}${selectedYear ? `&primary_release_year=${selectedYear}` : ''}`
             : '';
 
           const hasFilters = Boolean(selectedLang || selectedGenre || selectedYear || selectedOtt);
@@ -476,7 +469,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             // conditions, show a stable popular list so the page still works.
             const fallbackUrl =
               `https://api.themoviedb.org/3/discover/movie` +
-              `?api_key=${apiKey}` +
+              `?` +
               `&sort_by=popularity.desc` +
               `&primary_release_date.gte=${releaseWindowStart}` +
               `&primary_release_date.lte=${releaseWindowEnd}` +
@@ -503,7 +496,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
               : new Date(Date.now() - 550 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
             const relaxedBaseUrl =
               `https://api.themoviedb.org/3/discover/movie` +
-              `?api_key=${apiKey}` +
+              `?` +
               `&sort_by=popularity.desc` +
               `&with_original_language=${selectedLang}` +
               `&primary_release_date.gte=${relaxedStart}` +
@@ -1223,15 +1216,18 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                   <div className="absolute bottom-12 right-3 flex items-center gap-1">
                     {providerLogos[movie.id]?.logos?.length > 0 ? (
                       dedupeLogos(providerLogos[movie.id].logos).slice(0, 3).map((item, idx) => {
-                        const watchLink = providerLogos[movie.id].link ?? `https://www.themoviedb.org/movie/${movie.id}/watch`;
+                        const watchLink = getDirectOttLink(item.name, movie.title);
                         const content = (
                           <div
                             className="w-8 h-8 rounded-xl bg-[var(--bg-primary)]/90 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-lg transition-all duration-200 hover:scale-110 hover:border-[var(--accent)]/50 hover:shadow-[var(--accent)]/20 hover:shadow-md active:scale-95"
-                            title={`Watch on ${item.name} (opens in new tab)`}
+                            title={watchLink ? `Watch on ${item.name} (opens in new tab)` : `${item.name} available`}
                           >
                             <Image src={item.url} alt={item.name} width={20} height={20} className="object-contain" />
                           </div>
                         );
+                        if (!watchLink) {
+                          return <div key={`${movie.id}-logo-${idx}`}>{content}</div>;
+                        }
                         return (
                           <a
                             key={`${movie.id}-logo-${idx}`}

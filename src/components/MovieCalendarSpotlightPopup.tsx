@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
 import { MOVIE_CALENDAR_EVENTS, type MovieCalendarEvent } from '@/data/movie-calendar-events';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 
 type SpotlightMovie = {
@@ -92,16 +92,21 @@ function getEventQuery(event: MovieCalendarEvent, mediaType: SpotlightMediaType)
 }
 
 async function fetchRelatedTitles(
-  apiKey: string,
   event: MovieCalendarEvent,
   mediaType: SpotlightMediaType,
 ): Promise<SpotlightMovie[]> {
   const maxItems = event.id === 'valentines-day' ? 18 : 6;
   if (event.id === 'valentines-day') {
     const discoverPath = mediaType === 'tv' ? 'discover/tv' : 'discover/movie';
-    const baseParams = `api_key=${apiKey}&language=en-US&with_genres=10749&sort_by=popularity.desc&vote_count.gte=80&include_adult=false&page=1`;
-
-    const englishUrl = `https://api.themoviedb.org/3/${discoverPath}?${baseParams}&with_original_language=en`;
+    const englishUrl = buildTmdbV3Url(`/3/${discoverPath}`, {
+      language: 'en-US',
+      with_genres: 10749,
+      sort_by: 'popularity.desc',
+      'vote_count.gte': 80,
+      include_adult: 'false',
+      page: 1,
+      with_original_language: 'en',
+    });
     const englishRes = await fetchTmdbWithProxy(englishUrl);
     const englishData = await englishRes.json().catch(() => ({}));
     const englishOnly = normalizeResults(englishData)
@@ -111,7 +116,15 @@ async function fetchRelatedTitles(
     const regionalLangs = ['te', 'hi', 'ta', 'kn'] as const;
     const regionalLists = await Promise.all(
       regionalLangs.map(async (lang) => {
-        const url = `https://api.themoviedb.org/3/${discoverPath}?${baseParams}&with_original_language=${lang}`;
+        const url = buildTmdbV3Url(`/3/${discoverPath}`, {
+          language: 'en-US',
+          with_genres: 10749,
+          sort_by: 'popularity.desc',
+          'vote_count.gte': 80,
+          include_adult: 'false',
+          page: 1,
+          with_original_language: lang,
+        });
         const res = await fetchTmdbWithProxy(url);
         const data = await res.json().catch(() => ({}));
         return normalizeResults(data)
@@ -136,7 +149,12 @@ async function fetchRelatedTitles(
 
   const query = getEventQuery(event, mediaType);
   const searchPath = mediaType === 'tv' ? 'search/tv' : 'search/movie';
-  const searchUrl = `https://api.themoviedb.org/3/${searchPath}?api_key=${apiKey}&query=${encodeURIComponent(query)}&language=en-US&include_adult=false&page=1`;
+  const searchUrl = buildTmdbV3Url(`/3/${searchPath}`, {
+    query,
+    language: 'en-US',
+    include_adult: 'false',
+    page: 1,
+  });
   const searchRes = await fetchTmdbWithProxy(searchUrl);
   const searchData = await searchRes.json().catch(() => ({}));
   let movies = normalizeResults(searchData)
@@ -150,7 +168,10 @@ async function fetchRelatedTitles(
   if (movies.length > 0) return movies;
 
   const fallbackPath = mediaType === 'tv' ? 'tv/popular' : 'movie/popular';
-  const fallbackUrl = `https://api.themoviedb.org/3/${fallbackPath}?api_key=${apiKey}&language=en-US&page=1`;
+  const fallbackUrl = buildTmdbV3Url(`/3/${fallbackPath}`, {
+    language: 'en-US',
+    page: 1,
+  });
   const fallbackRes = await fetchTmdbWithProxy(fallbackUrl);
   const fallbackData = await fallbackRes.json().catch(() => ({}));
   movies = normalizeResults(fallbackData)
@@ -176,7 +197,6 @@ export function MovieCalendarSpotlightPopup({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [todayMonthDay, setTodayMonthDay] = useState(getTodayMonthDay);
-  const tmdbApiKey = (process.env.NEXT_PUBLIC_TMDB_API_KEY || '').trim();
 
   const todayEvent = useMemo(() => {
     return MOVIE_CALENDAR_EVENTS.find((event) => event.monthDay === todayMonthDay) || null;
@@ -243,10 +263,6 @@ export function MovieCalendarSpotlightPopup({
 
   useEffect(() => {
     if (!isOpen || !todayEvent) return;
-    if (!tmdbApiKey) {
-      setError('TMDB key missing. Add NEXT_PUBLIC_TMDB_API_KEY.');
-      return;
-    }
 
     let cancelled = false;
     setLoading(true);
@@ -254,7 +270,7 @@ export function MovieCalendarSpotlightPopup({
 
     void (async () => {
       try {
-        const list = await fetchRelatedTitles(tmdbApiKey, todayEvent, mediaType);
+        const list = await fetchRelatedTitles(todayEvent, mediaType);
         if (!cancelled) {
           setMovies(list);
         }
@@ -271,7 +287,7 @@ export function MovieCalendarSpotlightPopup({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, todayEvent, tmdbApiKey, mediaType]);
+  }, [isOpen, todayEvent, mediaType]);
 
   if (!todayEvent || !isOpen) return null;
 

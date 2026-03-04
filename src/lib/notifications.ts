@@ -4,6 +4,9 @@ export type FriendRecommendationEmailPayload = {
   recipient_id: string;
   movie_title: string;
   movie_year?: number | null;
+  movie_poster?: string | null;
+  tmdb_id?: number | null;
+  recommendation_id?: string | null;
   personal_message?: string | null;
 };
 

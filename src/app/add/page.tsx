@@ -157,7 +157,7 @@ export default function AddMoviePage() {
               </a>
               <p className="text-sm text-[var(--text-muted)] mt-4 mb-2">2. Create a <code className="text-[var(--accent)]">.env.local</code> file:</p>
               <code className="block bg-[var(--bg-primary)] p-3 rounded text-sm text-[var(--text-primary)]">
-                NEXT_PUBLIC_TMDB_API_KEY=your_api_key_here
+                TMDB_API_KEY=your_api_key_here
               </code>
               <p className="text-sm text-[var(--text-muted)] mt-4">3. Restart the dev server</p>
             </div>

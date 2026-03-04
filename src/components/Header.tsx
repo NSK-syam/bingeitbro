@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 interface HeaderProps {
   searchMode?: 'movie' | 'tv' | 'off';
@@ -82,15 +82,13 @@ export function Header({
       setLoadingSuggestions(true);
 
       try {
-        const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-        if (!apiKey) {
-          setLoadingSuggestions(false);
-          return;
-        }
-
         const endpoint = searchMode === 'tv' ? 'tv' : 'movie';
         const response = await fetchTmdbWithProxy(
-          `https://api.themoviedb.org/3/search/${endpoint}?api_key=${apiKey}&query=${encodeURIComponent(searchQuery)}&page=1&include_adult=false`
+          buildTmdbV3Url(`/3/search/${endpoint}`, {
+            query: searchQuery,
+            page: 1,
+            include_adult: false,
+          }),
         );
         const data = await response.json();
 
@@ -245,7 +243,7 @@ export function Header({
                 </svg>
 
                 {/* Autocomplete Dropdown */}
-                {showSuggestions && suggestions.length > 0 && (
+                {showSuggestions && (loadingSuggestions || suggestions.length > 0) && (
                   <div className="absolute top-full left-0 right-0 mt-2 bg-[var(--bg-card)] border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50 max-w-md">
                     {loadingSuggestions && suggestions.length === 0 ? (
                       <div className="px-4 py-3 text-sm text-[var(--text-muted)]">
@@ -291,6 +289,7 @@ export function Header({
                 {/* Friend Recommendations */}
                 <button
                   onClick={onFriendRecommendationsClick}
+                  aria-label="Open friend recommendations"
                   className="relative p-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
                   title="Friend Recommendations"
                 >
@@ -306,6 +305,7 @@ export function Header({
                 {/* Nudges */}
                 <button
                   onClick={onNudgesClick}
+                  aria-label="Open nudges"
                   className="relative p-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
                   title="Nudges"
                 >
@@ -320,6 +320,7 @@ export function Header({
                 </button>
                 <button
                   onClick={onWatchlistClick}
+                  aria-label="Open watchlist"
                   className="relative flex items-center gap-1.5 px-3 py-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] font-medium rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
                   title="My Watchlist"
                 >

@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 type MediaType = 'movie' | 'tv';
 
@@ -60,13 +60,6 @@ export function TrailerSection({
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
-    const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-    if (!apiKey) {
-      setLoading(false);
-      setError('TMDB not configured');
-      return;
-    }
-
     let cancelled = false;
     const controller = new AbortController();
 
@@ -78,7 +71,7 @@ export function TrailerSection({
     void (async () => {
       try {
         const res = await fetchTmdbWithProxy(
-          `https://api.themoviedb.org/3/${mediaType}/${tmdbId}/videos?api_key=${apiKey}`,
+          buildTmdbV3Url(`/3/${mediaType}/${tmdbId}/videos`),
           { signal: controller.signal }
         );
         const json = await res.json().catch(() => null);

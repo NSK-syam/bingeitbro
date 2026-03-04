@@ -5,6 +5,7 @@ import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { safeLocalStorageGet, safeLocalStorageKeys, safeLocalStorageRemove, safeLocalStorageSet, safeSessionStorageKeys, safeSessionStorageRemove } from '@/lib/safe-storage';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
+import { hasNativeAuthBridge, postNativeAuthMessage } from '@/lib/native-webview';
 import { trackFunnelEvent } from '@/lib/funnel';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
@@ -96,13 +97,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const { error: insertError } = await supabase
           .from('users')
-          .insert({ ...baseInsert, username: generatedUsername });
+          .upsert(
+            { ...baseInsert, username: generatedUsername },
+            { onConflict: 'id', ignoreDuplicates: true }
+          );
 
         if (insertError) {
           console.error('Failed to create user profile with username:', insertError);
           const { error: fallbackError } = await supabase
             .from('users')
-            .insert(baseInsert);
+            .upsert(baseInsert, { onConflict: 'id', ignoreDuplicates: true });
           if (fallbackError) {
             console.error('Failed to create user profile:', fallbackError);
             return;
@@ -288,6 +292,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
+    if (hasNativeAuthBridge()) {
+      postNativeAuthMessage('BIB_AUTH_GOOGLE_SIGN_IN');
+      return { error: null };
+    }
     if (typeof window !== 'undefined' && isLikelyInAppBrowser(window.navigator.userAgent || '')) {
       return {
         error: new Error(
@@ -323,11 +331,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
-    // Clear React state first
-    setUser(null);
-    setSession(null);
-
     if (typeof window === 'undefined') return;
+
+    if (isConfigured) {
+      try {
+        const supabase = createClient();
+        await supabase.auth.signOut();
+      } catch (err) {
+        console.error('Supabase signOut error (continuing local cleanup):', err);
+      }
+    }
 
     // 1. Delete all Supabase cookies (this is where @supabase/ssr stores the session)
     document.cookie.split(';').forEach(cookie => {
@@ -353,15 +366,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
-    // 4. Call Supabase signOut (may fail but cookies already cleared)
-    if (isConfigured) {
-      try {
-        const supabase = createClient();
-        await supabase.auth.signOut();
-      } catch (err) {
-        console.error('Supabase signOut error (ignored):', err);
-      }
-    }
+    // 4. Clear React state after remote sign-out + local storage cleanup.
+    setUser(null);
+    setSession(null);
   };
 
   return (

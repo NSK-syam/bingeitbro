@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getRenderProfile } from '@/lib/render-profile';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 const CACHE_KEY = 'bib-movie-bg-posters-v5';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -66,25 +66,22 @@ export function MovieBackground() {
     const controller = new AbortController();
 
     const fetchPosters = async () => {
-      const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-      if (!apiKey) return;
-
       try {
         const featuredItemQueries = [
           // Pin RRR so it reliably appears in the background mix.
-          `https://api.themoviedb.org/3/movie/579974?api_key=${apiKey}&language=en-US`,
+          buildTmdbV3Url('/3/movie/579974', { language: 'en-US' }),
         ];
 
         const queries = [
-          `https://api.themoviedb.org/3/movie/popular?api_key=${apiKey}&language=en-US&region=US&page=1`,
-          `https://api.themoviedb.org/3/movie/top_rated?api_key=${apiKey}&language=en-US&region=US&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=te&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=te&sort_by=popularity.desc&page=2`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=en&sort_by=popularity.desc&page=2`,
-          `https://api.themoviedb.org/3/tv/popular?api_key=${apiKey}&language=en-US&page=1`,
-          `https://api.themoviedb.org/3/tv/top_rated?api_key=${apiKey}&language=en-US&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=hi&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/movie?api_key=${apiKey}&with_original_language=ta&sort_by=popularity.desc&page=1`,
+          buildTmdbV3Url('/3/movie/popular', { language: 'en-US', region: 'US', page: 1 }),
+          buildTmdbV3Url('/3/movie/top_rated', { language: 'en-US', region: 'US', page: 1 }),
+          buildTmdbV3Url('/3/discover/movie', { with_original_language: 'te', sort_by: 'popularity.desc', page: 1 }),
+          buildTmdbV3Url('/3/discover/movie', { with_original_language: 'te', sort_by: 'popularity.desc', page: 2 }),
+          buildTmdbV3Url('/3/discover/movie', { with_original_language: 'en', sort_by: 'popularity.desc', page: 2 }),
+          buildTmdbV3Url('/3/tv/popular', { language: 'en-US', page: 1 }),
+          buildTmdbV3Url('/3/tv/top_rated', { language: 'en-US', page: 1 }),
+          buildTmdbV3Url('/3/discover/movie', { with_original_language: 'hi', sort_by: 'popularity.desc', page: 1 }),
+          buildTmdbV3Url('/3/discover/movie', { with_original_language: 'ta', sort_by: 'popularity.desc', page: 1 }),
         ];
 
         const queryBatch = queries.slice(0, QUERY_LIMIT);

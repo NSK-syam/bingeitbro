@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
+import { hasNativeAuthBridge } from '@/lib/native-webview';
 import { trackFunnelEvent } from '@/lib/funnel';
 
 declare global {
@@ -139,6 +140,9 @@ export function CinematicAuth() {
         if (typeof window === 'undefined') return;
         setInAppBrowser(isLikelyInAppBrowser(window.navigator.userAgent || ''));
     }, []);
+
+    const nativeAuthBridge = hasNativeAuthBridge();
+    const blockGoogleInBrowser = inAppBrowser && !nativeAuthBridge;
 
     useEffect(() => {
         if (username.length < 3) {
@@ -353,7 +357,7 @@ export function CinematicAuth() {
                                     {/* Google OAuth & Mode Selector */}
                                     {mode !== 'reset' && (
                                         <div className="w-full">
-                                            {inAppBrowser && (
+                                            {blockGoogleInBrowser && (
                                                 <div className="mb-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-200">
                                                     Google sign-in is blocked inside in-app browsers. Open this page in Safari/Chrome and continue.
                                                     <button onClick={openInBrowser} className="mt-2 w-full rounded-lg bg-amber-400/20 px-3 py-2 font-medium">Open in Browser</button>
@@ -361,7 +365,7 @@ export function CinematicAuth() {
                                             )}
                                             <button
                                                 onClick={handleGoogleSignIn}
-                                                disabled={loading || inAppBrowser}
+                                                disabled={loading || blockGoogleInBrowser}
                                                 className="w-full py-3 px-4 bg-white/10 text-white border border-white/20 font-medium rounded-xl hover:bg-white/20 transition-colors flex items-center justify-center gap-3"
                                             >
                                                 <svg className="w-5 h-5" viewBox="0 0 24 24">

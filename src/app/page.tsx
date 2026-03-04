@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { AdDisplayUnit, AuthModal, BibSplash, Header, MovieBackground, useAuth } from '@/components';
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 import { trackFunnelEvent } from '@/lib/funnel';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 type Hub = 'movies' | 'shows' | 'songs';
 type PreviewTab = 'movies' | 'shows' | 'friends';
@@ -405,9 +405,6 @@ export default function HomeGate() {
 
   useEffect(() => {
     if (!mounted) return;
-    const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-    if (!apiKey) return;
-
     const controller = new AbortController();
     let cancelled = false;
     const allPreview = [...moviePreview, ...showPreview];
@@ -417,7 +414,7 @@ export default function HomeGate() {
         const responses = await Promise.all(
           allPreview.map(async (item) => {
             const endpoint = item.mediaType === 'tv' ? 'tv' : 'movie';
-            const url = `https://api.themoviedb.org/3/${endpoint}/${item.tmdbId}?api_key=${apiKey}`;
+            const url = buildTmdbV3Url(`/3/${endpoint}/${item.tmdbId}`);
             const response = await fetchTmdbWithProxy(url, { signal: controller.signal });
             if (!response.ok) return null;
             const data = (await response.json()) as { poster_path?: string | null };
@@ -480,7 +477,23 @@ export default function HomeGate() {
     openAuth('signup', `preview_${action}`);
   };
 
-  if (!mounted || loading || !user) {
+  if (!mounted) {
+    return null;
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)] relative overflow-hidden">
+        <MovieBackground />
+        <BibSplash />
+        <div className="relative z-10 flex min-h-screen items-center justify-center">
+          <div className="w-10 h-10 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+        </div>
+      </div>
+    );
+  }
+
+  if (!user) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] relative overflow-hidden">
         <MovieBackground />

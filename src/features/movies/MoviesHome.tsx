@@ -780,39 +780,12 @@ export default function MoviesHome() {
               <AdDisplayUnit className="mx-auto max-w-3xl" />
             </div>
 
-            {/* Main Tabs - Trending and Friends */}
+            {/* Main feature row */}
             <div className="mb-6 rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-2.5 shadow-[0_18px_42px_rgba(0,0,0,0.22)] sm:flex sm:items-start sm:justify-between sm:gap-3">
               <div className="flex flex-wrap items-center gap-2 sm:flex-1">
-              {/* Button design: consistent pill height, glassy surface, bold active state */}
-              {/*
-                Keep styles local to avoid refactors across the app.
-                If you want to reuse later, we can extract a shared PillButton component.
-              */}
+              {/* Friends toggles between the friends feed and the default latest/trending view */}
               <button
-                onClick={() => setActiveView('trending')}
-                className={[
-                  'h-11 px-5 rounded-full inline-flex items-center gap-2',
-                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
-                  'text-sm font-semibold',
-                  'transition-all select-none',
-                  'backdrop-blur-xl border shadow-[0_10px_30px_rgba(0,0,0,0.28)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
-                  activeView === 'trending'
-                    ? 'bg-gradient-to-r from-amber-300 to-orange-500 text-[#16110a] border-orange-200 shadow-[0_14px_40px_rgba(245,158,11,0.3)]'
-                    : 'bg-gradient-to-r from-amber-500/30 to-orange-500/25 text-amber-100 border-amber-300/35 hover:from-amber-400/40 hover:to-orange-400/35 hover:text-amber-50',
-                  'active:scale-[0.99]',
-                ].join(' ')}
-                aria-pressed={activeView === 'trending'}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6" />
-                </svg>
-                Trending
-              </button>
-
-              {/* Friends — switch to friends view (list dropdown is on the friends page row below) */}
-              <button
-                onClick={() => setActiveView('friends')}
+                onClick={() => setActiveView((current) => (current === 'friends' ? 'trending' : 'friends'))}
                 className={[
                   'h-11 px-5 rounded-full inline-flex items-center gap-2',
                   'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
@@ -837,6 +810,26 @@ export default function MoviesHome() {
                   </span>
                 )}
               </button>
+
+              <Link
+                href="/admin-picks"
+                className={[
+                  'h-11 px-5 rounded-full inline-flex items-center gap-2',
+                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
+                  'text-sm font-semibold',
+                  'transition-all select-none',
+                  'bg-gradient-to-r from-amber-500/30 to-orange-500/25 text-amber-100 border border-amber-300/35 backdrop-blur-xl shadow-[0_10px_30px_rgba(245,158,11,0.24)]',
+                  'hover:from-amber-400/40 hover:to-orange-400/35 hover:text-amber-50 hover:border-amber-200/45',
+                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                  'active:scale-[0.99]',
+                ].join(' ')}
+                title="Curated admin recommendations"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.182 3.637a1 1 0 00.95.69h3.824c.969 0 1.371 1.24.588 1.81l-3.093 2.247a1 1 0 00-.364 1.118l1.182 3.636c.3.922-.755 1.688-1.539 1.119l-3.094-2.248a1 1 0 00-1.175 0l-3.094 2.248c-.784.57-1.838-.197-1.539-1.119l1.182-3.636a1 1 0 00-.364-1.118L2.507 9.064c-.783-.57-.38-1.81.588-1.81h3.824a1 1 0 00.95-.69l1.18-3.637z" />
+                </svg>
+                Admin Picks
+              </Link>
 
               {/* Binge Calculator */}
               <button

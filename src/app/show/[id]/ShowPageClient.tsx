@@ -2,14 +2,13 @@
 
 import Link from 'next/link';
 import { useEffect, useMemo, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { SendToFriendModal } from '@/components/SendToFriendModal';
 import { WatchlistButton } from '@/components/WatchlistButton';
 import { WatchedButton } from '@/components/WatchedButton';
 import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { getImageUrl, getLanguageName, tmdbWatchProvidersToOttLinks } from '@/lib/tmdb';
 import type { OTTLink, Recommendation } from '@/types';
 import { TrailerSection } from '@/components';
@@ -33,7 +32,6 @@ type TMDBTVDetailsAny = {
 };
 
 export default function ShowPageClient({ id }: ShowPageClientProps) {
-  const searchParams = useSearchParams();
   const backUrl = '/shows';
   const { user } = useAuth();
 
@@ -111,15 +109,13 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
         }
 
         // TMDB tv id: "tmdbtv-123" or "123"
-        const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-        if (!apiKey) throw new Error('TMDB API not configured');
         const raw = resolvedId.startsWith('tmdbtv-') ? resolvedId.replace('tmdbtv-', '') : resolvedId;
         if (!/^\d+$/.test(raw)) throw new Error('Invalid id');
         const tmdbId = raw;
 
         const [tvRes, providersRes] = await Promise.all([
-          fetchTmdbWithProxy(`https://api.themoviedb.org/3/tv/${tmdbId}?api_key=${apiKey}`),
-          fetchTmdbWithProxy(`https://api.themoviedb.org/3/tv/${tmdbId}/watch/providers?api_key=${apiKey}`),
+          fetchTmdbWithProxy(buildTmdbV3Url(`/3/tv/${tmdbId}`)),
+          fetchTmdbWithProxy(buildTmdbV3Url(`/3/tv/${tmdbId}/watch/providers`)),
         ]);
         if (!tvRes.ok) throw new Error('Not found');
         const tv = (await tvRes.json()) as TMDBTVDetailsAny;
@@ -344,7 +340,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
             <div className="text-lg font-semibold text-[var(--text-primary)]">Where to watch</div>
             {ottLinks.length === 0 ? (
               <div className="mt-2 text-sm text-[var(--text-muted)]">
-                No streaming info found. Try searching on JustWatch.
+                No direct OTT links available for this title right now.
               </div>
             ) : (
               <div className="mt-3 flex flex-wrap gap-2">
@@ -365,17 +361,6 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
                 ))}
               </div>
             )}
-            <div className="mt-4">
-              <a
-                href={`https://www.justwatch.com/${(searchParams.get('region') || 'us').toLowerCase()}/search?q=${encodeURIComponent(title)}`}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 text-[var(--accent)] hover:underline text-sm"
-              >
-                Search on JustWatch
-                <span aria-hidden="true"></span>
-              </a>
-            </div>
           </div>
         </div>
       </main>

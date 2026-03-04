@@ -10,7 +10,8 @@ import { WatchlistButton } from '@/components/WatchlistButton';
 import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
 import { useWatched } from '@/hooks';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { getDirectOttLink } from '@/lib/tmdb';
 import { TrailerSection } from '@/components';
 import { SendToFriendModal } from '@/components/SendToFriendModal';
 import { useAuth } from '@/components/AuthProvider';
@@ -112,7 +113,6 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
   const [loading, setLoading] = useState(resolvedId === 'fallback' || !movie);
   const [error, setError] = useState(false);
   const [regionNote, setRegionNote] = useState('');
-  const [availability, setAvailability] = useState({ hasIndia: false, hasUSA: false });
   const [tmdbTrailerId, setTmdbTrailerId] = useState<number | null>(null);
   const [sendModalOpen, setSendModalOpen] = useState(false);
 
@@ -132,17 +132,10 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
         const isTmdb = resolvedId.startsWith('tmdb-') || /^\d+$/.test(resolvedId);
         const tmdbId = resolvedId.startsWith('tmdb-') ? resolvedId.replace('tmdb-', '') : resolvedId;
         if (isTmdb && tmdbId) {
-          const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-
-          if (!apiKey) {
-            setError(true);
-            return;
-          }
-
           const [movieResponse, providersResponse, releaseDatesResponse] = await Promise.all([
-            fetchTmdbWithProxy(`https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}&append_to_response=credits`),
-            fetchTmdbWithProxy(`https://api.themoviedb.org/3/movie/${tmdbId}/watch/providers?api_key=${apiKey}`),
-            fetchTmdbWithProxy(`https://api.themoviedb.org/3/movie/${tmdbId}/release_dates?api_key=${apiKey}`)
+            fetchTmdbWithProxy(buildTmdbV3Url(`/3/movie/${tmdbId}`, { append_to_response: 'credits' })),
+            fetchTmdbWithProxy(buildTmdbV3Url(`/3/movie/${tmdbId}/watch/providers`)),
+            fetchTmdbWithProxy(buildTmdbV3Url(`/3/movie/${tmdbId}/release_dates`))
           ]);
 
           if (!movieResponse.ok) {
@@ -175,29 +168,6 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
 
           const ottLinks: OTTLink[] = [];
           const platformsByRegion: Record<string, { regions: string[]; logoPath?: string }> = {};
-
-          const getDirectOttLink = (platformName: string, movieTitle: string): string => {
-            const encodedTitle = encodeURIComponent(movieTitle);
-            const lowerName = platformName.toLowerCase();
-            if (lowerName.includes('netflix')) return `https://www.netflix.com/search?q=${encodedTitle}`;
-            if (lowerName.includes('prime') || lowerName.includes('amazon')) return `https://app.primevideo.com/search?phrase=${encodedTitle}`;
-            if (lowerName.includes('hotstar') || lowerName.includes('disney')) return `https://www.hotstar.com/in/search?q=${encodedTitle}`;
-            if (lowerName.includes('aha')) return `https://www.aha.video/search?q=${encodedTitle}`;
-            if (lowerName.includes('youtube')) return `https://www.youtube.com/results?search_query=${encodedTitle}+full+movie`;
-            if (lowerName.includes('apple')) return `https://tv.apple.com/search?term=${encodedTitle}`;
-            if (lowerName.includes('zee5')) return `https://www.zee5.com/search?q=${encodedTitle}`;
-            if (lowerName.includes('sony') || lowerName.includes('sonyliv')) return `https://www.sonyliv.com/search?searchTerm=${encodedTitle}`;
-            if (lowerName.includes('jio')) return `https://www.jiocinema.com/search/${encodedTitle}`;
-            if (lowerName.includes('hulu')) return `https://www.hulu.com/search?q=${encodedTitle}`;
-            if (lowerName.includes('hbo') || lowerName === 'max') return `https://www.max.com/search?q=${encodedTitle}`;
-            if (lowerName.includes('peacock')) return `https://www.peacocktv.com/search?q=${encodedTitle}`;
-            if (lowerName.includes('paramount')) return `https://www.paramountplus.com/search/?q=${encodedTitle}`;
-            if (lowerName.includes('lionsgate')) return `https://www.lionsgateplay.com/search?q=${encodedTitle}`;
-            if (lowerName.includes('voot')) return `https://www.voot.com/search?q=${encodedTitle}`;
-            if (lowerName.includes('mx player')) return `https://www.mxplayer.in/search?query=${encodedTitle}`;
-            if (lowerName.includes('sun nxt')) return `https://www.sunnxt.com/search?query=${encodedTitle}`;
-            return `https://www.google.com/search?q=${encodedTitle}+watch+online+${encodeURIComponent(platformName)}`;
-          };
 
           const indiaData = providersData.results?.IN;
           const usaData = providersData.results?.US;
@@ -251,9 +221,11 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           }
 
           for (const [platform, regionData] of Object.entries(platformsByRegion)) {
+            const directUrl = getDirectOttLink(platform, tmdbData.title);
+            if (!directUrl) continue;
             ottLinks.push({
               platform,
-              url: getDirectOttLink(platform, tmdbData.title),
+              url: directUrl,
               availableIn: regionData.regions.join(' & '),
               logoPath: regionData.logoPath,
             });
@@ -262,8 +234,6 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           const hasIndia = indiaProviders.length > 0;
           const hasUSA = usaProviders.length > 0;
 
-          setAvailability({ hasIndia, hasUSA });
-
           if (hasIndia && hasUSA) {
             setRegionNote('Available in India & USA');
           } else if (hasIndia && !hasUSA) {
@@ -271,7 +241,6 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           } else if (!hasIndia && hasUSA) {
             setRegionNote('Available in USA');
           } else {
-            // Avoid showing a scary/incorrect banner. We'll show the JustWatch fallback below instead.
             setRegionNote('');
           }
 
@@ -434,8 +403,6 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
       })
     : '') || '';
 
-  const showUsCheck = recommendedBy?.id === 'tmdb' && !availability.hasUSA;
-  const usSearchUrl = `https://www.justwatch.com/us/search?q=${encodeURIComponent(title)}`;
   const sendTmdbId = resolvedId.startsWith('tmdb-')
     ? resolvedId.replace('tmdb-', '')
     : /^\d+$/.test(resolvedId)
@@ -627,25 +594,6 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
                   {regionNote}
                 </div>
               )}
-              {showUsCheck && (
-                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-4 py-3">
-                  <div>
-                    <p className="text-sm font-medium text-[var(--text-primary)]">US availability not listed by TMDB</p>
-                    <p className="text-xs text-[var(--text-muted)]">Double‑check on JustWatch to confirm streaming in the US.</p>
-                  </div>
-                  <a
-                    href={usSearchUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 rounded-full bg-[var(--accent)] px-4 py-2 text-xs font-semibold text-[var(--bg-primary)] shadow-sm transition-transform hover:-translate-y-0.5 hover:shadow-lg"
-                  >
-                    Check US availability
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7h6m0 0v6m0-6L7 17" />
-                    </svg>
-                  </a>
-                </div>
-              )}
               {ottLinks && ottLinks.length > 0 ? (
                 <div className="grid gap-3">
                   {ottLinks.map((link, index) => {
@@ -682,18 +630,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
                 </div>
               ) : (
                 <div className="text-center py-6">
-                  <p className="text-[var(--text-muted)]">No streaming info available for India/USA.</p>
-                  <a
-                    href={`https://www.justwatch.com/in/search?q=${encodeURIComponent(title)}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-2 mt-4 px-4 py-2 bg-[var(--bg-secondary)] rounded-lg text-[var(--accent)] hover:bg-[var(--bg-card-hover)] transition-colors"
-                  >
-                    Search on JustWatch
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                    </svg>
-                  </a>
+                  <p className="text-[var(--text-muted)]">No direct OTT links available for this title right now.</p>
                 </div>
               )}
             </div>

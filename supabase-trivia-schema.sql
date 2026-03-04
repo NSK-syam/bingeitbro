@@ -78,9 +78,30 @@ BEGIN
     RAISE EXCEPTION 'Invalid duration.';
   END IF;
 
+  -- Keep trivia board focused on the active week only.
+  DELETE FROM public.trivia_attempts
+  WHERE week_key <> p_week_key;
+
   INSERT INTO public.trivia_attempts (user_id, week_key, language, score, duration_ms)
   VALUES (auth.uid(), p_week_key, p_language, p_score, p_duration_ms)
   RETURNING id INTO v_id;
+
+  -- Keep top 3 rows per language/week (score desc, faster time asc, earlier submit wins tie).
+  WITH ranked AS (
+    SELECT
+      id,
+      ROW_NUMBER() OVER (
+        PARTITION BY week_key, language
+        ORDER BY score DESC, duration_ms ASC, created_at ASC
+      ) AS rn
+    FROM public.trivia_attempts
+    WHERE week_key = p_week_key
+      AND language = p_language
+  )
+  DELETE FROM public.trivia_attempts t
+  USING ranked r
+  WHERE t.id = r.id
+    AND r.rn > 3;
 
   RETURN v_id;
 END;
@@ -89,7 +110,7 @@ $$;
 REVOKE ALL ON FUNCTION public.submit_trivia_attempt(TEXT, TEXT, INTEGER, INTEGER) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.submit_trivia_attempt(TEXT, TEXT, INTEGER, INTEGER) TO authenticated;
 
--- Leaderboard RPC: best attempt per user for that week/language, ranked by score desc then time asc.
+-- Leaderboard RPC: top 3 for the selected week/language.
 CREATE OR REPLACE FUNCTION public.get_trivia_leaderboard(
   p_week_key TEXT,
   p_language TEXT
@@ -108,28 +129,22 @@ STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  WITH ranked AS (
-    SELECT DISTINCT ON (a.user_id)
-      a.user_id,
-      COALESCE(u.name, 'User') AS name,
-      u.username,
-      u.avatar,
-      a.score,
-      a.duration_ms,
-      a.created_at
-    FROM public.trivia_attempts a
-    JOIN public.users u
-      ON u.id = a.user_id
-    WHERE a.week_key = p_week_key
-      AND a.language = p_language
-    ORDER BY a.user_id, a.score DESC, a.duration_ms ASC, a.created_at ASC
-  )
-  SELECT *
-  FROM ranked
-  ORDER BY score DESC, duration_ms ASC, created_at ASC
-  LIMIT 50;
+  SELECT
+    a.user_id,
+    COALESCE(u.name, 'User') AS name,
+    u.username,
+    u.avatar,
+    a.score,
+    a.duration_ms,
+    a.created_at
+  FROM public.trivia_attempts a
+  JOIN public.users u
+    ON u.id = a.user_id
+  WHERE a.week_key = p_week_key
+    AND a.language = p_language
+  ORDER BY a.score DESC, a.duration_ms ASC, a.created_at ASC
+  LIMIT 3;
 $$;
 
 REVOKE ALL ON FUNCTION public.get_trivia_leaderboard(TEXT, TEXT) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.get_trivia_leaderboard(TEXT, TEXT) TO authenticated;
-

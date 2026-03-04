@@ -1891,7 +1891,7 @@ export async function getTriviaLeaderboard(input: {
       durationMs: Number.isFinite(durationRaw) ? Number(durationRaw) : 0,
       createdAt: row.created_at,
     } satisfies TriviaLeaderboardEntry;
-  });
+  }).slice(0, 3);
 }
 
 export async function createWatchGroup(

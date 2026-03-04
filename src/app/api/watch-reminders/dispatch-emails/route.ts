@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { timingSafeEqual } from 'crypto';
 import { createClient } from '@supabase/supabase-js';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
@@ -40,11 +41,22 @@ const siteUrl =
   process.env.SITE_URL ??
   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://bingeitbro.com');
 
+function sanitizePosterUrl(posterUrl: string | null | undefined): string {
+  const trimmed = String(posterUrl ?? '').trim();
+  if (!trimmed || trimmed.length > 500) return '';
+  const normalizedSiteUrl = String(siteUrl).replace(/\/+$/, '');
+  if (trimmed.startsWith('/')) return normalizedSiteUrl ? `${normalizedSiteUrl}${trimmed}` : '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (normalizedSiteUrl && trimmed.startsWith(`${normalizedSiteUrl}/`)) return trimmed;
+  return '';
+}
+
 type WatchReminderRow = {
   id: string;
   user_id: string;
   movie_id: string;
   movie_title: string;
+  movie_poster: string | null;
   movie_year: number | null;
   remind_at: string;
 };
@@ -56,6 +68,7 @@ type FriendRecommendationReminderRow = {
   recommendation_id: string | null;
   tmdb_id: string | number | null;
   movie_title: string;
+  movie_poster: string | null;
   movie_year: number | null;
   remind_at: string | null;
 };
@@ -103,6 +116,14 @@ function normalizeSecretCandidate(value: string | null | undefined): string {
     .trim();
 }
 
+function secretsMatch(candidate: string, configured: string): boolean {
+  if (!candidate || !configured) return false;
+  const candidateBuffer = Buffer.from(candidate, 'utf8');
+  const configuredBuffer = Buffer.from(configured, 'utf8');
+  if (candidateBuffer.length !== configuredBuffer.length) return false;
+  return timingSafeEqual(candidateBuffer, configuredBuffer);
+}
+
 function getBearerToken(request: Request): string | null {
   const authHeader = request.headers.get('authorization') || request.headers.get('Authorization') || '';
   if (!authHeader) return null;
@@ -119,17 +140,13 @@ type DispatchAuth =
 async function authorizeDispatch(request: Request): Promise<DispatchAuth> {
   const configuredSecret = normalizeSecretCandidate(dispatchSecret);
   const bearerToken = getBearerToken(request);
-  const url = new URL(request.url);
 
   const headerSecret = normalizeSecretCandidate(request.headers.get('x-watch-reminder-secret'));
-  const querySecret = normalizeSecretCandidate(url.searchParams.get('secret'));
   const bearerAsSecret = normalizeSecretCandidate(bearerToken);
 
   if (
     configuredSecret &&
-    [headerSecret, querySecret, bearerAsSecret].some(
-      (candidate) => candidate && candidate === configuredSecret,
-    )
+    [headerSecret, bearerAsSecret].some((candidate) => secretsMatch(candidate, configuredSecret))
   ) {
     return { ok: true, mode: 'secret' };
   }
@@ -228,7 +245,7 @@ async function dispatchWatchReminderEmails(
 ): Promise<DispatchSummary> {
   let reminderQuery = supabase
     .from('watch_reminders')
-    .select('id,user_id,movie_id,movie_title,movie_year,remind_at')
+    .select('id,user_id,movie_id,movie_title,movie_poster,movie_year,remind_at')
     .is('canceled_at', null)
     .is('email_sent_at', null)
     .lte('remind_at', nowIso)
@@ -294,6 +311,7 @@ async function dispatchWatchReminderEmails(
       recipientName: receiverName,
       title: 'Your watch reminder is here',
       intro: 'It is time to watch your scheduled pick.',
+      posterUrl: sanitizePosterUrl(reminder.movie_poster),
       spotlightLabel: 'Scheduled Pick',
       spotlightValue: movieLabel,
       ctaLabel: 'Open on Binge it bro',
@@ -347,7 +365,7 @@ async function dispatchFriendRecommendationReminderEmails(
 ): Promise<DispatchSummary> {
   let reminderQuery = supabase
     .from('friend_recommendations')
-    .select('id,sender_id,recipient_id,recommendation_id,tmdb_id,movie_title,movie_year,remind_at,is_watched')
+    .select('id,sender_id,recipient_id,recommendation_id,tmdb_id,movie_title,movie_poster,movie_year,remind_at,is_watched')
     .not('remind_at', 'is', null)
     .is('reminder_email_sent_at', null)
     .lte('remind_at', nowIso)
@@ -425,6 +443,7 @@ async function dispatchFriendRecommendationReminderEmails(
       recipientName: receiverName,
       title: `${senderName} sent you a watch reminder`,
       intro: 'Your friend nudged you so you do not miss this title.',
+      posterUrl: sanitizePosterUrl(reminder.movie_poster),
       spotlightLabel: 'Reminder Pick',
       spotlightValue: movieLabel,
       ctaLabel: 'Open movie on Binge it bro',

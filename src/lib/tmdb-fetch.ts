@@ -1,8 +1,32 @@
 const TMDB_ORIGIN = 'https://api.themoviedb.org';
 
+type TmdbParamValue = string | number | boolean | null | undefined;
+
+function toTmdbV3Url(input: string): string {
+  if (input.startsWith('/3/')) {
+    return new URL(input, TMDB_ORIGIN).toString();
+  }
+  return input;
+}
+
+export function buildTmdbV3Url(
+  pathname: string,
+  params?: Record<string, TmdbParamValue>,
+): string {
+  const normalizedPath = pathname.startsWith('/3/') ? pathname : `/3/${pathname.replace(/^\/+/, '')}`;
+  const url = new URL(normalizedPath, TMDB_ORIGIN);
+
+  for (const [key, value] of Object.entries(params ?? {})) {
+    if (value === null || value === undefined || value === '') continue;
+    url.searchParams.set(key, String(value));
+  }
+
+  return url.toString();
+}
+
 function isTmdbV3Url(url: string): boolean {
   try {
-    const parsed = new URL(url);
+    const parsed = new URL(toTmdbV3Url(url));
     return parsed.origin === TMDB_ORIGIN && parsed.pathname.startsWith('/3/');
   } catch {
     return false;
@@ -10,7 +34,7 @@ function isTmdbV3Url(url: string): boolean {
 }
 
 function canonicalizeTmdbV3Url(url: string): string {
-  const parsed = new URL(url);
+  const parsed = new URL(toTmdbV3Url(url));
   // API key is always injected server-side in proxy route; remove it from cache key.
   parsed.searchParams.delete('api_key');
   const sorted = [...parsed.searchParams.entries()].sort(([a], [b]) => a.localeCompare(b));
@@ -64,7 +88,8 @@ type FetchTmdbOptions = {
 };
 
 export async function fetchTmdbWithProxy(url: string, init?: RequestInit, opts?: FetchTmdbOptions): Promise<Response> {
-  const isTmdbUrl = isTmdbV3Url(url);
+  const resolvedUrl = toTmdbV3Url(url);
+  const isTmdbUrl = isTmdbV3Url(resolvedUrl);
   const isBrowser = typeof window !== 'undefined';
 
   if (!isTmdbUrl) {
@@ -76,10 +101,10 @@ export async function fetchTmdbWithProxy(url: string, init?: RequestInit, opts?:
   try {
     // Use our same-origin proxy first (helps reliability + enables edge caching).
     if (isBrowser) {
-      proxyResponse = await fetch(getProxyUrl(url), init);
+      proxyResponse = await fetch(getProxyUrl(resolvedUrl), init);
     } else if (opts?.preferProxy && opts.origin) {
       const origin = opts.origin.replace(/\/+$/, '');
-      proxyResponse = await fetch(`${origin}${getProxyUrl(url)}`, init);
+      proxyResponse = await fetch(`${origin}${getProxyUrl(resolvedUrl)}`, init);
     }
     if (proxyResponse && proxyResponse.ok) return proxyResponse;
 
@@ -90,7 +115,7 @@ export async function fetchTmdbWithProxy(url: string, init?: RequestInit, opts?:
   }
 
   try {
-    const direct = await fetch(url, init);
+    const direct = await fetch(resolvedUrl, init);
     if (direct.ok) return direct;
     return proxyResponse ?? direct;
   } catch {

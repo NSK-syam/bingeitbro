@@ -2,10 +2,8 @@
 // Get your API key from: https://www.themoviedb.org/settings/api
 
 import type { OTTLink } from '@/types';
-import { fetchTmdbWithProxy } from './tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from './tmdb-fetch';
 
-const TMDB_API_KEY = process.env.NEXT_PUBLIC_TMDB_API_KEY || '';
-const TMDB_BASE_URL = 'https://api.themoviedb.org/3';
 const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
 export interface TMDBMovie {
@@ -210,14 +208,13 @@ export function formatEpisodeRuntime(runTimes: number[] | null | undefined): str
 }
 
 export async function searchMovies(query: string, page: number = 1): Promise<TMDBSearchResult | null> {
-  if (!TMDB_API_KEY) {
-    console.warn('TMDB API key not configured');
-    return null;
-  }
-
   try {
     const response = await fetchTmdbWithProxy(
-      `${TMDB_BASE_URL}/search/movie?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}&include_adult=false`
+      buildTmdbV3Url('/3/search/movie', {
+        query,
+        page,
+        include_adult: 'false',
+      })
     );
 
     if (!response.ok) {
@@ -232,14 +229,13 @@ export async function searchMovies(query: string, page: number = 1): Promise<TMD
 }
 
 export async function searchTV(query: string, page: number = 1): Promise<TMDBTVSearchResult | null> {
-  if (!TMDB_API_KEY) {
-    console.warn('TMDB API key not configured');
-    return null;
-  }
-
   try {
     const response = await fetchTmdbWithProxy(
-      `${TMDB_BASE_URL}/search/tv?api_key=${TMDB_API_KEY}&query=${encodeURIComponent(query)}&page=${page}&include_adult=false`
+      buildTmdbV3Url('/3/search/tv', {
+        query,
+        page,
+        include_adult: 'false',
+      })
     );
 
     if (!response.ok) {
@@ -254,14 +250,9 @@ export async function searchTV(query: string, page: number = 1): Promise<TMDBTVS
 }
 
 export async function getMovieDetails(movieId: number): Promise<TMDBMovieDetails | null> {
-  if (!TMDB_API_KEY) {
-    console.warn('TMDB API key not configured');
-    return null;
-  }
-
   try {
     const response = await fetchTmdbWithProxy(
-      `${TMDB_BASE_URL}/movie/${movieId}?api_key=${TMDB_API_KEY}`
+      buildTmdbV3Url(`/3/movie/${movieId}`)
     );
 
     if (!response.ok) {
@@ -276,14 +267,9 @@ export async function getMovieDetails(movieId: number): Promise<TMDBMovieDetails
 }
 
 export async function getTVDetails(tvId: number): Promise<TMDBTVDetails | null> {
-  if (!TMDB_API_KEY) {
-    console.warn('TMDB API key not configured');
-    return null;
-  }
-
   try {
     const response = await fetchTmdbWithProxy(
-      `${TMDB_BASE_URL}/tv/${tvId}?api_key=${TMDB_API_KEY}`
+      buildTmdbV3Url(`/3/tv/${tvId}`)
     );
 
     if (!response.ok) {
@@ -298,14 +284,9 @@ export async function getTVDetails(tvId: number): Promise<TMDBTVDetails | null> 
 }
 
 export async function getWatchProviders(movieId: number): Promise<TMDBWatchProviders | null> {
-  if (!TMDB_API_KEY) {
-    console.warn('TMDB API key not configured');
-    return null;
-  }
-
   try {
     const response = await fetchTmdbWithProxy(
-      `${TMDB_BASE_URL}/movie/${movieId}/watch/providers?api_key=${TMDB_API_KEY}`
+      buildTmdbV3Url(`/3/movie/${movieId}/watch/providers`)
     );
 
     if (!response.ok) {
@@ -320,14 +301,9 @@ export async function getWatchProviders(movieId: number): Promise<TMDBWatchProvi
 }
 
 export async function getTVWatchProviders(tvId: number): Promise<TMDBWatchProviders | null> {
-  if (!TMDB_API_KEY) {
-    console.warn('TMDB API key not configured');
-    return null;
-  }
-
   try {
     const response = await fetchTmdbWithProxy(
-      `${TMDB_BASE_URL}/tv/${tvId}/watch/providers?api_key=${TMDB_API_KEY}`
+      buildTmdbV3Url(`/3/tv/${tvId}/watch/providers`)
     );
 
     if (!response.ok) {
@@ -435,7 +411,7 @@ export function tmdbTVToRecommendation(
 
 // Check if TMDB is configured
 export function isTMDBConfigured(): boolean {
-  return !!TMDB_API_KEY;
+  return true;
 }
 
 // Get today's date in YYYY-MM-DD format
@@ -492,29 +468,106 @@ function mergeFlatrateProviders(
   return merged;
 }
 
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T, index: number) => Promise<R>
+): Promise<R[]> {
+  if (items.length === 0) return [];
+  const output = new Array<R>(items.length);
+  let nextIndex = 0;
+  const limit = Math.max(1, Math.min(concurrency, items.length));
+
+  await Promise.all(
+    Array.from({ length: limit }, async () => {
+      while (true) {
+        const current = nextIndex;
+        nextIndex += 1;
+        if (current >= items.length) return;
+        output[current] = await worker(items[current], current);
+      }
+    })
+  );
+
+  return output;
+}
+
 // New releases on OTT only (USA + India). 10-day window.
 export async function getNewReleasesOnStreaming(): Promise<NewRelease[]> {
-  if (!TMDB_API_KEY) {
-    console.warn('TMDB API key not configured');
-    return [];
-  }
-
   try {
     const today = getTodayDate();
     const tenDaysAgo = getDateDaysAgo(10);
 
-    const baseParamsNoRegion = `api_key=${TMDB_API_KEY}&with_watch_monetization_types=flatrate&sort_by=primary_release_date.desc&primary_release_date.gte=${tenDaysAgo}&primary_release_date.lte=${today}`;
-
     // Fetch page 1 and 2 for both USA and India (OTT only) to get more new movies
     const urls = [
-      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=US&with_original_language=${NEW_TODAY_LANGUAGES.join(',')}&page=1`,
-      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=US&with_original_language=${NEW_TODAY_LANGUAGES.join(',')}&page=2`,
-      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=US&page=1`,
-      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=US&page=2`,
-      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&with_original_language=${NEW_TODAY_LANGUAGES.join(',')}&page=1`,
-      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&with_original_language=${NEW_TODAY_LANGUAGES.join(',')}&page=2`,
-      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&page=1`,
-      `${TMDB_BASE_URL}/discover/movie?${baseParamsNoRegion}&watch_region=IN&page=2`,
+      buildTmdbV3Url('/3/discover/movie', {
+        with_watch_monetization_types: 'flatrate',
+        sort_by: 'primary_release_date.desc',
+        'primary_release_date.gte': tenDaysAgo,
+        'primary_release_date.lte': today,
+        watch_region: 'US',
+        with_original_language: NEW_TODAY_LANGUAGES.join(','),
+        page: 1,
+      }),
+      buildTmdbV3Url('/3/discover/movie', {
+        with_watch_monetization_types: 'flatrate',
+        sort_by: 'primary_release_date.desc',
+        'primary_release_date.gte': tenDaysAgo,
+        'primary_release_date.lte': today,
+        watch_region: 'US',
+        with_original_language: NEW_TODAY_LANGUAGES.join(','),
+        page: 2,
+      }),
+      buildTmdbV3Url('/3/discover/movie', {
+        with_watch_monetization_types: 'flatrate',
+        sort_by: 'primary_release_date.desc',
+        'primary_release_date.gte': tenDaysAgo,
+        'primary_release_date.lte': today,
+        watch_region: 'US',
+        page: 1,
+      }),
+      buildTmdbV3Url('/3/discover/movie', {
+        with_watch_monetization_types: 'flatrate',
+        sort_by: 'primary_release_date.desc',
+        'primary_release_date.gte': tenDaysAgo,
+        'primary_release_date.lte': today,
+        watch_region: 'US',
+        page: 2,
+      }),
+      buildTmdbV3Url('/3/discover/movie', {
+        with_watch_monetization_types: 'flatrate',
+        sort_by: 'primary_release_date.desc',
+        'primary_release_date.gte': tenDaysAgo,
+        'primary_release_date.lte': today,
+        watch_region: 'IN',
+        with_original_language: NEW_TODAY_LANGUAGES.join(','),
+        page: 1,
+      }),
+      buildTmdbV3Url('/3/discover/movie', {
+        with_watch_monetization_types: 'flatrate',
+        sort_by: 'primary_release_date.desc',
+        'primary_release_date.gte': tenDaysAgo,
+        'primary_release_date.lte': today,
+        watch_region: 'IN',
+        with_original_language: NEW_TODAY_LANGUAGES.join(','),
+        page: 2,
+      }),
+      buildTmdbV3Url('/3/discover/movie', {
+        with_watch_monetization_types: 'flatrate',
+        sort_by: 'primary_release_date.desc',
+        'primary_release_date.gte': tenDaysAgo,
+        'primary_release_date.lte': today,
+        watch_region: 'IN',
+        page: 1,
+      }),
+      buildTmdbV3Url('/3/discover/movie', {
+        with_watch_monetization_types: 'flatrate',
+        sort_by: 'primary_release_date.desc',
+        'primary_release_date.gte': tenDaysAgo,
+        'primary_release_date.lte': today,
+        watch_region: 'IN',
+        page: 2,
+      }),
     ];
     const responses = await Promise.all(urls.map(u => fetchTmdbWithProxy(u)));
     const collect = async (res: Response) => (res.ok ? (await res.json()).results || [] : []);
@@ -529,12 +582,14 @@ export async function getNewReleasesOnStreaming(): Promise<NewRelease[]> {
     const movies: NewRelease[] = allMovies.slice(0, 35);
 
     // Fetch watch providers: include if streaming in USA or India
-    const moviesWithProviders = await Promise.all(
-      movies.map(async (movie: NewRelease) => {
+    const moviesWithProviders = await mapWithConcurrency(
+      movies,
+      6,
+      async (movie: NewRelease) => {
         const providers = await getWatchProviders(movie.id);
         const merged = mergeFlatrateProviders(providers, WATCH_REGIONS);
         return { ...movie, providers: merged };
-      })
+      }
     );
 
     return moviesWithProviders.filter((m) => m.providers && m.providers.length > 0).slice(0, 15);
@@ -575,17 +630,33 @@ export function normalizeWatchProviderKey(name: string): string {
   return lower;
 }
 
-function getDirectOttLink(platformName: string, title: string): string | null {
+export function getDirectOttLink(platformName: string, title: string): string | null {
   const encodedTitle = encodeURIComponent((title || '').trim());
   if (!encodedTitle) return null;
   const lowerName = platformName.toLowerCase();
 
-  // Prime's app-oriented universal domain. This has better odds of opening
-  // the installed Prime Video app on mobile than www.primevideo.com.
-  if (lowerName.includes('prime') || lowerName.includes('amazon')) {
-    return `https://app.primevideo.com/search?phrase=${encodedTitle}`;
+  if (lowerName.includes('netflix')) return `https://www.netflix.com/search?q=${encodedTitle}`;
+  if (lowerName.includes('prime') || lowerName.includes('amazon')) return `https://app.primevideo.com/search?phrase=${encodedTitle}`;
+  if (lowerName.includes('jiohotstar')) return `https://www.jiohotstar.com/in/search?q=${encodedTitle}`;
+  if (lowerName.includes('hotstar')) return `https://www.hotstar.com/in/search?q=${encodedTitle}`;
+  if (lowerName.includes('disney')) return `https://www.disneyplus.com/search?q=${encodedTitle}`;
+  if (lowerName.includes('aha')) return `https://www.aha.video/search?q=${encodedTitle}`;
+  if (lowerName.includes('apple')) return `https://tv.apple.com/search?term=${encodedTitle}`;
+  if (lowerName.includes('zee5')) return `https://www.zee5.com/search?q=${encodedTitle}`;
+  if (lowerName.includes('sony') || lowerName.includes('sonyliv')) return `https://www.sonyliv.com/search?searchTerm=${encodedTitle}`;
+  if (lowerName.includes('jio') && (lowerName.includes('cinema') || lowerName.includes('cinema premium'))) {
+    return `https://www.jiocinema.com/search/${encodedTitle}`;
   }
-
+  if (lowerName.includes('youtube')) return `https://www.youtube.com/results?search_query=${encodedTitle}`;
+  if (lowerName.includes('hulu')) return `https://www.hulu.com/search?q=${encodedTitle}`;
+  if (lowerName === 'max' || lowerName.includes('hbo')) return `https://www.max.com/search?q=${encodedTitle}`;
+  if (lowerName.includes('peacock')) return `https://www.peacocktv.com/search?q=${encodedTitle}`;
+  if (lowerName.includes('paramount')) return `https://www.paramountplus.com/search/?q=${encodedTitle}`;
+  if (lowerName.includes('lionsgate')) return `https://www.lionsgateplay.com/search?q=${encodedTitle}`;
+  if (lowerName.includes('voot')) return `https://www.voot.com/search?q=${encodedTitle}`;
+  if (lowerName.includes('mx player')) return `https://www.mxplayer.in/search?query=${encodedTitle}`;
+  if (lowerName.includes('sun nxt')) return `https://www.sunnxt.com/search?query=${encodedTitle}`;
+  if (lowerName.includes('crunchyroll')) return `https://www.crunchyroll.com/search?q=${encodedTitle}`;
   return null;
 }
 
@@ -602,19 +673,14 @@ type ProviderRegionAny = {
 export function tmdbWatchProvidersToOttLinks(
   providers: TMDBWatchProviders | null,
   title: string,
-  tmdbId?: number,
-  mediaType: 'movie' | 'tv' = 'movie',
+  _tmdbId?: number,
+  _mediaType: 'movie' | 'tv' = 'movie',
 ): OTTLink[] {
   const results = (providers as unknown as { results?: Record<string, ProviderRegionAny> } | null)?.results;
   if (!results) return [];
 
   const regionLabels: Record<string, string> = { IN: 'India', US: 'USA' };
   const byPlatform = new Map<string, { platform: string; logoPath?: string; url?: string; regions: Set<string> }>();
-
-  const fallbackUrl =
-    typeof tmdbId === 'number'
-      ? `https://www.themoviedb.org/${mediaType === 'tv' ? 'tv' : 'movie'}/${tmdbId}/watch`
-      : `https://www.themoviedb.org/search?query=${encodeURIComponent(title)}`;
 
   for (const [region, label] of Object.entries(regionLabels)) {
     const r = results[region];
@@ -632,15 +698,12 @@ export function tmdbWatchProvidersToOttLinks(
       const key = normalizeWatchProviderKey(name);
       if (!key) continue;
       const providerDeepLink = getDirectOttLink(name, title);
+      if (!providerDeepLink) continue;
       const prev =
-        byPlatform.get(key) ?? { platform: name, regions: new Set<string>(), url: providerDeepLink ?? r.link ?? fallbackUrl };
+        byPlatform.get(key) ?? { platform: name, regions: new Set<string>(), url: providerDeepLink };
       prev.regions.add(label);
       if (!prev.logoPath && p.logo_path) prev.logoPath = p.logo_path;
-      if (providerDeepLink) {
-        prev.url = providerDeepLink;
-      } else if (!prev.url && r.link) {
-        prev.url = r.link;
-      }
+      prev.url = providerDeepLink;
       // Prefer the "cleaner" display name if we see multiple variants.
       if (prev.platform.length > name.length) prev.platform = name;
       byPlatform.set(key, prev);
@@ -651,7 +714,7 @@ export function tmdbWatchProvidersToOttLinks(
   for (const [, meta] of byPlatform.entries()) {
     links.push({
       platform: meta.platform,
-      url: meta.url ?? fallbackUrl,
+      url: meta.url!,
       availableIn: Array.from(meta.regions).join(' & '),
       logoPath: meta.logoPath,
     });
@@ -661,21 +724,56 @@ export function tmdbWatchProvidersToOttLinks(
 
 // OTT only. Popular on streaming in USA + India (recent movies).
 export async function getTrendingToday(): Promise<NewRelease[]> {
-  if (!TMDB_API_KEY) {
-    console.warn('TMDB API key not configured');
-    return [];
-  }
-
   try {
     const threeMonthsAgo = getDateDaysAgo(90);
-    const base = `api_key=${TMDB_API_KEY}&with_watch_monetization_types=flatrate&primary_release_date.gte=${threeMonthsAgo}&sort_by=popularity.desc`;
-    const ratingFilter = `&vote_average.gte=6.0&vote_count.gte=100`;
 
     const [usRecent, usIndian, inRecent, inIndian] = await Promise.all([
-      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}${ratingFilter}&watch_region=US&page=1`),
-      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}${ratingFilter}&watch_region=US&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
-      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}${ratingFilter}&watch_region=IN&page=1`),
-      fetchTmdbWithProxy(`${TMDB_BASE_URL}/discover/movie?${base}${ratingFilter}&watch_region=IN&with_original_language=${INDIAN_LANGUAGES.join('|')}&page=1`),
+      fetchTmdbWithProxy(
+        buildTmdbV3Url('/3/discover/movie', {
+          with_watch_monetization_types: 'flatrate',
+          'primary_release_date.gte': threeMonthsAgo,
+          sort_by: 'popularity.desc',
+          'vote_average.gte': 6.0,
+          'vote_count.gte': 100,
+          watch_region: 'US',
+          page: 1,
+        })
+      ),
+      fetchTmdbWithProxy(
+        buildTmdbV3Url('/3/discover/movie', {
+          with_watch_monetization_types: 'flatrate',
+          'primary_release_date.gte': threeMonthsAgo,
+          sort_by: 'popularity.desc',
+          'vote_average.gte': 6.0,
+          'vote_count.gte': 100,
+          watch_region: 'US',
+          with_original_language: INDIAN_LANGUAGES.join('|'),
+          page: 1,
+        })
+      ),
+      fetchTmdbWithProxy(
+        buildTmdbV3Url('/3/discover/movie', {
+          with_watch_monetization_types: 'flatrate',
+          'primary_release_date.gte': threeMonthsAgo,
+          sort_by: 'popularity.desc',
+          'vote_average.gte': 6.0,
+          'vote_count.gte': 100,
+          watch_region: 'IN',
+          page: 1,
+        })
+      ),
+      fetchTmdbWithProxy(
+        buildTmdbV3Url('/3/discover/movie', {
+          with_watch_monetization_types: 'flatrate',
+          'primary_release_date.gte': threeMonthsAgo,
+          sort_by: 'popularity.desc',
+          'vote_average.gte': 6.0,
+          'vote_count.gte': 100,
+          watch_region: 'IN',
+          with_original_language: INDIAN_LANGUAGES.join('|'),
+          page: 1,
+        })
+      ),
     ]);
 
     const collect = async (res: Response) => (res.ok ? (await res.json()).results || [] : []);
@@ -687,11 +785,13 @@ export async function getTrendingToday(): Promise<NewRelease[]> {
     [...inI.slice(0, 6), ...inR, ...usI.slice(0, 6), ...usR].forEach((m: NewRelease) => byId.set(m.id, m));
     const movies: NewRelease[] = Array.from(byId.values()).slice(0, 15);
 
-    const moviesWithProviders = await Promise.all(
-      movies.map(async (movie: NewRelease) => {
+    const moviesWithProviders = await mapWithConcurrency(
+      movies,
+      6,
+      async (movie: NewRelease) => {
         const providers = await getWatchProviders(movie.id);
         return { ...movie, providers: mergeFlatrateProviders(providers, WATCH_REGIONS) };
-      })
+      }
     );
 
     return moviesWithProviders.filter(m => m.providers && m.providers.length > 0).slice(0, 10);

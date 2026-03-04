@@ -5,7 +5,7 @@ import Image from 'next/image';
 import { Fragment, type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useAuth } from './AuthProvider';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { ENGLISH_THEMES, TELUGU_THEMES } from '@/lib/chat-themes';
 import {
   applyMentionTarget,
@@ -128,8 +128,6 @@ export function GroupWatchModal({
   onClose: () => void;
 }) {
   const { user } = useAuth();
-  const tmdbApiKey = (process.env.NEXT_PUBLIC_TMDB_API_KEY || '').trim();
-
   const [groups, setGroups] = useState<WatchGroup[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
@@ -546,7 +544,7 @@ export function GroupWatchModal({
   }, [clearReactionLongPress]);
 
   useEffect(() => {
-    if (!isOpen || !tmdbApiKey) return;
+    if (!isOpen) return;
     const query = pickQuery.trim();
     if (query.length < 2) {
       setSearchResults([]);
@@ -558,7 +556,11 @@ export function GroupWatchModal({
       try {
         const endpoint = mediaType === 'movie' ? 'movie' : 'tv';
         const response = await fetchTmdbWithProxy(
-          `https://api.themoviedb.org/3/search/${endpoint}?api_key=${tmdbApiKey}&query=${encodeURIComponent(query)}&page=1&include_adult=false`,
+          buildTmdbV3Url(`/3/search/${endpoint}`, {
+            query,
+            page: 1,
+            include_adult: false,
+          }),
         );
         const data = (await response.json().catch(() => ({}))) as { results?: unknown[] };
         const rows = Array.isArray(data.results) ? data.results : [];
@@ -603,7 +605,7 @@ export function GroupWatchModal({
       canceled = true;
       window.clearTimeout(timer);
     };
-  }, [isOpen, tmdbApiKey, mediaType, pickQuery]);
+  }, [isOpen, mediaType, pickQuery]);
 
   const handleCreateGroup = async () => {
     if (!user) return;
@@ -1076,11 +1078,6 @@ export function GroupWatchModal({
           </p>
         </div>
 
-        {!tmdbApiKey && (
-          <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">
-            Missing `NEXT_PUBLIC_TMDB_API_KEY`.
-          </div>
-        )}
         {error && (
           <div className="mb-4 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>
         )}

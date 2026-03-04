@@ -4,6 +4,7 @@ type BibEmailTemplateInput = {
   recipientName: string;
   title: string;
   intro: string;
+  posterUrl?: string;
   spotlightLabel?: string;
   spotlightValue?: string;
   messageLabel?: string;
@@ -18,6 +19,15 @@ function normalizeSiteUrl(siteUrl: string): string {
   return siteUrl.replace(/\/+$/, '');
 }
 
+function sanitizePosterUrl(posterUrl: string | undefined, safeSiteUrl: string): string {
+  const trimmed = String(posterUrl ?? '').trim();
+  if (!trimmed || trimmed.length > 500) return '';
+  if (trimmed.startsWith('/')) return safeSiteUrl ? `${safeSiteUrl}${trimmed}` : '';
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (trimmed.startsWith(`${safeSiteUrl}/`)) return trimmed;
+  return '';
+}
+
 export function escapeHtml(value: string): string {
   return value
     .replace(/&/g, '&amp;')
@@ -30,6 +40,7 @@ export function escapeHtml(value: string): string {
 export function buildBibEmailTemplate(input: BibEmailTemplateInput): string {
   const safeSiteUrl = normalizeSiteUrl(input.siteUrl || 'https://bingeitbro.com');
   const logoUrl = `${safeSiteUrl}/email-logo.png`;
+  const safePosterUrl = sanitizePosterUrl(input.posterUrl, safeSiteUrl);
   const safePreheader = escapeHtml(input.preheader);
   const safeRecipient = escapeHtml(input.recipientName);
   const safeTitle = escapeHtml(input.title);
@@ -42,6 +53,21 @@ export function buildBibEmailTemplate(input: BibEmailTemplateInput): string {
   const safeMessageValue = input.messageValue ? escapeHtml(input.messageValue) : '';
   const safeFooterNote = input.footerNote ? escapeHtml(input.footerNote) : '';
   const safeInboxTip = input.inboxTip ? escapeHtml(input.inboxTip) : '';
+  const posterAlt = safeSpotlightValue
+    ? `Poster for ${safeSpotlightValue}`
+    : 'Movie poster';
+
+  const posterBlock = safePosterUrl
+    ? `
+        <tr>
+          <td style="padding:0 24px 16px 24px;">
+            <div style="border:1px solid #23283b;border-radius:16px;background:#0f1322;padding:12px;">
+              <img src="${escapeHtml(safePosterUrl)}" alt="${escapeHtml(posterAlt)}" width="512" style="display:block;width:100%;max-width:512px;height:auto;border:0;outline:none;text-decoration:none;border-radius:12px;" />
+            </div>
+          </td>
+        </tr>
+      `
+    : '';
 
   const spotlightBlock =
     safeSpotlightLabel && safeSpotlightValue
@@ -113,6 +139,7 @@ export function buildBibEmailTemplate(input: BibEmailTemplateInput): string {
                 <div style="margin-top:8px;font-size:14px;line-height:1.55;color:#aeb7d3;">${safeIntro}</div>
               </td>
             </tr>
+            ${posterBlock}
             ${spotlightBlock}
             ${messageBlock}
             <tr>

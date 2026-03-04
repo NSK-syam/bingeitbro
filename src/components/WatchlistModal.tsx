@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useWatchlist } from '@/hooks';
 import Link from 'next/link';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 interface WatchlistModalProps {
   isOpen: boolean;
@@ -30,7 +30,6 @@ export function WatchlistModal({ isOpen, onClose }: WatchlistModalProps) {
 
       // Fetch movie details for items that don't have complete info
       const fetchMissingDetails = async () => {
-        const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
         const moviesWithDetails: WatchlistMovie[] = [];
 
         for (const item of items) {
@@ -42,12 +41,12 @@ export function WatchlistModal({ isOpen, onClose }: WatchlistModalProps) {
               poster: item.poster,
               addedAt: item.addedAt,
             });
-          } else if (item.id.startsWith('tmdb-') && apiKey) {
+          } else if (item.id.startsWith('tmdb-')) {
             // Fetch from TMDB
             try {
               const tmdbId = item.id.replace('tmdb-', '');
               const response = await fetchTmdbWithProxy(
-                `https://api.themoviedb.org/3/movie/${tmdbId}?api_key=${apiKey}`
+                buildTmdbV3Url(`/3/movie/${tmdbId}`)
               );
               if (response.ok) {
                 const data = await response.json();

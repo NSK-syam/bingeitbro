@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getRenderProfile } from '@/lib/render-profile';
-import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 const CACHE_KEY = 'bib-show-bg-posters-v2';
 const CACHE_TTL_MS = 6 * 60 * 60 * 1000;
@@ -52,19 +52,16 @@ export function ShowBackground() {
     const controller = new AbortController();
 
     const fetchPosters = async () => {
-      const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-      if (!apiKey) return;
-
       try {
         const queries = [
-          `https://api.themoviedb.org/3/tv/popular?api_key=${apiKey}&language=en-US&page=1`,
-          `https://api.themoviedb.org/3/tv/top_rated?api_key=${apiKey}&language=en-US&page=1`,
-          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=hi&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=te&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=ta&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=ko&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=ja&sort_by=popularity.desc&page=1`,
-          `https://api.themoviedb.org/3/discover/tv?api_key=${apiKey}&with_original_language=es&sort_by=popularity.desc&page=1`,
+          buildTmdbV3Url('/3/tv/popular', { language: 'en-US', page: 1 }),
+          buildTmdbV3Url('/3/tv/top_rated', { language: 'en-US', page: 1 }),
+          buildTmdbV3Url('/3/discover/tv', { with_original_language: 'hi', sort_by: 'popularity.desc', page: 1 }),
+          buildTmdbV3Url('/3/discover/tv', { with_original_language: 'te', sort_by: 'popularity.desc', page: 1 }),
+          buildTmdbV3Url('/3/discover/tv', { with_original_language: 'ta', sort_by: 'popularity.desc', page: 1 }),
+          buildTmdbV3Url('/3/discover/tv', { with_original_language: 'ko', sort_by: 'popularity.desc', page: 1 }),
+          buildTmdbV3Url('/3/discover/tv', { with_original_language: 'ja', sort_by: 'popularity.desc', page: 1 }),
+          buildTmdbV3Url('/3/discover/tv', { with_original_language: 'es', sort_by: 'popularity.desc', page: 1 }),
         ];
 
         const allPosters: string[] = [];

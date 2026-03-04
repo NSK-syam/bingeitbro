@@ -10,7 +10,7 @@ import { ScheduleWatchButton } from './ScheduleWatchButton';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
-import { OTT_PROVIDERS, getImageUrl, getLanguageName, getTVWatchProviders, normalizeWatchProviderKey, resolveOttProvider, tmdbWatchProvidersToOttLinks, type TMDBTV, type TMDBTVSearchResult } from '@/lib/tmdb';
+import { OTT_PROVIDERS, getDirectOttLink, getImageUrl, getLanguageName, getTVWatchProviders, normalizeWatchProviderKey, resolveOttProvider, tmdbWatchProvidersToOttLinks, type TMDBTV, type TMDBTVSearchResult } from '@/lib/tmdb';
 
 
 type TrendingShow = TMDBTV;
@@ -45,9 +45,6 @@ async function fetchShows(args: {
   ott: string;
   sort: string;
 }): Promise<TrendingShow[]> {
-  const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-  if (!apiKey) return [];
-
   const key = [
     `q:${args.searchQuery || ''}`,
     `c:${args.country}`,
@@ -89,11 +86,11 @@ async function fetchShows(args: {
 
   const urls = q
     ? [
-      `${base}/search/tv?api_key=${apiKey}&query=${encodeURIComponent(q)}&page=1&include_adult=false`,
+      `${base}/search/tv?query=${encodeURIComponent(q)}&page=1&include_adult=false`,
     ]
     : (() => {
       if (!hasFilters) {
-        const popularTvBase = `${base}/discover/tv?api_key=${apiKey}&vote_average.gte=6.0&vote_count.gte=100${recentPart}`;
+        const popularTvBase = `${base}/discover/tv?vote_average.gte=6.0&vote_count.gte=100${recentPart}`;
         return [
           `${popularTvBase}&language=en-US&sort_by=popularity.desc&page=1`,
           `${popularTvBase}&language=en-US&sort_by=vote_average.desc&page=1`,
@@ -111,7 +108,7 @@ async function fetchShows(args: {
       const langs = args.lang ? [args.lang] : defaultLangs;
       const maxPages = 4;
       const pages = Array.from({ length: maxPages }, (_, i) => i + 1);
-      const discoverBase = `${base}/discover/tv?api_key=${apiKey}&sort_by=${sortBy}${recentPart}&watch_region=${args.country}&with_watch_monetization_types=flatrate&vote_average.gte=6.0&vote_count.gte=100${genrePart}${yearPart}${ottPart}`;
+      const discoverBase = `${base}/discover/tv?sort_by=${sortBy}${recentPart}&watch_region=${args.country}&with_watch_monetization_types=flatrate&vote_average.gte=6.0&vote_count.gte=100${genrePart}${yearPart}${ottPart}`;
       const out: string[] = [];
       for (const lang of langs) {
         for (const page of pages) {
@@ -825,7 +822,18 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                 <div className="absolute bottom-12 right-3 flex items-center gap-1">
                   {providerLogos[show.id]?.logos?.length > 0 ? (
                     providerLogos[show.id].logos.slice(0, 3).map((item, idx2) => {
-                      const watchLink = providerLogos[show.id].link ?? `https://www.themoviedb.org/tv/${show.id}/watch`;
+                      const watchLink = getDirectOttLink(item.name, show.name);
+                      const content = (
+                        <div
+                          className="w-8 h-8 rounded-xl bg-[var(--bg-primary)]/90 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-lg transition-all duration-200 hover:scale-110 hover:border-[var(--accent)]/50 active:scale-95"
+                          title={watchLink ? `Watch on ${item.name}` : `${item.name} available`}
+                        >
+                          <Image src={item.url} alt={item.name} width={20} height={20} className="object-contain" />
+                        </div>
+                      );
+                      if (!watchLink) {
+                        return <div key={`${show.id}-logo-${idx2}`}>{content}</div>;
+                      }
                       return (
                         <a
                           key={`${show.id}-logo-${idx2}`}
@@ -836,9 +844,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                           className="focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-1 focus:ring-offset-black/40 rounded-xl"
                           title={`Watch on ${item.name}`}
                         >
-                          <div className="w-8 h-8 rounded-xl bg-[var(--bg-primary)]/90 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-lg transition-all duration-200 hover:scale-110 hover:border-[var(--accent)]/50 active:scale-95">
-                            <Image src={item.url} alt={item.name} width={20} height={20} className="object-contain" />
-                          </div>
+                          {content}
                         </a>
                       );
                     })

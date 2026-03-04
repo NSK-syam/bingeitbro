@@ -3,11 +3,14 @@ import "./globals.css";
 import { AuthProvider } from "@/components";
 import { HelpBotWidget } from "@/components/HelpBotWidget";
 
-// System font stack so build works without network (no Google Fonts fetch)
+// Local-first font stack so the build stays offline-safe without defaulting to generic system UI
 const fontClass = "font-sans antialiased";
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL || process.env.SITE_URL || "https://bingeitbro.com";
 const bingVerification = (process.env.NEXT_PUBLIC_BING_VERIFICATION || process.env.BING_VERIFICATION || "").trim();
 const googleVerification = (process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION || process.env.GOOGLE_SITE_VERIFICATION || "").trim();
+const analyticsWebsiteId = (process.env.NEXT_PUBLIC_DATAFAST_WEBSITE_ID || process.env.DATAFAST_WEBSITE_ID || "").trim();
+const analyticsDomain = (process.env.NEXT_PUBLIC_DATAFAST_DOMAIN || process.env.DATAFAST_DOMAIN || "").trim();
+const adsensePublisherId = (process.env.NEXT_PUBLIC_ADSENSE_PUBLISHER_ID || process.env.ADSENSE_PUBLISHER_ID || "").trim();
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -97,17 +100,21 @@ export default function RootLayout({
   return (
     <html lang="en" className="dark">
       <head>
-        <script
-          defer
-          data-website-id="dfid_5dfjhZbPNJbwF86tPGjDs"
-          data-domain="bingeitbro.com"
-          src="https://datafa.st/js/script.js"
-        />
-        <script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-2865422080937547"
-          crossOrigin="anonymous"
-        />
+        {analyticsWebsiteId && analyticsDomain ? (
+          <script
+            defer
+            data-website-id={analyticsWebsiteId}
+            data-domain={analyticsDomain}
+            src="https://datafa.st/js/script.js"
+          />
+        ) : null}
+        {adsensePublisherId ? (
+          <script
+            async
+            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsensePublisherId}`}
+            crossOrigin="anonymous"
+          />
+        ) : null}
       </head>
       <body className={fontClass}>
         <AuthProvider>

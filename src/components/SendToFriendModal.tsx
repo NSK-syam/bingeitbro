@@ -230,7 +230,8 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 if (!trimmed) return '';
                 if (trimmed.startsWith('data:')) return '';
                 if (trimmed.length > 500) return '';
-                if (!trimmed.startsWith('https://image.tmdb.org/')) return '';
+                if (trimmed.startsWith('/')) return trimmed;
+                if (!/^https?:\/\//i.test(trimmed)) return '';
                 return trimmed;
             })();
             const safeMessage = personalMessage.trim().slice(0, 200);
@@ -360,6 +361,9 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 recipient_id: rec.recipient_id,
                 movie_title: rec.movie_title,
                 movie_year: rec.movie_year ?? null,
+                movie_poster: rec.movie_poster ?? null,
+                tmdb_id: rec.tmdb_id ?? null,
+                recommendation_id: rec.recommendation_id ?? null,
                 personal_message: rec.personal_message ?? null,
             }));
             if (emailPayload.length > 0) {
