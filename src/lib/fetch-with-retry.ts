@@ -22,7 +22,14 @@ function isNetworkError(error: unknown): boolean {
 
 function backoffDelay(attempt: number, baseDelayMs: number, maxDelayMs: number): number {
   const exponential = Math.min(maxDelayMs, baseDelayMs * 2 ** attempt);
-  const jitter = Math.floor(Math.random() * 120);
+  let jitter = 0;
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const values = new Uint32Array(1);
+    crypto.getRandomValues(values);
+    jitter = values[0] % 120;
+  } else {
+    jitter = Math.floor(Math.random() * 120);
+  }
   return exponential + jitter;
 }
 

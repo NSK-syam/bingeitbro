@@ -1,7 +1,13 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 const fs = require('fs');
 const sql = fs.readFileSync('supabase-chat-themes-migration.sql', 'utf8');
-const apikey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxpeG92Z251c2pib294c2tpZ21kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk5Mjk1OTgsImV4cCI6MjA4NTUwNTU5OH0.jg3aEH1v6SPftqvGvq5cgAtAdH5Zc52REr_0JCHdN50';
-const url = 'https://lixovgnusjbooxskigmd.supabase.co';
+const apikey = (process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
+const url = (process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
+
+if (!apikey || !url) {
+  throw new Error('Missing SUPABASE_URL and/or SUPABASE_ANON_KEY environment variable');
+}
 
 async function run() {
   const commands = sql.split(';').map(s => s.trim()).filter(Boolean);

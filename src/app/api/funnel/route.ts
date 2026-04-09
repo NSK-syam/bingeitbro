@@ -4,13 +4,15 @@ export const runtime = 'nodejs';
 
 const namePattern = /^[a-z0-9_:-]{2,80}$/;
 const keyPattern = /^[a-zA-Z0-9_.-]{1,60}$/;
+const blockedKeys = new Set(['__proto__', 'constructor', 'prototype']);
 
 function sanitizeProps(input: unknown): Record<string, string | number | boolean | null> {
   if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
 
-  const out: Record<string, string | number | boolean | null> = {};
+  const out = Object.create(null) as Record<string, string | number | boolean | null>;
 
   for (const [key, value] of Object.entries(input as Record<string, unknown>)) {
+    if (blockedKeys.has(key)) continue;
     if (!keyPattern.test(key)) continue;
     if (value === null || value === undefined) {
       out[key] = null;

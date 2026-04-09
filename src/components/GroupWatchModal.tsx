@@ -258,6 +258,17 @@ export function GroupWatchModal({
         : [],
     [groupMentionTargets, chatMentionQuery, user?.id],
   );
+  const mentionDisplayNameByHandle = useMemo(() => {
+    const next = new Map<string, string>();
+    for (const target of groupMentionTargets) {
+      const handle = mentionHandle(target).toLowerCase();
+      const displayName = target.name?.trim() || target.username?.trim() || 'member';
+      if (handle && !next.has(handle)) {
+        next.set(handle, displayName);
+      }
+    }
+    return next;
+  }, [groupMentionTargets]);
 
   const baselineMemberCount = useMemo(
     () => Math.max(1, activeGroup?.memberCount ?? 0, members.length),
@@ -960,6 +971,13 @@ export function GroupWatchModal({
     });
   }, [chatMessage, chatMentionQuery]);
 
+  const resolveMentionDisplayText = useCallback((text: string) => {
+    if (!text.startsWith('@')) return text;
+    const handle = text.slice(1).toLowerCase();
+    const displayName = mentionDisplayNameByHandle.get(handle);
+    return displayName ? `@${displayName}` : text;
+  }, [mentionDisplayNameByHandle]);
+
   const renderMessageBody = useCallback((value: string) => (
     <>
       {splitMentionSegments(value).map((segment, index) => (
@@ -967,11 +985,17 @@ export function GroupWatchModal({
           key={`mention-segment-${index}-${segment.mention ? 'm' : 't'}`}
           className={segment.mention ? 'font-semibold text-cyan-200' : undefined}
         >
-          {segment.text}
+          {segment.mention ? resolveMentionDisplayText(segment.text) : segment.text}
         </span>
       ))}
     </>
-  ), []);
+  ), [resolveMentionDisplayText]);
+
+  const renderMessagePreviewText = useCallback((value: string) => {
+    return splitMentionSegments(value)
+      .map((segment) => (segment.mention ? resolveMentionDisplayText(segment.text) : segment.text))
+      .join('');
+  }, [resolveMentionDisplayText]);
 
   const handleSendChatMessage = async () => {
     if (!activeGroupId || !user) return;
@@ -1705,8 +1729,9 @@ export function GroupWatchModal({
                           ? chatMessages.find((m) => m.id === message.replyToId)
                           : null;
                         const replyText = replyMessage?.body.trim()
-                          || replyMessage?.sharedMovie?.title
-                          || 'Attachment';
+                          ? renderMessagePreviewText(replyMessage.body.trim())
+                          : replyMessage?.sharedMovie?.title
+                            || 'Attachment';
                         return (
                           <Fragment key={message.id}>
                             {showDaySeparator && (
@@ -1868,7 +1893,9 @@ export function GroupWatchModal({
                             Replying to {replyingToMessage.mine ? 'yourself' : replyingToMessage.senderName || 'member'}
                           </p>
                           <p className="text-xs text-[var(--text-muted)] line-clamp-1">
-                            {replyingToMessage.body.trim() || replyingToMessage.sharedMovie?.title || 'Attachment'}
+                            {replyingToMessage.body.trim()
+                              ? renderMessagePreviewText(replyingToMessage.body.trim())
+                              : replyingToMessage.sharedMovie?.title || 'Attachment'}
                           </p>
                         </div>
                         <button

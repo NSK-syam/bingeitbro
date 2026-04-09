@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { startTransition, useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { Header } from '@/components/Header';
 import { HubTabs } from '@/components/HubTabs';
@@ -15,7 +15,6 @@ import { MovieCalendarSpotlightPopup } from '@/components/MovieCalendarSpotlight
 import { ValentineHeartsBurst } from '@/components/ValentineHeartsBurst';
 import { RecommendationToast } from '@/components/RecommendationToast';
 import { CountryToggle } from '@/components/CountryToggle';
-import { AdDisplayUnit } from '@/components/AdDisplayUnit';
 import { useAuth } from '@/components/AuthProvider';
 import { Recommendation, Recommender, OTTLink } from '@/types';
 import { useWatched, useNudges, useWatchlist, useCountry } from '@/hooks';
@@ -29,7 +28,9 @@ import {
   getMyWatchGroups,
 } from '@/lib/supabase-rest';
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
+import { isNativeIosReviewMode } from '@/lib/native-webview';
 import data from '@/data/recommendations.json';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
 
 const SubmitRecommendation = dynamic(
   () => import('@/components/SubmitRecommendation').then((mod) => mod.SubmitRecommendation),
@@ -107,11 +108,58 @@ const getLocalMonthDay = () => {
   return `${month}-${day}`;
 };
 
+function looksLikeAvatarPath(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim().toLowerCase();
+  return (
+    trimmed.startsWith('/avatars/') ||
+    trimmed.includes('.jpg') ||
+    trimmed.includes('.jpeg') ||
+    trimmed.includes('.png') ||
+    trimmed.includes('.webp')
+  );
+}
+
+function getRecommenderDisplayName(person: Recommender): string {
+  const rawName = (person.name || '').trim();
+  if (rawName && !looksLikeAvatarPath(rawName)) return rawName;
+  return 'Friend';
+}
+
+function renderRecommenderAvatar(avatar: string | undefined, label: string) {
+  const trimmed = (avatar || '').trim();
+
+  if (looksLikeAvatarPath(trimmed)) {
+    return (
+      <img
+        src={trimmed}
+        alt=""
+        className="h-8 w-8 rounded-full object-cover object-top border border-white/10 bg-[var(--bg-card)]"
+      />
+    );
+  }
+
+  if (trimmed) {
+    return (
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-card)] text-sm leading-none">
+        {trimmed}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-card)] text-xs font-semibold text-[var(--text-primary)]">
+      {label.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
 export default function MoviesHome() {
   const staticRecommendations = data.recommendations as Recommendation[];
   const { watchedState, isWatched } = useWatched();
   const { getWatchlistCount } = useWatchlist();
   const { user, loading: authLoading } = useAuth();
+  const iosReviewMode = useIosReviewMode();
   const [country, setCountry] = useCountry();
 
   const [friendsRecommendations, setFriendsRecommendations] = useState<Recommendation[]>([]);
@@ -148,6 +196,7 @@ export default function MoviesHome() {
     count: number;
   } | null>(null);
   const prevUserIdRef = useRef<string | null>(null);
+  const isReviewModeFetchBlocked = () => (typeof window !== 'undefined' ? isNativeIosReviewMode() : iosReviewMode);
 
   const displayName = useMemo(() => {
     if (!user) return '';
@@ -171,17 +220,20 @@ export default function MoviesHome() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const dayKey = getLocalDayKey();
-    const storedDay = safeLocalStorageGet('cinema-chudu-hero-day');
-    let visitCount = Number(safeLocalStorageGet('cinema-chudu-hero-visit') || '0');
-    if (storedDay !== dayKey) {
-      visitCount = 0;
-      safeLocalStorageSet('cinema-chudu-hero-day', dayKey);
-    }
-    visitCount += 1;
-    safeLocalStorageSet('cinema-chudu-hero-visit', String(visitCount));
-    const dayIndex = getLocalDayIndex();
-    setVisitIndex((dayIndex + visitCount) % HERO_LINES.length);
+
+    queueMicrotask(() => {
+      const dayKey = getLocalDayKey();
+      const storedDay = safeLocalStorageGet('cinema-chudu-hero-day');
+      let visitCount = Number(safeLocalStorageGet('cinema-chudu-hero-visit') || '0');
+      if (storedDay !== dayKey) {
+        visitCount = 0;
+        safeLocalStorageSet('cinema-chudu-hero-day', dayKey);
+      }
+      visitCount += 1;
+      safeLocalStorageSet('cinema-chudu-hero-visit', String(visitCount));
+      const dayIndex = getLocalDayIndex();
+      setVisitIndex((dayIndex + visitCount) % HERO_LINES.length);
+    });
   }, []);
 
   const heroLine = useMemo(() => {
@@ -245,7 +297,7 @@ export default function MoviesHome() {
 
   // Fetch user's friends and received "Send to Friend" recs — Friends view shows direct sends only
   const fetchFriendsData = useCallback(async () => {
-    if (!user) {
+    if (!user || isReviewModeFetchBlocked()) {
       setUserFriends([]);
       setFriendsRecommendations([]);
       return;
@@ -316,25 +368,34 @@ export default function MoviesHome() {
       setUserFriends([]);
       setFriendsRecommendations([]);
     }
-  }, [user]);
+  }, [iosReviewMode, user]);
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    fetchFriendsData();
+    queueMicrotask(() => {
+      void fetchFriendsData();
+    });
   }, [fetchFriendsData]);
 
   // Refetch friends when switching to Friends view so list matches Manage Friends
   useEffect(() => {
+    if (isReviewModeFetchBlocked()) return;
     if (activeView === 'friends' && user) {
-      fetchFriendsData();
+      queueMicrotask(() => {
+        void fetchFriendsData();
+      });
     }
-  }, [activeView, user, fetchFriendsData]);
+  }, [activeView, fetchFriendsData, iosReviewMode, user]);
 
   // Load initial unread count so friend sees badge when they open the app
   useEffect(() => {
-    if (!user) return;
+    if (!user || isReviewModeFetchBlocked()) {
+      startTransition(() => {
+        setFriendRecommendationsCount(0);
+      });
+      return;
+    }
     getFriendRecommendationsUnreadCount(user.id).then(setFriendRecommendationsCount);
-  }, [user]);
+  }, [iosReviewMode, user]);
 
   const refreshScheduledWatchCount = useCallback(async () => {
     if (!user) {
@@ -352,7 +413,7 @@ export default function MoviesHome() {
   }, [user]);
 
   const refreshGroupWatchCount = useCallback(async () => {
-    if (!user) {
+    if (!user || isReviewModeFetchBlocked()) {
       setGroupWatchCount(0);
       return;
     }
@@ -368,14 +429,18 @@ export default function MoviesHome() {
     } catch {
       setGroupWatchCount(0);
     }
-  }, [user]);
+  }, [iosReviewMode, user]);
 
   useEffect(() => {
     if (!user) {
-      setScheduledWatchCount(0);
+      startTransition(() => {
+        setScheduledWatchCount(0);
+      });
       return;
     }
-    void refreshScheduledWatchCount();
+    queueMicrotask(() => {
+      void refreshScheduledWatchCount();
+    });
     const interval = window.setInterval(() => {
       void refreshScheduledWatchCount();
     }, 60000);
@@ -384,10 +449,14 @@ export default function MoviesHome() {
 
   useEffect(() => {
     if (!user) {
-      setGroupWatchCount(0);
+      startTransition(() => {
+        setGroupWatchCount(0);
+      });
       return;
     }
-    void refreshGroupWatchCount();
+    queueMicrotask(() => {
+      void refreshGroupWatchCount();
+    });
     const interval = window.setInterval(() => {
       void refreshGroupWatchCount();
     }, 60000);
@@ -397,13 +466,15 @@ export default function MoviesHome() {
   useEffect(() => {
     // When modal closes (and it may mark groups as seen), refresh badge.
     if (!showGroupWatch) {
-      void refreshGroupWatchCount();
+      queueMicrotask(() => {
+        void refreshGroupWatchCount();
+      });
     }
   }, [showGroupWatch, refreshGroupWatchCount]);
 
   // Lightweight polling for new friend recommendations (toast notification)
   useEffect(() => {
-    if (!user) return;
+    if (!user || isReviewModeFetchBlocked()) return;
     let canceled = false;
     const storageKey = `bib-last-rec-notify-${user.id}`;
 
@@ -442,7 +513,21 @@ export default function MoviesHome() {
       canceled = true;
       window.clearInterval(interval);
     };
-  }, [user]);
+  }, [iosReviewMode, user]);
+
+  useEffect(() => {
+    if (!iosReviewMode) return;
+    startTransition(() => {
+      setActiveView('trending');
+      setFriendsDropdownOpen(false);
+      setFilterPanelOpen(false);
+      setShowFriendsManager(false);
+      setShowNudges(false);
+      setShowFriendRecommendations(false);
+      setShowGroupWatch(false);
+      setRecToast(null);
+    });
+  }, [iosReviewMode]);
 
   // Handle deep links from push notifications (/?view=friends)
   useEffect(() => {
@@ -620,12 +705,12 @@ export default function MoviesHome() {
         onSearch={setSearchQuery}
         onLoginClick={() => setShowAuthModal(true)}
         onWatchlistClick={() => setShowWatchlist(true)}
-        onNudgesClick={() => setShowNudges(true)}
-        onFriendRecommendationsClick={() => setShowFriendRecommendations(true)}
+        onNudgesClick={iosReviewMode ? undefined : () => setShowNudges(true)}
+        onFriendRecommendationsClick={iosReviewMode ? undefined : () => setShowFriendRecommendations(true)}
         onAddClick={() => setShowSubmitModal(true)}
-        nudgeCount={nudgeCount}
+        nudgeCount={iosReviewMode ? 0 : nudgeCount}
         watchlistCount={getWatchlistCount()}
-        friendRecommendationsCount={friendRecommendationsCount}
+        friendRecommendationsCount={iosReviewMode ? 0 : friendRecommendationsCount}
       />
       {user && activeView !== 'friends' && <HubTabs placement="center" />}
 
@@ -636,7 +721,7 @@ export default function MoviesHome() {
         initialError={authErrorFromRedirect ? 'Sign-in was cancelled or failed. Add https://bingeitbro.com/auth/callback to Supabase Auth → URL Configuration → Redirect URLs, and set NEXT_PUBLIC_SUPABASE_* env vars on Cloudflare. Then try again.' : undefined}
       />
 
-      {recToast && (
+      {!iosReviewMode && recToast && (
         <RecommendationToast
           senderName={recToast.senderName}
           movieTitle={recToast.movieTitle}
@@ -657,15 +742,16 @@ export default function MoviesHome() {
       />
 
       {/* Friends Manager Modal */}
-      <FriendsManager
-        isOpen={showFriendsManager}
-        onClose={() => {
-          setShowFriendsManager(false);
-          // Sync friends list so "Friends" view shows same count as Manage Friends
-          handleFriendsChange();
-        }}
-        onFriendsChange={handleFriendsChange}
-      />
+      {!iosReviewMode && (
+        <FriendsManager
+          isOpen={showFriendsManager}
+          onClose={() => {
+            setShowFriendsManager(false);
+            handleFriendsChange();
+          }}
+          onFriendsChange={handleFriendsChange}
+        />
+      )}
 
       {/* Watchlist Modal */}
       <WatchlistModal
@@ -674,31 +760,39 @@ export default function MoviesHome() {
       />
 
       {/* Nudges Modal */}
-      <NudgesModal
-        isOpen={showNudges}
-        onClose={() => setShowNudges(false)}
-      />
+      {!iosReviewMode && (
+        <NudgesModal
+          isOpen={showNudges}
+          onClose={() => setShowNudges(false)}
+        />
+      )}
 
       {/* Friend Recommendations Modal */}
-      <FriendRecommendationsModal
-        isOpen={showFriendRecommendations}
-        onClose={() => setShowFriendRecommendations(false)}
-        onCountChange={setFriendRecommendationsCount}
-      />
+      {!iosReviewMode && (
+        <FriendRecommendationsModal
+          isOpen={showFriendRecommendations}
+          onClose={() => setShowFriendRecommendations(false)}
+          onCountChange={setFriendRecommendationsCount}
+        />
+      )}
 
-      <BingeCalculatorModal
-        isOpen={showBingeCalculator}
-        onClose={() => setShowBingeCalculator(false)}
-      />
+      {!iosReviewMode && (
+        <BingeCalculatorModal
+          isOpen={showBingeCalculator}
+          onClose={() => setShowBingeCalculator(false)}
+        />
+      )}
       <ScheduleWatchModal
         isOpen={showScheduleWatch}
         onClose={() => setShowScheduleWatch(false)}
         onScheduled={refreshScheduledWatchCount}
       />
-      <GroupWatchModal
-        isOpen={showGroupWatch}
-        onClose={() => setShowGroupWatch(false)}
-      />
+      {!iosReviewMode && (
+        <GroupWatchModal
+          isOpen={showGroupWatch}
+          onClose={() => setShowGroupWatch(false)}
+        />
+      )}
       {user && (
         <MovieCalendarSpotlightPopup
           userId={user.id}
@@ -724,9 +818,11 @@ export default function MoviesHome() {
                 {heroLine}
               </h2>
               <p className="text-[var(--text-secondary)] max-w-2xl mx-auto mb-6">
-                Recommendations from friends who actually know your taste. No algorithms, just good vibes and great stories.
+                {iosReviewMode
+                  ? 'Browse what to watch next, save picks to your watchlist, and schedule reminders without endless scrolling.'
+                  : 'Recommendations from friends who actually know your taste. No algorithms, just good vibes and great stories.'}
               </p>
-              {user && activeView === 'friends' && filmstripItems.length > 0 && (
+              {user && !iosReviewMode && activeView === 'friends' && filmstripItems.length > 0 && (
                 <div className="bib-filmstrip" aria-label="Friends filmstrip">
                   <div className="bib-filmstrip-track">
                     {filmstripItems.concat(filmstripItems).map((item, index) => (
@@ -739,7 +835,7 @@ export default function MoviesHome() {
               )}
 
               {/* Watch Progress - only show in Friends view */}
-              {activeView === 'friends' && friendsRecommendations.length > 0 && (
+              {!iosReviewMode && activeView === 'friends' && friendsRecommendations.length > 0 && (
                 <div className="flex items-center justify-center">
                   <button
                     type="button"
@@ -776,40 +872,38 @@ export default function MoviesHome() {
               )}
             </div>
 
-            <div className="mb-8">
-              <AdDisplayUnit className="mx-auto max-w-3xl" />
-            </div>
-
             {/* Main feature row */}
             <div className="mb-6 rounded-3xl border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.03),rgba(255,255,255,0.01))] p-2.5 shadow-[0_18px_42px_rgba(0,0,0,0.22)] sm:flex sm:items-start sm:justify-between sm:gap-3">
               <div className="flex flex-wrap items-center gap-2 sm:flex-1">
               {/* Friends toggles between the friends feed and the default latest/trending view */}
-              <button
-                onClick={() => setActiveView((current) => (current === 'friends' ? 'trending' : 'friends'))}
-                className={[
-                  'h-11 px-5 rounded-full inline-flex items-center gap-2',
-                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
-                  'text-sm font-semibold',
-                  'transition-all select-none',
-                  'backdrop-blur-xl border shadow-[0_10px_30px_rgba(0,0,0,0.28)]',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
-                  activeView === 'friends'
-                    ? 'bg-gradient-to-r from-cyan-300 to-blue-500 text-[#0a1222] border-cyan-200 shadow-[0_14px_40px_rgba(59,130,246,0.3)]'
-                    : 'bg-gradient-to-r from-cyan-500/25 to-blue-600/25 text-cyan-100 border-cyan-300/30 hover:from-cyan-400/35 hover:to-blue-500/35 hover:text-cyan-50',
-                  'active:scale-[0.99]',
-                ].join(' ')}
-                aria-pressed={activeView === 'friends'}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                </svg>
-                Friends
-                {userFriends.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[var(--bg-primary)]/25 border border-white/10">
-                    {userFriends.length}
-                  </span>
-                )}
-              </button>
+              {!iosReviewMode && (
+                <button
+                  onClick={() => setActiveView((current) => (current === 'friends' ? 'trending' : 'friends'))}
+                  className={[
+                    'bib-ios-review-hidden h-11 px-5 rounded-full inline-flex items-center gap-2',
+                    'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
+                    'text-sm font-semibold',
+                    'transition-all select-none',
+                    'backdrop-blur-xl border shadow-[0_10px_30px_rgba(0,0,0,0.28)]',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                    activeView === 'friends'
+                      ? 'bg-gradient-to-r from-cyan-300 to-blue-500 text-[#0a1222] border-cyan-200 shadow-[0_14px_40px_rgba(59,130,246,0.3)]'
+                      : 'bg-gradient-to-r from-cyan-500/25 to-blue-600/25 text-cyan-100 border-cyan-300/30 hover:from-cyan-400/35 hover:to-blue-500/35 hover:text-cyan-50',
+                    'active:scale-[0.99]',
+                  ].join(' ')}
+                  aria-pressed={activeView === 'friends'}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                  </svg>
+                  Friends
+                  {userFriends.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-[var(--bg-primary)]/25 border border-white/10">
+                      {userFriends.length}
+                    </span>
+                  )}
+                </button>
+              )}
 
               <Link
                 href="/admin-picks"
@@ -832,24 +926,26 @@ export default function MoviesHome() {
               </Link>
 
               {/* Binge Calculator */}
-              <button
-                onClick={() => setShowBingeCalculator(true)}
-                className={[
-                  'h-11 px-5 rounded-full inline-flex items-center gap-2',
-                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
-                  'text-sm font-semibold',
-                  'transition-all select-none',
-                  'bg-gradient-to-r from-violet-600/35 to-fuchsia-600/35 text-fuchsia-100 border border-fuchsia-300/30 backdrop-blur-xl shadow-[0_10px_30px_rgba(124,58,237,0.28)]',
-                  'hover:from-violet-500/45 hover:to-fuchsia-500/45 hover:text-fuchsia-50 hover:border-fuchsia-200/45',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
-                  'active:scale-[0.99]',
-                ].join(' ')}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                Binge Calculator
-              </button>
+              {!iosReviewMode && (
+                <button
+                  onClick={() => setShowBingeCalculator(true)}
+                  className={[
+                    'bib-ios-review-hidden h-11 px-5 rounded-full inline-flex items-center gap-2',
+                    'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
+                    'text-sm font-semibold',
+                    'transition-all select-none',
+                    'bg-gradient-to-r from-violet-600/35 to-fuchsia-600/35 text-fuchsia-100 border border-fuchsia-300/30 backdrop-blur-xl shadow-[0_10px_30px_rgba(124,58,237,0.28)]',
+                    'hover:from-violet-500/45 hover:to-fuchsia-500/45 hover:text-fuchsia-50 hover:border-fuchsia-200/45',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                    'active:scale-[0.99]',
+                  ].join(' ')}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Binge Calculator
+                </button>
+              )}
 
               {/* Schedule Watch */}
               <button
@@ -876,55 +972,59 @@ export default function MoviesHome() {
                 )}
               </button>
 
-              <button
-                onClick={() => setShowGroupWatch(true)}
-                className={[
-                  'h-11 px-5 rounded-full inline-flex items-center gap-2 relative',
-                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
-                  'text-sm font-semibold',
-                  'transition-all select-none',
-                  'bg-gradient-to-r from-indigo-500/40 to-fuchsia-600/40 text-indigo-100 border border-indigo-300/35 backdrop-blur-xl shadow-[0_10px_30px_rgba(99,102,241,0.26)]',
-                  'hover:from-indigo-400/50 hover:to-fuchsia-500/50 hover:text-indigo-50 hover:border-indigo-200/45',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
-                  'active:scale-[0.99]',
-                ].join(' ')}
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-                Group Watch
-                {groupWatchCount > 0 && (
-                  <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-200 text-[#071018] text-xs font-bold flex items-center justify-center border border-indigo-50/80 shadow-sm">
-                    {groupWatchCount > 99 ? '99+' : groupWatchCount}
-                  </span>
-                )}
-              </button>
+              {!iosReviewMode && (
+                <button
+                  onClick={() => setShowGroupWatch(true)}
+                  className={[
+                    'bib-ios-review-hidden h-11 px-5 rounded-full inline-flex items-center gap-2 relative',
+                    'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
+                    'text-sm font-semibold',
+                    'transition-all select-none',
+                    'bg-gradient-to-r from-indigo-500/40 to-fuchsia-600/40 text-indigo-100 border border-indigo-300/35 backdrop-blur-xl shadow-[0_10px_30px_rgba(99,102,241,0.26)]',
+                    'hover:from-indigo-400/50 hover:to-fuchsia-500/50 hover:text-indigo-50 hover:border-indigo-200/45',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                    'active:scale-[0.99]',
+                  ].join(' ')}
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Group Watch
+                  {groupWatchCount > 0 && (
+                    <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-200 text-[#071018] text-xs font-bold flex items-center justify-center border border-indigo-50/80 shadow-sm">
+                      {groupWatchCount > 99 ? '99+' : groupWatchCount}
+                    </span>
+                  )}
+                </button>
+              )}
 
               {/* Weekly Trivia */}
-              <Link
-                href="/trivia"
-                className={[
-                  'h-11 px-5 rounded-full inline-flex items-center gap-2',
-                  'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
-                  'text-sm font-semibold',
-                  'transition-all select-none',
-                  'bg-gradient-to-r from-emerald-500/40 to-lime-500/35 text-emerald-50 border border-emerald-200/30 backdrop-blur-xl shadow-[0_10px_30px_rgba(16,185,129,0.22)]',
-                  'hover:from-emerald-400/50 hover:to-lime-400/45 hover:text-white hover:border-emerald-100/55',
-                  'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
-                  'active:scale-[0.99]',
-                ].join(' ')}
-                title="Weekly trivia (10 questions)"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M8 10a4 4 0 118 0c0 2-2 2-2 4m-4 0h4m-6 6h8"
-                  />
-                </svg>
-                Weekly Trivia
-              </Link>
+              {!iosReviewMode && (
+                <Link
+                  href="/trivia"
+                  className={[
+                    'bib-ios-review-hidden h-11 px-5 rounded-full inline-flex items-center gap-2',
+                    'justify-center sm:justify-start basis-[calc(50%-0.25rem)] sm:basis-auto',
+                    'text-sm font-semibold',
+                    'transition-all select-none',
+                    'bg-gradient-to-r from-emerald-500/40 to-lime-500/35 text-emerald-50 border border-emerald-200/30 backdrop-blur-xl shadow-[0_10px_30px_rgba(16,185,129,0.22)]',
+                    'hover:from-emerald-400/50 hover:to-lime-400/45 hover:text-white hover:border-emerald-100/55',
+                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--bg-primary)]',
+                    'active:scale-[0.99]',
+                  ].join(' ')}
+                  title="Weekly trivia (10 questions)"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M8 10a4 4 0 118 0c0 2-2 2-2 4m-4 0h4m-6 6h8"
+                    />
+                  </svg>
+                  Weekly Trivia
+                </Link>
+              )}
 
                   {isValentinesDay && (
                 <button
@@ -959,7 +1059,7 @@ export default function MoviesHome() {
         )}
 
         {/* Friends page: pill row — Friends list | Add Friends | Filters (like image) */}
-        {user && activeView === 'friends' && (
+        {user && !iosReviewMode && activeView === 'friends' && (
           <div className="flex flex-wrap items-center gap-2 mb-6">
             {/* 1. Friends list — pill, opens dropdown */}
             <div className="relative" ref={friendsDropdownRef}>
@@ -1002,17 +1102,20 @@ export default function MoviesHome() {
                   </button>
                   {[...userFriends]
                     .sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { sensitivity: 'base' }))
-                    .map((person) => (
-                    <Link
-                      key={person.id}
-                      href={`/profile/${person.id}`}
-                      onClick={() => setFriendsDropdownOpen(false)}
-                      className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-2 text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
-                    >
-                      <span>{person.avatar}</span>
-                      <span className="truncate">{person.name}</span>
-                    </Link>
-                  ))}
+                    .map((person) => {
+                      const label = getRecommenderDisplayName(person);
+                      return (
+                        <Link
+                          key={person.id}
+                          href={`/profile/${person.id}`}
+                          onClick={() => setFriendsDropdownOpen(false)}
+                          className="w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 text-[var(--text-primary)] hover:bg-[var(--bg-card)]"
+                        >
+                          {renderRecommenderAvatar(person.avatar, label)}
+                          <span className="truncate">{label}</span>
+                        </Link>
+                      );
+                    })}
                 </div>
               )}
             </div>
@@ -1109,7 +1212,7 @@ export default function MoviesHome() {
         )}
 
         {/* Show Trending or Friend Recommendations based on activeView */}
-        {(!user || activeView === 'trending') ? (
+        {(iosReviewMode || !user || activeView === 'trending') ? (
           <>
             <TrendingMovies searchQuery={searchQuery} country={country} />
           </>
@@ -1175,12 +1278,16 @@ export default function MoviesHome() {
             BiB • Binge it bro
           </p>
           <p className="text-xs text-[var(--text-muted)] mt-2">
-            Sign in to share your favorite movie recommendations with friends
+            {iosReviewMode
+              ? 'Browse titles, save them to your watchlist, and schedule reminders.'
+              : 'Sign in to share your favorite movie recommendations with friends'}
           </p>
           <div className="flex flex-wrap justify-center gap-3 mt-4 text-xs text-[var(--text-muted)]">
             <Link href="/privacy" className="hover:text-[var(--text-secondary)] transition-colors">Privacy Policy</Link>
             <span className="opacity-30">|</span>
             <Link href="/terms" className="hover:text-[var(--text-secondary)] transition-colors">Terms of Service</Link>
+            <span className="opacity-30">|</span>
+            <Link href="/support" className="hover:text-[var(--text-secondary)] transition-colors">Support</Link>
             <span className="opacity-30">|</span>
             <Link href="/cookies" className="hover:text-[var(--text-secondary)] transition-colors">Cookies</Link>
             <span className="opacity-30">|</span>

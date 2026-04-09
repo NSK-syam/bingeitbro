@@ -1,5 +1,6 @@
 -- Push notifications schema for BiB
 -- Run this in Supabase SQL Editor.
+-- For the Expo native app shell, also run supabase-native-push-schema.sql.
 
 create extension if not exists pg_net;
 create extension if not exists pgcrypto;

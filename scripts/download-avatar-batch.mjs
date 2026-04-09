@@ -7,8 +7,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.join(__dirname, '../.env.local') });
 
-const apiKey = process.env.NEXT_PUBLIC_TMDB_API_KEY;
-if (!apiKey) throw new Error('Missing NEXT_PUBLIC_TMDB_API_KEY');
+const apiKey = process.env.TMDB_API_KEY || process.env.NEXT_PUBLIC_TMDB_API_KEY;
+if (!apiKey) throw new Error('Missing TMDB_API_KEY');
 
 const baseDir = path.join(__dirname, '..', 'public', 'avatars');
 

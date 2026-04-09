@@ -3,6 +3,11 @@ import { NextResponse } from 'next/server';
 export const runtime = 'nodejs';
 
 type AppleSong = { artworkUrl100?: string | null };
+type AppleSongsFeed = {
+  feed?: {
+    results?: AppleSong[];
+  };
+};
 
 function toBiggerArtwork(url: string): string {
   return url.replace(/\/100x100bb\.jpg$/i, '/300x300bb.jpg');
@@ -14,7 +19,7 @@ async function fetchAppleMostPlayed(country: string, limit: number): Promise<str
   const url = `https://rss.marketingtools.apple.com/api/v2/${safeCountry}/music/most-played/${safeLimit}/songs.json`;
   const res = await fetch(url, { next: { revalidate: 60 * 60 } }); // 1h
   if (!res.ok) return [];
-  const json = (await res.json().catch(() => null)) as any;
+  const json = (await res.json().catch(() => null)) as AppleSongsFeed | null;
   const results = json?.feed?.results;
   const list: AppleSong[] = Array.isArray(results) ? results : [];
   const out: string[] = [];

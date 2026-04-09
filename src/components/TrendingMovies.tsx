@@ -1,12 +1,14 @@
 'use client';
 
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { startTransition, useEffect, useState, useMemo, useRef, useCallback } from 'react';
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import { SendToFriendModal } from './SendToFriendModal';
 import { useAuth } from './AuthProvider';
-import { getDirectOttLink, getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, normalizeWatchProviderKey, resolveOttProvider, type TMDBWatchProviders } from '@/lib/tmdb';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
+import { buildOttLaunchHref } from '@/lib/ott-launch';
+import { getDirectOttTarget, getWatchProviders, GENRE_LIST, OTT_PROVIDERS, OTT_TO_LANGUAGES, normalizeWatchProviderKey, resolveOttProvider, type TMDBWatchProviders } from '@/lib/tmdb';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
 
@@ -27,6 +29,7 @@ interface TrendingMovie {
 
 const CACHE_TTL_MS = 5 * 60 * 1000;
 const trendingCache = new Map<string, { movies: TrendingMovie[]; upcoming: Record<string, TrendingMovie[]>; ts: number }>();
+const TRENDING_STORAGE_PREFIX = 'bib-trending-cache:v1:';
 const PROVIDER_CACHE_TTL_MS = 60 * 60 * 1000;
 export type ProviderLogoItem = { url: string; name: string };
 const providerCache = new Map<string, { logos: ProviderLogoItem[]; link?: string; hasOtt: boolean; ts: number }>();
@@ -71,6 +74,46 @@ const dedupeLogos = (items: ProviderLogoItem[]) => {
   }
   return out;
 };
+
+function readPersistentTrendingCache(cacheKey: string) {
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const raw = window.localStorage.getItem(`${TRENDING_STORAGE_PREFIX}${cacheKey}`);
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as {
+      movies?: TrendingMovie[];
+      upcoming?: Record<string, TrendingMovie[]>;
+      ts?: number;
+    };
+
+    if (!parsed || !Array.isArray(parsed.movies) || typeof parsed.ts !== 'number') {
+      return null;
+    }
+
+    return {
+      movies: parsed.movies,
+      upcoming: parsed.upcoming ?? {},
+      ts: parsed.ts,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writePersistentTrendingCache(
+  cacheKey: string,
+  payload: { movies: TrendingMovie[]; upcoming: Record<string, TrendingMovie[]>; ts: number },
+) {
+  if (typeof window === 'undefined') return;
+
+  try {
+    window.localStorage.setItem(`${TRENDING_STORAGE_PREFIX}${cacheKey}`, JSON.stringify(payload));
+  } catch {
+    // Ignore storage quota / availability failures; in-memory cache still works.
+  }
+}
 
 const extractProviderMeta = (
   providers: TMDBWatchProviders | null | undefined,
@@ -154,6 +197,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
   const router = useRouter();
   const pathname = usePathname();
   const { user } = useAuth();
+  const iosReviewMode = useIosReviewMode();
 
   const [movies, setMovies] = useState<TrendingMovie[]>([]);
   const [comingSoonByLang, setComingSoonByLang] = useState<Record<string, TrendingMovie[]>>({});
@@ -167,11 +211,23 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
   const [heroIndex, setHeroIndex] = useState(0);
   const [pauseHeroAutoSlide, setPauseHeroAutoSlide] = useState(false);
   const filterRef = useRef<HTMLDivElement>(null);
+  const moviesRef = useRef<TrendingMovie[]>([]);
+  const comingSoonByLangRef = useRef<Record<string, TrendingMovie[]>>({});
+
+  useEffect(() => {
+    moviesRef.current = movies;
+  }, [movies]);
+
+  useEffect(() => {
+    comingSoonByLangRef.current = comingSoonByLang;
+  }, [comingSoonByLang]);
 
   useEffect(() => {
     // Country affects watch providers; reset derived states so UI updates immediately.
-    setProviderLogos({});
-    setStreamingStatus({});
+    startTransition(() => {
+      setProviderLogos({});
+      setStreamingStatus({});
+    });
   }, [country]);
 
   // Filter params from URL
@@ -234,18 +290,39 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
     async function loadMovies() {
       setLoading(true);
       setError('');
+      const cacheKey = [
+        country,
+        searchQuery.trim(),
+        selectedLang,
+        selectedGenre,
+        selectedYear,
+        selectedOtt,
+        sortParam,
+      ].join('|');
+      const cached = trendingCache.get(cacheKey);
+      const persistentCached = readPersistentTrendingCache(cacheKey);
+      const restoreVisibleContent = (message: string) => {
+        const fallbackMovies = moviesRef.current.length > 0
+          ? moviesRef.current
+          : (cached?.movies ?? persistentCached?.movies ?? []);
+        const fallbackUpcoming = Object.keys(comingSoonByLangRef.current).length > 0
+          ? comingSoonByLangRef.current
+          : (cached?.upcoming ?? persistentCached?.upcoming ?? {});
+
+        if (fallbackMovies.length > 0) {
+          setMovies(fallbackMovies);
+          setComingSoonByLang(fallbackUpcoming);
+          setError('');
+          return true;
+        }
+
+        setMovies([]);
+        setComingSoonByLang({});
+        setError(message);
+        return false;
+      };
 
       try {
-        const cacheKey = [
-          country,
-          searchQuery.trim(),
-          selectedLang,
-          selectedGenre,
-          selectedYear,
-          selectedOtt,
-          sortParam,
-        ].join('|');
-        const cached = trendingCache.get(cacheKey);
         if (
           cached &&
           Date.now() - cached.ts < CACHE_TTL_MS &&
@@ -253,6 +330,17 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
         ) {
           setMovies(cached.movies);
           setComingSoonByLang(cached.upcoming);
+          setLoading(false);
+          return;
+        }
+
+        if (
+          persistentCached &&
+          Date.now() - persistentCached.ts < CACHE_TTL_MS &&
+          persistentCached.movies.length > 0
+        ) {
+          setMovies(persistentCached.movies);
+          setComingSoonByLang(persistentCached.upcoming);
           setLoading(false);
           return;
         }
@@ -396,9 +484,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
 
           const upcomingResponses = await Promise.all(upcomingPromises);
           if (upcomingResponses.some((r) => r.status === 429)) {
-            setError('TMDB is rate limiting right now. Please wait a minute and refresh.');
-            setMovies([]);
-            setComingSoonByLang({});
+            restoreVisibleContent('TMDB is rate limiting right now. Please wait a minute and refresh.');
             setLoading(false);
             return;
           }
@@ -443,9 +529,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             for (const pageCount of releasedPagePlan) {
               const releasedResponses = await fetchReleasedResponses(windowStartDate, pageCount);
               if (releasedResponses.some((r) => r.status === 429)) {
-                setError('TMDB is rate limiting right now. Please wait a minute and refresh.');
-                setMovies([]);
-                setComingSoonByLang({});
+                restoreVisibleContent('TMDB is rate limiting right now. Please wait a minute and refresh.');
                 setLoading(false);
                 return;
               }
@@ -512,9 +596,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
               )
             );
             if (relaxedResponses.some((r) => r.status === 429)) {
-              setError('TMDB is rate limiting right now. Please wait a minute and refresh.');
-              setMovies([]);
-              setComingSoonByLang({});
+              restoreVisibleContent('TMDB is rate limiting right now. Please wait a minute and refresh.');
               setLoading(false);
               return;
             }
@@ -571,11 +653,13 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
 
         setMovies(allMovies);
 
-        trendingCache.set(cacheKey, { movies: allMovies, upcoming: upcomingByLang, ts: Date.now() });
+        const nextCacheEntry = { movies: allMovies, upcoming: upcomingByLang, ts: Date.now() };
+        trendingCache.set(cacheKey, nextCacheEntry);
+        writePersistentTrendingCache(cacheKey, nextCacheEntry);
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
       } catch (err: any) {
         if (err.name !== 'AbortError') {
-          setError('Failed to fetch');
+          restoreVisibleContent('Couldn’t refresh right now. Please try again.');
         }
       }
 
@@ -602,7 +686,9 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
   // For search results: determine OTT vs streaming soon (USA/India) (USA/India)
   useEffect(() => {
     if (!searchQuery.trim() || movies.length === 0) {
-      setStreamingStatus({});
+      startTransition(() => {
+        setStreamingStatus({});
+      });
       return;
     }
     const controller = new AbortController();
@@ -1140,7 +1226,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
       </div>
 
       {/* Error message */}
-      {error && (
+      {error && movies.length === 0 && (
         <div className="text-center py-4 text-red-400 text-sm">{error}</div>
       )}
 
@@ -1159,8 +1245,9 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                 href={`/movie/tmdb-${movie.id}${selectedLang ? `?from=${selectedLang}` : ''}`}
                 scroll={false}
                 prefetch={false}
-                draggable
+                draggable={!iosReviewMode}
                 onDragStart={(event) => {
+                  if (iosReviewMode) return;
                   const releaseYear = Number.parseInt(movie.release_date?.split('-')[0] || '', 10);
                   const payload = JSON.stringify({
                     mediaType: 'movie',
@@ -1216,24 +1303,27 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                   <div className="absolute bottom-12 right-3 flex items-center gap-1">
                     {providerLogos[movie.id]?.logos?.length > 0 ? (
                       dedupeLogos(providerLogos[movie.id].logos).slice(0, 3).map((item, idx) => {
-                        const watchLink = getDirectOttLink(item.name, movie.title);
+                        const watchTarget = getDirectOttTarget(item.name, movie.title);
                         const content = (
                           <div
                             className="w-8 h-8 rounded-xl bg-[var(--bg-primary)]/90 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-lg transition-all duration-200 hover:scale-110 hover:border-[var(--accent)]/50 hover:shadow-[var(--accent)]/20 hover:shadow-md active:scale-95"
-                            title={watchLink ? `Watch on ${item.name} (opens in new tab)` : `${item.name} available`}
+                            title={watchTarget ? `Watch on ${item.name}` : `${item.name} available`}
                           >
                             <Image src={item.url} alt={item.name} width={20} height={20} className="object-contain" />
                           </div>
                         );
-                        if (!watchLink) {
+                        if (!watchTarget) {
                           return <div key={`${movie.id}-logo-${idx}`}>{content}</div>;
                         }
                         return (
                           <a
                             key={`${movie.id}-logo-${idx}`}
-                            href={watchLink}
-                            target="_blank"
-                            rel="noopener noreferrer"
+                            href={buildOttLaunchHref({
+                              platform: item.name,
+                              url: watchTarget.browserUrl,
+                              browserUrl: watchTarget.browserUrl,
+                              appUrl: watchTarget.appUrl,
+                            })}
                             onClick={(e) => e.stopPropagation()}
                             className="focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-1 focus:ring-offset-[var(--bg-primary)] rounded-xl"
                           >
@@ -1271,7 +1361,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                     {movie.release_date?.split('-')[0] || 'TBA'} • {langInfo.name}
                   </p>
                   {/* Send to Friend button - only for authenticated users */}
-                  {user && (
+                  {user && !iosReviewMode ? (
                     <button
                       onClick={(e) => {
                         e.preventDefault();
@@ -1286,7 +1376,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
                       </svg>
                       Send
                     </button>
-                  )}
+                  ) : null}
                 </div>
               </Link>
             );
@@ -1319,7 +1409,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
 
       {/* Send to Friend Modal */}
       {
-        sendModalMovie && (
+        sendModalMovie && !iosReviewMode ? (
           <SendToFriendModal
             isOpen={!!sendModalMovie}
             onClose={() => setSendModalMovie(null)}
@@ -1329,7 +1419,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
             movieYear={parseInt(sendModalMovie.release_date?.split('-')[0] || '0')}
             tmdbId={String(sendModalMovie.id)}
           />
-        )
+        ) : null
       }
     </div >
   );

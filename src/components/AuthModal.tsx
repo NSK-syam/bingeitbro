@@ -1,10 +1,11 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { trackFunnelEvent } from '@/lib/funnel';
-import { hasNativeAuthBridge } from '@/lib/native-webview';
+import { hasNativeAuthBridge, isNativeAppShell, isNativeAppleSignInSupported } from '@/lib/native-webview';
 
 declare global {
   interface Window {
@@ -75,13 +76,15 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
   const [birthMonth, setBirthMonth] = useState('');
   const [birthYear, setBirthYear] = useState('');
   const [inAppBrowser, setInAppBrowser] = useState(false);
+  const [nativeAuthBridge, setNativeAuthBridge] = useState(false);
+  const [nativeAppShell, setNativeAppShell] = useState(false);
   const [captchaToken, setCaptchaToken] = useState('');
   const [captchaLoading, setCaptchaLoading] = useState(false);
   const [captchaError, setCaptchaError] = useState('');
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
-  const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
+  const { signIn, signUp, signInWithGoogle, signInWithApple, checkUsernameAvailable } = useAuth();
 
   useEffect(() => {
     if (isOpen && initialError) setError(initialError);
@@ -141,8 +144,28 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
     setInAppBrowser(isLikelyInAppBrowser(window.navigator.userAgent || ''));
   }, []);
 
-  const nativeAuthBridge = hasNativeAuthBridge();
-  const blockGoogleInBrowser = inAppBrowser && !nativeAuthBridge;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncNativeState = () => {
+      setNativeAuthBridge(hasNativeAuthBridge());
+      setNativeAppShell(isNativeAppShell());
+    };
+
+    syncNativeState();
+    const intervalId = window.setInterval(syncNativeState, 250);
+    const stopPollingId = window.setTimeout(() => window.clearInterval(intervalId), 4000);
+    window.addEventListener('bib-native-shell', syncNativeState);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(stopPollingId);
+      window.removeEventListener('bib-native-shell', syncNativeState);
+    };
+  }, []);
+
+  const blockGoogleInBrowser = inAppBrowser && !nativeAuthBridge && !nativeAppShell;
+  const showAppleSignIn = isNativeAppleSignInSupported();
 
   // Debounced username check
   useEffect(() => {
@@ -206,21 +229,25 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
           return;
         }
 
-        const y = Number(birthYear);
-        const m = Number(birthMonth);
-        const d = Number(birthDay);
-        if (!y || !m || !d) {
-          setError('Please select your birthday (day, month, year)');
-          setLoading(false);
-          return;
+        let birthdate: string | null = null;
+        const hasBirthdayInput = Boolean(birthYear || birthMonth || birthDay);
+        if (hasBirthdayInput) {
+          const y = Number(birthYear);
+          const m = Number(birthMonth);
+          const d = Number(birthDay);
+          if (!y || !m || !d) {
+            setError('Complete all birthday fields or leave them blank');
+            setLoading(false);
+            return;
+          }
+          const dt = new Date(Date.UTC(y, m - 1, d));
+          if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+            setError('Please select a valid birthday');
+            setLoading(false);
+            return;
+          }
+          birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         }
-        const dt = new Date(Date.UTC(y, m - 1, d));
-        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
-          setError('Please select a valid birthday');
-          setLoading(false);
-          return;
-        }
-        const birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
         if (turnstileSiteKey && !captchaToken) {
           setError('Please complete the verification challenge.');
@@ -255,7 +282,23 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
       setLoading(false);
       trackFunnelEvent('oauth_error', { source: 'auth_modal', mode, message: error.message.slice(0, 120) });
     } else {
+      setLoading(false);
       trackFunnelEvent('oauth_redirect_started', { source: 'auth_modal', mode });
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setError('');
+    setLoading(true);
+    trackFunnelEvent('oauth_start', { source: 'auth_modal', mode, provider: 'apple' });
+    const { error } = await signInWithApple();
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      trackFunnelEvent('oauth_error', { source: 'auth_modal', mode, provider: 'apple', message: error.message.slice(0, 120) });
+    } else {
+      setLoading(false);
+      trackFunnelEvent('oauth_redirect_started', { source: 'auth_modal', mode, provider: 'apple' });
     }
   };
 
@@ -340,6 +383,16 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
                   Open in Browser
                 </button>
               </div>
+            )}
+
+            {showAppleSignIn && (
+              <button
+                onClick={handleAppleSignIn}
+                disabled={loading}
+                className="mb-3 w-full py-3 px-4 bg-black text-white font-medium rounded-xl hover:bg-zinc-900 transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Continue with Apple
+              </button>
             )}
 
             {/* Google Sign In */}
@@ -460,13 +513,12 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
               </div>
 
               <div>
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Birthday</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Birthday <span className="text-[var(--text-muted)]/70">(optional)</span></label>
                 <div className="grid grid-cols-3 gap-2">
                   <select
                     value={birthDay}
                     onChange={(e) => setBirthDay(e.target.value)}
                     className="w-full px-3 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
-                    required
                   >
                     <option value="">Day</option>
                     {Array.from({ length: 31 }, (_, i) => String(i + 1)).map((v) => (
@@ -477,7 +529,6 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
                     value={birthMonth}
                     onChange={(e) => setBirthMonth(e.target.value)}
                     className="w-full px-3 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
-                    required
                   >
                     <option value="">Month</option>
                     {[
@@ -490,7 +541,6 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
                     value={birthYear}
                     onChange={(e) => setBirthYear(e.target.value)}
                     className="w-full px-3 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
-                    required
                   >
                     <option value="">Year</option>
                     {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => String(new Date().getFullYear() - i)).map((v) => (
@@ -593,6 +643,19 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
           >
             {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
           </button>
+          {mode === 'signup' && (
+            <p className="text-xs leading-relaxed text-[var(--text-muted)]">
+              By creating an account, you agree to our{' '}
+              <Link href="/terms" className="text-[var(--accent)] hover:underline">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link href="/privacy" className="text-[var(--accent)] hover:underline">
+                Privacy Policy
+              </Link>
+              .
+            </p>
+          )}
         </form>
         )}
 

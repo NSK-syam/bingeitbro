@@ -8,9 +8,11 @@ import { useAuth } from './AuthProvider';
 import { SendToFriendModal } from './SendToFriendModal';
 import { ScheduleWatchButton } from './ScheduleWatchButton';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
+import { buildOttLaunchHref } from '@/lib/ott-launch';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
-import { OTT_PROVIDERS, getDirectOttLink, getImageUrl, getLanguageName, getTVWatchProviders, normalizeWatchProviderKey, resolveOttProvider, tmdbWatchProvidersToOttLinks, type TMDBTV, type TMDBTVSearchResult } from '@/lib/tmdb';
+import { OTT_PROVIDERS, getDirectOttTarget, getImageUrl, getLanguageName, getTVWatchProviders, normalizeWatchProviderKey, resolveOttProvider, tmdbWatchProvidersToOttLinks, type TMDBTV, type TMDBTVSearchResult } from '@/lib/tmdb';
 
 
 type TrendingShow = TMDBTV;
@@ -168,6 +170,7 @@ interface TrendingShowsProps {
 
 export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShowsProps) {
   const { user } = useAuth();
+  const iosReviewMode = useIosReviewMode();
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
@@ -788,8 +791,9 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
               key={show.id}
               href={href}
               prefetch={false}
-              draggable
+              draggable={!iosReviewMode}
               onDragStart={(event) => {
+                if (iosReviewMode) return;
                 const payload = JSON.stringify({
                   mediaType: 'show',
                   tmdbId: String(show.id),
@@ -822,24 +826,27 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                 <div className="absolute bottom-12 right-3 flex items-center gap-1">
                   {providerLogos[show.id]?.logos?.length > 0 ? (
                     providerLogos[show.id].logos.slice(0, 3).map((item, idx2) => {
-                      const watchLink = getDirectOttLink(item.name, show.name);
+                      const watchTarget = getDirectOttTarget(item.name, show.name);
                       const content = (
                         <div
                           className="w-8 h-8 rounded-xl bg-[var(--bg-primary)]/90 border-2 border-white/20 flex items-center justify-center overflow-hidden shadow-lg transition-all duration-200 hover:scale-110 hover:border-[var(--accent)]/50 active:scale-95"
-                          title={watchLink ? `Watch on ${item.name}` : `${item.name} available`}
+                          title={watchTarget ? `Watch on ${item.name}` : `${item.name} available`}
                         >
                           <Image src={item.url} alt={item.name} width={20} height={20} className="object-contain" />
                         </div>
                       );
-                      if (!watchLink) {
+                      if (!watchTarget) {
                         return <div key={`${show.id}-logo-${idx2}`}>{content}</div>;
                       }
                       return (
                         <a
                           key={`${show.id}-logo-${idx2}`}
-                          href={watchLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
+                          href={buildOttLaunchHref({
+                            platform: item.name,
+                            url: watchTarget.browserUrl,
+                            browserUrl: watchTarget.browserUrl,
+                            appUrl: watchTarget.appUrl,
+                          })}
                           onClick={(e) => e.stopPropagation()}
                           className="focus:outline-none focus:ring-2 focus:ring-[var(--accent)] focus:ring-offset-1 focus:ring-offset-black/40 rounded-xl"
                           title={`Watch on ${item.name}`}
@@ -853,26 +860,28 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                   ) : null}
                 </div>
 
-                <button
-                  type="button"
-                  className="absolute top-2 right-2 z-10 h-9 w-9 rounded-full bg-black/55 border border-white/10 text-white grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Send to friend"
-                  onClick={async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    if (!user) return;
-                    try {
-                      const recommendationId = await ensureSeriesRecommendationId(show);
-                      setSendModal({ title: show.name, poster, year, recommendationId });
-                    } catch (err) {
-                      console.error(err);
-                    }
-                  }}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                </button>
+                {!iosReviewMode ? (
+                  <button
+                    type="button"
+                    className="absolute top-2 right-2 z-10 h-9 w-9 rounded-full bg-black/55 border border-white/10 text-white grid place-items-center opacity-0 group-hover:opacity-100 transition-opacity"
+                    title="Send to friend"
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (!user) return;
+                      try {
+                        const recommendationId = await ensureSeriesRecommendationId(show);
+                        setSendModal({ title: show.name, poster, year, recommendationId });
+                      } catch (err) {
+                        console.error(err);
+                      }
+                    }}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                  </button>
+                ) : null}
               </div>
 
               <div className="p-3">
@@ -882,28 +891,30 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                   <span className="text-[var(--accent)] font-semibold">{(show.vote_average ?? 0).toFixed(1)}</span>
                 </div>
                 {/* Send to Friend button - visible (mobile-friendly) */}
-                {user && (
+                {user ? (
                   <div className="mt-2 flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={async (e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        try {
-                          const recommendationId = await ensureSeriesRecommendationId(show);
-                          setSendModal({ title: show.name, poster, year, recommendationId });
-                        } catch (err) {
-                          console.error(err);
-                        }
-                      }}
-                      className="flex-1 text-xs px-2 py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
-                      title="Send to friend"
-                    >
-                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                      </svg>
-                      Send to Friend
-                    </button>
+                    {!iosReviewMode ? (
+                      <button
+                        type="button"
+                        onClick={async (e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          try {
+                            const recommendationId = await ensureSeriesRecommendationId(show);
+                            setSendModal({ title: show.name, poster, year, recommendationId });
+                          } catch (err) {
+                            console.error(err);
+                          }
+                        }}
+                        className="flex-1 text-xs px-2 py-1.5 rounded-lg flex items-center justify-center gap-1 transition-all bg-blue-500/20 text-blue-400 hover:bg-blue-500/30"
+                        title="Send to friend"
+                      >
+                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                        </svg>
+                        Send to Friend
+                      </button>
+                    ) : null}
                     <ScheduleWatchButton
                       movieId={`show::tmdbtv-${show.id}`}
                       movieTitle={show.name}
@@ -912,14 +923,14 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
                       size="sm"
                     />
                   </div>
-                )}
+                ) : null}
               </div>
             </Link>
           );
         })}
       </div>
 
-      {sendModal && (
+      {sendModal && !iosReviewMode ? (
         <SendToFriendModal
           isOpen={true}
           onClose={() => setSendModal(null)}
@@ -929,7 +940,7 @@ export function TrendingShows({ searchQuery = '', country = 'IN' }: TrendingShow
           movieYear={sendModal.year}
           recommendationId={sendModal.recommendationId}
         />
-      )}
+      ) : null}
     </>
   );
 }

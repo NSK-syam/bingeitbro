@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server';
 import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
+import { dispatchPushNotification } from '@/lib/server/push-dispatch';
+import { moderateUserGeneratedText } from '@/lib/server/content-safety';
+import { createSupabaseAdminClient, getBlockRelationship, type UserBlockCache } from '@/lib/server/user-blocks';
 
 /**
  * Insert friend recommendations directly via Supabase REST.
@@ -13,6 +16,8 @@ const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '').trim()
 const serviceRoleKey = (process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SERVICE_ROLE_KEY ?? '').trim();
 const useServiceRole = serviceRoleKey.split('.').length === 3;
 const SUPABASE_FETCH_OPTIONS = { timeoutMs: 9000, retries: 1, retryDelayMs: 300 } as const;
+const FRIEND_VALIDATION_UNAVAILABLE_MESSAGE = 'Unable to verify friend access right now. Please try again.';
+const USER_SAFETY_CHECKS_UNAVAILABLE_MESSAGE = 'Recommendation safety checks are unavailable right now. Please try again.';
 
 function getBearerToken(request: Request): string | null {
   const header = request.headers.get('authorization') || request.headers.get('Authorization');
@@ -67,10 +72,19 @@ export async function POST(request: Request) {
     if (!authRes.ok) {
       return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
     }
-    const user = (await authRes.json().catch(() => null)) as { id?: string } | null;
+    const user = (await authRes.json().catch(() => null)) as {
+      id?: string;
+      email?: string | null;
+      user_metadata?: { name?: string | null; full_name?: string | null } | null;
+    } | null;
     if (!user?.id) {
       return NextResponse.json({ message: 'Not authenticated' }, { status: 401 });
     }
+    const senderName =
+      user.user_metadata?.name?.trim() ||
+      user.user_metadata?.full_name?.trim() ||
+      user.email?.split('@')[0]?.trim() ||
+      'Someone';
 
     const toInsert: RecRow[] = [];
     for (let i = 0; i < Math.min(raw.length, 50); i++) {
@@ -82,6 +96,17 @@ export async function POST(request: Request) {
       const movie_title = String(r.movie_title ?? '').trim().slice(0, 200);
       if (sender_id !== user.id || !recipient_id || !movie_title) continue;
       const poster = String(r.movie_poster ?? '').trim().slice(0, 500);
+      const personalMessageInput = String(r.personal_message ?? '').trim().slice(0, 200);
+      let personalMessage = '';
+      try {
+        personalMessage = personalMessageInput
+          ? moderateUserGeneratedText(personalMessageInput, { fieldLabel: 'note' }).slice(0, 200)
+          : '';
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'This note contains language that is not allowed.';
+        return NextResponse.json({ message }, { status: 400 });
+      }
+
       toInsert.push({
         sender_id,
         recipient_id,
@@ -96,7 +121,7 @@ export async function POST(request: Request) {
           return poster;
         })(),
         movie_year: typeof r.movie_year === 'number' ? r.movie_year : null,
-        personal_message: String(r.personal_message ?? '').trim().slice(0, 200),
+        personal_message: personalMessage,
         remind_at: (() => {
           const raw = String(r.remind_at ?? '').trim();
           if (!raw) return null;
@@ -128,11 +153,54 @@ export async function POST(request: Request) {
           },
           SUPABASE_FETCH_OPTIONS,
         );
-        if (friendsRes.ok) {
-          const friends = (await friendsRes.json().catch(() => [])) as { friend_id?: string }[];
-          const allowedIds = new Set(friends.map((row) => row.friend_id).filter(Boolean) as string[]);
-          allowed = toInsert.filter((r) => allowedIds.has(r.recipient_id));
+        if (!friendsRes.ok) {
+          console.error('[send-friend-recommendations] friend validation failed', {
+            status: friendsRes.status,
+            statusText: friendsRes.statusText,
+          });
+          return NextResponse.json(
+            { message: FRIEND_VALIDATION_UNAVAILABLE_MESSAGE },
+            { status: 503 },
+          );
         }
+
+        const friends = (await friendsRes.json().catch(() => null)) as { friend_id?: string }[] | null;
+        if (!Array.isArray(friends)) {
+          console.error('[send-friend-recommendations] friend validation returned invalid payload');
+          return NextResponse.json(
+            { message: FRIEND_VALIDATION_UNAVAILABLE_MESSAGE },
+            { status: 503 },
+          );
+        }
+
+        const allowedIds = new Set(friends.map((row) => row.friend_id).filter(Boolean) as string[]);
+        allowed = toInsert.filter((r) => allowedIds.has(r.recipient_id));
+      }
+    }
+
+    if (allowed.length > 0) {
+      let admin;
+      try {
+        admin = createSupabaseAdminClient();
+      } catch (error) {
+        console.error('[send-friend-recommendations] safety checks unavailable', error);
+        return NextResponse.json(
+          { message: USER_SAFETY_CHECKS_UNAVAILABLE_MESSAGE },
+          { status: 503 },
+        );
+      }
+      const blockCache: UserBlockCache = new Map();
+      const blockedRecipientIds = new Set<string>();
+
+      for (const recipientId of [...new Set(allowed.map((row) => row.recipient_id))]) {
+        const relationship = await getBlockRelationship(admin, user.id, recipientId, blockCache);
+        if (relationship.blockedByCurrentUser || relationship.blockedByTargetUser) {
+          blockedRecipientIds.add(recipientId);
+        }
+      }
+
+      if (blockedRecipientIds.size > 0) {
+        allowed = allowed.filter((row) => !blockedRecipientIds.has(row.recipient_id));
       }
     }
 
@@ -161,6 +229,7 @@ export async function POST(request: Request) {
     let sent = 0;
     const sentRecipientIds: string[] = [];
     const duplicateRecipientIds: string[] = [];
+    const pushDispatches: Array<Promise<void>> = [];
 
     const tryInsert = async (row: RecRow): Promise<{ ok: boolean; code: string; message: string }> => {
       const insertBody: InsertRow = {
@@ -221,13 +290,42 @@ export async function POST(request: Request) {
         const userMessage =
           lastCode === 'XX000' || /out of memory/i.test(lastMessage)
             ? 'Server is busy. Please try again in a moment.'
-            : row.remind_at && /remind_at|schema cache|column/i.test(lastMessage)
-              ? 'Reminder columns are missing in Supabase. Run supabase-friend-recommendation-reminders.sql and try again.'
-              : 'Something went wrong. Please try again.';
-        return NextResponse.json({ message: userMessage, code: lastCode }, { status: 500 });
+            : 'Something went wrong. Please try again.';
+        return NextResponse.json({ message: userMessage }, { status: 500 });
       }
       sent += 1;
       sentRecipientIds.push(row.recipient_id);
+
+      const moviePath = row.tmdb_id != null
+        ? `/movie/tmdb-${encodeURIComponent(String(row.tmdb_id))}`
+        : row.recommendation_id
+          ? `/movie/${encodeURIComponent(String(row.recommendation_id))}`
+          : '/?view=friends';
+      const preview = row.personal_message
+        ? `${row.movie_title}: ${row.personal_message}`.slice(0, 220)
+        : `Sent you a recommendation: ${row.movie_title}`.slice(0, 220);
+
+      pushDispatches.push((async () => {
+        try {
+          const pushResult = await dispatchPushNotification({
+            userIds: [row.recipient_id],
+            category: 'recommendation',
+            title: `New recommendation from ${senderName}`,
+            body: preview,
+            url: moviePath,
+            tag: `friend-rec-${row.recipient_id}-${row.tmdb_id ?? row.recommendation_id ?? row.movie_title}`,
+          });
+          if (!pushResult.ok && !pushResult.skipped) {
+            console.error('[send-friend-recommendations] push dispatch failed', pushResult.message);
+          }
+        } catch (error) {
+          console.error('[send-friend-recommendations] push dispatch failed', error);
+        }
+      })());
+    }
+
+    if (pushDispatches.length > 0) {
+      await Promise.allSettled(pushDispatches);
     }
 
     return NextResponse.json(

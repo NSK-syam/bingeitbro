@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { safeLocalStorageSet } from '@/lib/safe-storage';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
 
 type HubKey = 'movies' | 'shows' | 'songs';
 type Placement = 'top' | 'center';
@@ -49,11 +50,13 @@ export function HubTabs({
   size?: Size;
 }) {
   const pathname = usePathname();
+  const iosReviewMode = useIosReviewMode();
   const active = ((): HubKey => {
     if (pathname?.startsWith('/shows')) return 'shows';
     if (pathname?.startsWith('/songs')) return 'songs';
     return 'movies';
   })();
+  const visibleHubs = iosReviewMode ? HUBS.filter((hub) => hub.key !== 'songs') : HUBS;
 
   const wrapClass =
     placement === 'center'
@@ -68,7 +71,7 @@ export function HubTabs({
   return (
     <nav className={wrapClass}>
       <div className={pillClass}>
-        {HUBS.map((hub) => {
+        {visibleHubs.map((hub) => {
           const isActive = hub.key === active;
           const style = TAB_STYLES[hub.key];
           return (

@@ -11,9 +11,11 @@ const ENABLED = process.env.NEXT_PUBLIC_ENABLE_FUNNEL_METRICS === 'true';
 
 function randomId(length = 18): string {
   const alphabet = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const randomValues = new Uint32Array(length);
+  crypto.getRandomValues(randomValues);
   let out = '';
   for (let i = 0; i < length; i += 1) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    out += alphabet[randomValues[i] % alphabet.length];
   }
   return out;
 }
@@ -27,8 +29,10 @@ function getSessionId(): string {
 }
 
 function sanitizeProps(props: FunnelProps): Record<string, string | number | boolean | null> {
-  const clean: Record<string, string | number | boolean | null> = {};
+  const clean = Object.create(null) as Record<string, string | number | boolean | null>;
+  const blockedKeys = new Set(['__proto__', 'constructor', 'prototype']);
   for (const [key, value] of Object.entries(props)) {
+    if (blockedKeys.has(key)) continue;
     if (!/^[a-zA-Z0-9_.-]{1,60}$/.test(key)) continue;
     if (value === null || value === undefined) {
       clean[key] = null;

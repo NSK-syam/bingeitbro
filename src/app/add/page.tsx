@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
+import { IosReviewAccessGuard } from '@/components';
 import {
   searchMovies,
   getMovieDetails,
@@ -119,7 +120,8 @@ export default function AddMoviePage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)]">
+    <IosReviewAccessGuard fallbackHref="/movies">
+      <div className="min-h-screen bg-[var(--bg-primary)]">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-[var(--bg-primary)]/80 backdrop-blur-xl border-b border-white/5">
         <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -430,6 +432,7 @@ export default function AddMoviePage() {
           </div>
         )}
       </main>
-    </div>
+      </div>
+    </IosReviewAccessGuard>
   );
 }

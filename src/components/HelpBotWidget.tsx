@@ -33,6 +33,7 @@ import {
   type WatchGroupMember,
   type WatchGroupMessage,
   type WatchGroupSharedMovie,
+  submitSafetyReport,
 } from '@/lib/supabase-rest';
 import { ENGLISH_THEMES, TELUGU_THEMES } from '@/lib/chat-themes';
 
@@ -76,7 +77,15 @@ type MessageActionMenuTarget = {
   messageId: string;
 };
 
-type MessageActionKind = 'reply' | 'react' | 'pin' | 'forward' | 'copy' | 'delete' | 'select';
+type MessageActionKind = 'reply' | 'react' | 'report' | 'pin' | 'forward' | 'copy' | 'delete' | 'select';
+
+type MessageReportTarget = {
+  kind: ChatTab;
+  messageId: string;
+  targetUserId: string;
+  groupId: string | null;
+  preview: string;
+};
 
 const OWNER_CHANGE_EVENT = 'bib-chat-shortcut-owner-change';
 let activeWidgetInstances: symbol[] = [];
@@ -220,6 +229,12 @@ export function HelpBotWidget() {
   const [messageActionMenu, setMessageActionMenu] = useState<MessageActionMenuTarget | null>(null);
   const [reactingMessageId, setReactingMessageId] = useState<string | null>(null);
   const [chatActionToast, setChatActionToast] = useState('');
+  const [messageReportTarget, setMessageReportTarget] = useState<MessageReportTarget | null>(null);
+  const [messageReportReason, setMessageReportReason] = useState('harassment');
+  const [messageReportDetails, setMessageReportDetails] = useState('');
+  const [messageReportSaving, setMessageReportSaving] = useState(false);
+  const [messageReportError, setMessageReportError] = useState('');
+  const [messageReportSuccess, setMessageReportSuccess] = useState('');
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedMessageKeys, setSelectedMessageKeys] = useState<Record<string, true>>({});
   const [pinnedMessageKeys, setPinnedMessageKeys] = useState<Record<string, true>>({});
@@ -340,6 +355,43 @@ export function HelpBotWidget() {
       emitOwnerChange();
     };
   }, [instanceId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !user?.id) return;
+
+    const params = new URLSearchParams(window.location.search);
+    const chat = params.get('chat');
+    const peerId = params.get('peer');
+    const groupId = params.get('group');
+    let handled = false;
+
+    if (chat === 'direct' && peerId) {
+      setIsOpen(true);
+      setTab('direct');
+      setSelectedDirectUserId(peerId);
+      setDirectConversationOpen(true);
+      setSelectedGroupId(null);
+      setGroupConversationOpen(false);
+      handled = true;
+    } else if (chat === 'group' && groupId) {
+      setIsOpen(true);
+      setTab('groups');
+      setSelectedGroupId(groupId);
+      setGroupConversationOpen(true);
+      setSelectedDirectUserId(null);
+      setDirectConversationOpen(false);
+      handled = true;
+    }
+
+    if (!handled) return;
+
+    params.delete('chat');
+    params.delete('peer');
+    params.delete('group');
+    const nextQuery = params.toString();
+    const nextUrl = nextQuery ? `${window.location.pathname}?${nextQuery}` : window.location.pathname;
+    window.history.replaceState({}, '', nextUrl);
+  }, [user?.id]);
 
   const loadDirectConversation = useCallback(async (currentUserId: string, peerUserId: string) => {
     const rows = await getDirectMessagesWithUser(currentUserId, peerUserId);
@@ -860,6 +912,26 @@ export function HelpBotWidget() {
       return;
     }
 
+    if (action === 'report') {
+      setMessageActionMenu(null);
+      if (message.mine) {
+        setChatActionToast('You cannot report your own message');
+        return;
+      }
+      setMessageReportReason('harassment');
+      setMessageReportDetails('');
+      setMessageReportError('');
+      setMessageReportSuccess('');
+      setMessageReportTarget({
+        kind,
+        messageId,
+        targetUserId: message.senderId,
+        groupId: kind === 'groups' ? selectedGroupId : null,
+        preview: text || 'No text in this message',
+      });
+      return;
+    }
+
     if (action === 'pin') {
       const key = `${kind}:${messageId}`;
       setPinnedMessageKeys((prev) => {
@@ -942,7 +1014,47 @@ export function HelpBotWidget() {
     loadDirectConversation,
     loadGroupConversation,
     refreshThreads,
+    selectedGroupId,
   ]);
+
+  const handleSubmitMessageReport = useCallback(async () => {
+    if (!messageReportTarget) return;
+
+    const reason = messageReportReason.trim();
+    if (!reason) {
+      setMessageReportError('Select a reason for this report.');
+      return;
+    }
+
+    setMessageReportSaving(true);
+    setMessageReportError('');
+    setMessageReportSuccess('');
+
+    try {
+      await submitSafetyReport({
+        kind: messageReportTarget.kind === 'groups' ? 'group_message' : 'direct_message',
+        targetUserId: messageReportTarget.targetUserId,
+        targetMessageId: messageReportTarget.messageId,
+        groupId: messageReportTarget.groupId ?? undefined,
+        reason,
+        details: messageReportDetails.trim() || undefined,
+      });
+      setMessageReportSuccess('Report submitted. We will review it.');
+      setChatActionToast('Report submitted');
+      setTimeout(() => {
+        setMessageReportTarget(null);
+        setMessageReportReason('harassment');
+        setMessageReportDetails('');
+        setMessageReportError('');
+        setMessageReportSuccess('');
+      }, 900);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to submit report.';
+      setMessageReportError(msg);
+    } finally {
+      setMessageReportSaving(false);
+    }
+  }, [messageReportDetails, messageReportReason, messageReportTarget]);
 
   const popupCount = Object.keys(unreadByChat).length;
   const hasUnreadThread = useCallback((kind: ChatTab, targetId: string) => {
@@ -2182,18 +2294,22 @@ export function HelpBotWidget() {
                   {([
                     { key: 'reply', label: 'Reply' },
                     { key: 'react', label: 'React' },
+                    { key: 'report', label: 'Report' },
                     { key: 'delete', label: 'Delete' },
                   ] as Array<{ key: MessageActionKind; label: string }>).map((action) => {
                     const disableDelete = action.key === 'delete' && Boolean(activeMessageActionMessage) && !activeMessageActionMessage?.mine;
+                    const disableReport = action.key === 'report' && Boolean(activeMessageActionMessage) && activeMessageActionMessage?.mine;
                     return (
                       <button
                         key={`action-${action.key}`}
                         type="button"
-                        disabled={disableDelete}
+                        disabled={disableDelete || disableReport}
                         onClick={() => void handleMessageAction(messageActionMenu.kind, messageActionMenu.messageId, action.key)}
                         className={`rounded-xl border px-3 py-2 text-left text-sm font-medium transition-colors ${
                           action.key === 'delete'
                             ? 'border-rose-300/25 bg-rose-500/8 text-rose-200 hover:bg-rose-500/15'
+                            : action.key === 'report'
+                              ? 'border-amber-300/25 bg-amber-500/8 text-amber-100 hover:bg-amber-500/15'
                             : 'border-white/10 bg-white/[0.03] text-[var(--text-primary)] hover:border-cyan-300/35 hover:bg-cyan-500/8'
                         } disabled:cursor-not-allowed disabled:opacity-45`}
                       >
@@ -2212,6 +2328,116 @@ export function HelpBotWidget() {
                 >
                   Cancel
                 </button>
+              </div>
+            </div>
+          )}
+
+          {messageReportTarget && (
+            <div
+              className="absolute inset-0 z-[90] flex items-center justify-center bg-black/55 px-3 backdrop-blur-sm"
+              onClick={() => {
+                if (messageReportSaving) return;
+                setMessageReportTarget(null);
+                setMessageReportError('');
+                setMessageReportSuccess('');
+              }}
+            >
+              <div
+                className="w-full max-w-md rounded-3xl border border-white/15 bg-[#0c1222]/98 p-5 shadow-[0_30px_90px_rgba(0,0,0,0.55)]"
+                onClick={(event) => event.stopPropagation()}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[10px] uppercase tracking-[0.18em] text-amber-200/80">Safety report</p>
+                    <h3 className="mt-1 text-xl font-semibold text-[var(--text-primary)]">Report message</h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (messageReportSaving) return;
+                      setMessageReportTarget(null);
+                      setMessageReportError('');
+                      setMessageReportSuccess('');
+                    }}
+                    className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1 text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  >
+                    Close
+                  </button>
+                </div>
+
+                <p className="mt-4 text-sm text-[var(--text-secondary)]">
+                  We will review this message and take action if it violates the community rules.
+                </p>
+
+                <div className="mt-4 rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-3">
+                  <p className="text-[10px] uppercase tracking-[0.14em] text-[var(--text-muted)]">Message preview</p>
+                  <p className="mt-2 text-sm text-[var(--text-primary)] break-words">
+                    {messageReportTarget.preview}
+                  </p>
+                </div>
+
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="mb-1 block text-sm text-[var(--text-muted)]">Reason</label>
+                    <select
+                      value={messageReportReason}
+                      onChange={(event) => setMessageReportReason(event.target.value)}
+                      className="w-full rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-3 py-3 text-[var(--text-primary)] focus:outline-none focus:border-amber-300/60"
+                    >
+                      <option value="harassment">Harassment or bullying</option>
+                      <option value="hate">Hate or abusive language</option>
+                      <option value="spam">Spam or scam</option>
+                      <option value="sexual">Sexual or explicit content</option>
+                      <option value="violence">Violence or threats</option>
+                      <option value="other">Other</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm text-[var(--text-muted)]">Details (optional)</label>
+                    <textarea
+                      value={messageReportDetails}
+                      onChange={(event) => setMessageReportDetails(event.target.value)}
+                      rows={4}
+                      maxLength={500}
+                      placeholder="Add any context that will help us review this report."
+                      className="w-full rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-3 py-3 text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-amber-300/60"
+                    />
+                  </div>
+                </div>
+
+                {messageReportError && (
+                  <p className="mt-4 rounded-xl border border-red-500/20 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+                    {messageReportError}
+                  </p>
+                )}
+                {messageReportSuccess && (
+                  <p className="mt-4 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-300">
+                    {messageReportSuccess}
+                  </p>
+                )}
+
+                <div className="mt-5 flex justify-end gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (messageReportSaving) return;
+                      setMessageReportTarget(null);
+                      setMessageReportError('');
+                      setMessageReportSuccess('');
+                    }}
+                    className="rounded-xl border border-white/10 px-4 py-2 text-sm font-semibold text-[var(--text-secondary)] hover:text-[var(--text-primary)]"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void handleSubmitMessageReport()}
+                    disabled={messageReportSaving}
+                    className="rounded-xl bg-amber-400 px-4 py-2 text-sm font-semibold text-black transition-colors hover:bg-amber-300 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {messageReportSaving ? 'Submitting...' : 'Submit report'}
+                  </button>
+                </div>
               </div>
             </div>
           )}

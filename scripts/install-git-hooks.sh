@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(git rev-parse --show-toplevel)"
 cd "$ROOT"
 
-chmod +x scripts/secret-scan.sh .githooks/pre-commit
+chmod +x "scripts/secret-scan.sh" ".githooks/pre-commit"
 
 git config core.hooksPath .githooks
 

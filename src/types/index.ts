@@ -3,6 +3,8 @@
 export interface OTTLink {
   platform: string;
   url: string;
+  browserUrl?: string;
+  appUrl?: string;
   availableIn?: string; // e.g., "India", "USA", "India & USA"
   logoPath?: string; // TMDB logo_path (optional)
 }
@@ -50,4 +52,32 @@ export interface FilterOptions {
   language?: string;
   recommendedBy?: string;
   mood?: string;
+}
+
+export interface RecommendationUserRecord {
+  id?: string | null;
+  name?: string | null;
+  avatar?: string | null;
+}
+
+export interface RecommendationRecord {
+  id: string;
+  title: string;
+  original_title?: string | null;
+  year: number;
+  type: Recommendation['type'];
+  poster: string;
+  backdrop?: string | null;
+  genres?: string[] | null;
+  language?: string | null;
+  duration?: string | null;
+  rating?: number | null;
+  personal_note?: string | null;
+  mood?: string[] | null;
+  watch_with?: string | null;
+  ott_links?: OTTLink[] | null;
+  created_at: string;
+  tmdb_id?: number | string | null;
+  user_id?: string | null;
+  user?: RecommendationUserRecord | null;
 }

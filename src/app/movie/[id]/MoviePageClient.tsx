@@ -1,6 +1,6 @@
 'use client';
 
-import { Recommendation, OTTLink } from '@/types';
+import { Recommendation, RecommendationRecord, OTTLink } from '@/types';
 import data from '@/data/recommendations.json';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
@@ -11,10 +11,11 @@ import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
 import { useWatched } from '@/hooks';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
-import { getDirectOttLink } from '@/lib/tmdb';
-import { TrailerSection } from '@/components';
+import { getDirectOttTarget } from '@/lib/tmdb';
+import { TrailerSection, WhereToWatchPanel } from '@/components';
 import { SendToFriendModal } from '@/components/SendToFriendModal';
 import { useAuth } from '@/components/AuthProvider';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
 
 function PosterImage({ src, alt, title }: { src: string; alt: string; title: string }) {
   const [error, setError] = useState(false);
@@ -85,11 +86,25 @@ interface MoviePageClientProps {
   id: string;
 }
 
+type TMDBProviderEntry = {
+  provider_name: string;
+  logo_path?: string | null;
+};
+
+type TMDBRegionWithExtras = {
+  flatrate?: TMDBProviderEntry[];
+  free?: TMDBProviderEntry[];
+  ads?: TMDBProviderEntry[];
+  rent?: TMDBProviderEntry[];
+  buy?: TMDBProviderEntry[];
+};
+
 export default function MoviePageClient({ id }: MoviePageClientProps) {
   const searchParams = useSearchParams();
   const fromLang = searchParams.get('from');
   const backUrl = fromLang ? `/?lang=${fromLang}` : '/';
   const { user } = useAuth();
+  const iosReviewMode = useIosReviewMode();
 
   // When Vercel rewrites /movie/tmdb-123 to /movie/fallback, we get id=fallback; resolve real id from URL
   const [resolvedId, setResolvedId] = useState(id);
@@ -172,7 +187,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           const indiaData = providersData.results?.IN;
           const usaData = providersData.results?.US;
 
-          const collectProviders = (regionData: any) => [
+          const collectProviders = (regionData: TMDBRegionWithExtras) => [
             ...(regionData.flatrate || []),
             ...(regionData.free || []),
             ...(regionData.ads || []),
@@ -221,11 +236,13 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           }
 
           for (const [platform, regionData] of Object.entries(platformsByRegion)) {
-            const directUrl = getDirectOttLink(platform, tmdbData.title);
-            if (!directUrl) continue;
+            const directTarget = getDirectOttTarget(platform, tmdbData.title);
+            if (!directTarget) continue;
             ottLinks.push({
               platform,
-              url: directUrl,
+              url: directTarget.browserUrl,
+              browserUrl: directTarget.browserUrl,
+              appUrl: directTarget.appUrl,
               availableIn: regionData.regions.join(' & '),
               logoPath: regionData.logoPath,
             });
@@ -287,33 +304,35 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           return;
         }
 
+        const recommendationRow = rec as RecommendationRecord;
+
         const mappedRecommendation: Recommendation = {
-          id: rec.id,
-          title: rec.title,
-          originalTitle: rec.original_title,
-          year: rec.year,
-          type: rec.type,
-          poster: rec.poster,
-          backdrop: rec.backdrop,
-          genres: Array.isArray(rec.genres) ? rec.genres : [],
-          language: rec.language ?? '',
-          duration: rec.duration,
-          rating: rec.rating,
-          personalNote: rec.personal_note ?? '',
-          mood: rec.mood,
-          watchWith: rec.watch_with,
-          ottLinks: (rec.ott_links as OTTLink[]) ?? [],
+          id: recommendationRow.id,
+          title: recommendationRow.title,
+          originalTitle: recommendationRow.original_title ?? undefined,
+          year: recommendationRow.year,
+          type: recommendationRow.type,
+          poster: recommendationRow.poster,
+          backdrop: recommendationRow.backdrop ?? undefined,
+          genres: Array.isArray(recommendationRow.genres) ? recommendationRow.genres : [],
+          language: recommendationRow.language ?? '',
+          duration: recommendationRow.duration ?? undefined,
+          rating: recommendationRow.rating ?? undefined,
+          personalNote: recommendationRow.personal_note ?? '',
+          mood: recommendationRow.mood ?? [],
+          watchWith: recommendationRow.watch_with ?? undefined,
+          ottLinks: recommendationRow.ott_links ?? [],
           recommendedBy: {
-            id: rec.user?.id || 'unknown',
-            name: rec.user?.name || 'Anonymous',
-            avatar: rec.user?.avatar || '',
+            id: recommendationRow.user?.id || 'unknown',
+            name: recommendationRow.user?.name || 'Anonymous',
+            avatar: recommendationRow.user?.avatar || '',
           },
-          addedOn: rec.created_at,
+          addedOn: recommendationRow.created_at,
         };
 
         setMovie(mappedRecommendation);
         // Trailer: only if this recommendation is linked to TMDB.
-        const rawTmdb = (rec as any)?.tmdb_id;
+        const rawTmdb = recommendationRow.tmdb_id;
         const num = typeof rawTmdb === 'number' ? rawTmdb : Number(String(rawTmdb || ''));
         setTmdbTrailerId(Number.isFinite(num) && num > 0 ? num : null);
       } catch (err) {
@@ -382,19 +401,6 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
     anime: 'Anime',
   };
 
-  const platformClasses: Record<string, string> = {
-    'Netflix': 'platform-netflix',
-    'Prime Video': 'platform-prime',
-    'Hotstar': 'platform-hotstar',
-    'Aha': 'platform-aha',
-    'YouTube': 'platform-youtube',
-    'Apple TV+': 'platform-apple',
-    'Zee5': 'platform-zee5',
-    'SonyLiv': 'platform-sonyliv',
-    'Jio Cinema': 'platform-jio',
-    'Other': 'platform-other',
-  };
-
   const formattedDate = (addedOn
     ? new Date(addedOn).toLocaleDateString('en-US', {
         year: 'numeric',
@@ -412,19 +418,8 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
   const uniqueOttLinks = (ottLinks || []).filter(
     (link, index, arr) => arr.findIndex((l) => l.platform === link.platform) === index
   );
-  const posterOttLinks = uniqueOttLinks.slice(0, 4);
   const getOttLogoUrl = (logoPath?: string) => (logoPath ? `https://image.tmdb.org/t/p/w92${logoPath}` : '');
-  const getPreferredOttUrl = (link: OTTLink) => {
-    const platform = (link.platform || '').toLowerCase();
-    const titleQuery = encodeURIComponent(title || '');
-    if (platform.includes('prime') || platform.includes('amazon')) {
-      if (link.url?.includes('primevideo.com')) {
-        return link.url.replace('https://www.primevideo.com', 'https://app.primevideo.com');
-      }
-      if (titleQuery) return `https://app.primevideo.com/search?phrase=${titleQuery}`;
-    }
-    return link.url;
-  };
+  const posterOttLinks = uniqueOttLinks.slice(0, 4);
 
   return (
     <div className="min-h-screen bg-[var(--bg-primary)]">
@@ -538,20 +533,22 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
                     showLabel
                   />
                 </div>
-                <div className="flex justify-center">
-                  <button
-                    type="button"
-                    onClick={() => setSendModalOpen(true)}
-                    disabled={!user}
-                    title={user ? 'Send to friend' : 'Sign in to send'}
-                    className="h-11 px-4 rounded-full border border-pink-300/45 bg-gradient-to-r from-fuchsia-500/35 to-rose-500/35 text-fuchsia-50 font-semibold inline-flex items-center gap-2 hover:from-fuchsia-500/45 hover:to-rose-500/45 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                    </svg>
-                    Send
-                  </button>
-                </div>
+                {!iosReviewMode ? (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setSendModalOpen(true)}
+                      disabled={!user}
+                      title={user ? 'Send to friend' : 'Sign in to send'}
+                      className="h-11 px-4 rounded-full border border-pink-300/45 bg-gradient-to-r from-fuchsia-500/35 to-rose-500/35 text-fuchsia-50 font-semibold inline-flex items-center gap-2 hover:from-fuchsia-500/45 hover:to-rose-500/45 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      Send
+                    </button>
+                  </div>
+                ) : null}
               </div>
             </div>
 
@@ -583,57 +580,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
               ) : null}
             </div>
 
-            <div className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-7 border border-white/5">
-              <h2 className="text-lg font-semibold text-[var(--text-primary)] mb-4">Where to watch</h2>
-              {regionNote && (
-                <div className={`mb-4 px-4 py-2 rounded-lg text-sm ${
-                  regionNote.includes('not streaming in India') ? 'bg-orange-500/10 border border-orange-500/30 text-orange-400' :
-                  regionNote.includes('not streaming in USA') ? 'bg-blue-500/10 border border-blue-500/30 text-blue-400' :
-                  'bg-yellow-500/10 border border-yellow-500/30 text-yellow-400'
-                }`}>
-                  {regionNote}
-                </div>
-              )}
-              {ottLinks && ottLinks.length > 0 ? (
-                <div className="grid gap-3">
-                  {ottLinks.map((link, index) => {
-                    const logoUrl = getOttLogoUrl(link.logoPath);
-                    return (
-                      <a
-                        key={`${link.platform}-${index}`}
-                        href={getPreferredOttUrl(link)}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-xl hover:bg-[var(--bg-card-hover)] transition-colors group"
-                      >
-                        <div className="flex items-center gap-3">
-                          {logoUrl ? (
-                            <span className="w-10 h-10 rounded-lg bg-[var(--bg-primary)]/60 border border-white/10 flex items-center justify-center overflow-hidden">
-                              <img src={logoUrl} alt={link.platform} className="w-7 h-7 object-contain" />
-                            </span>
-                          ) : (
-                            <span className={`${platformClasses[link.platform] || 'platform-other'} w-10 h-10 rounded-lg flex items-center justify-center text-white font-bold text-sm`}>
-                              {link.platform.charAt(0)}
-                            </span>
-                          )}
-                          <div>
-                            <p className="font-medium text-[var(--text-primary)]">{link.platform}</p>
-                            {link.availableIn && <p className="text-xs text-[var(--text-muted)]">{link.availableIn}</p>}
-                          </div>
-                        </div>
-                        <svg className="w-5 h-5 text-[var(--text-muted)] group-hover:text-[var(--accent)] transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
-                        </svg>
-                      </a>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div className="text-center py-6">
-                  <p className="text-[var(--text-muted)]">No direct OTT links available for this title right now.</p>
-                </div>
-              )}
-            </div>
+            <WhereToWatchPanel links={uniqueOttLinks} regionNote={regionNote} />
           </div>
         </div>
 
@@ -650,16 +597,18 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
         </div>
       </div>
 
-      <SendToFriendModal
-        isOpen={sendModalOpen}
-        onClose={() => setSendModalOpen(false)}
-        movieId={sendRecommendationId || `tmdb-${sendTmdbId || resolvedId}`}
-        movieTitle={title}
-        moviePoster={poster}
-        movieYear={year}
-        tmdbId={sendTmdbId ?? undefined}
-        recommendationId={sendRecommendationId ?? undefined}
-      />
+      {!iosReviewMode ? (
+        <SendToFriendModal
+          isOpen={sendModalOpen}
+          onClose={() => setSendModalOpen(false)}
+          movieId={sendRecommendationId || `tmdb-${sendTmdbId || resolvedId}`}
+          movieTitle={title}
+          moviePoster={poster}
+          movieYear={year}
+          tmdbId={sendTmdbId ?? undefined}
+          recommendationId={sendRecommendationId ?? undefined}
+        />
+      ) : null}
     </div>
   );
 }

@@ -1,9 +1,10 @@
 'use client';
 
+import Image from 'next/image';
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthProvider';
 import { isSupabaseConfigured } from '@/lib/supabase';
-import { safeLocalStorageGet } from '@/lib/safe-storage';
+import { getSupabaseAccessToken } from '@/lib/supabase-rest';
 
 interface UserPreview {
   id: string;
@@ -28,29 +29,71 @@ interface FriendsManagerProps {
   onFriendsChange: () => void;
 }
 
+function isImageAvatar(value: string | null | undefined): value is string {
+  if (!value) return false;
+  const trimmed = value.trim();
+  return trimmed.startsWith('/avatars/') || trimmed.startsWith('http://') || trimmed.startsWith('https://');
+}
+
+function looksLikeAvatarPath(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim().toLowerCase();
+  return (
+    trimmed.startsWith('/avatars/') ||
+    trimmed.includes('.jpg') ||
+    trimmed.includes('.jpeg') ||
+    trimmed.includes('.png') ||
+    trimmed.includes('.webp')
+  );
+}
+
+function getUserDisplayName(person: Pick<UserPreview, 'name' | 'username'>, fallback = 'Friend'): string {
+  const rawName = (person.name || '').trim();
+  if (rawName && !looksLikeAvatarPath(rawName)) return rawName;
+  const username = (person.username || '').trim();
+  if (username) return username;
+  return fallback;
+}
+
+function getErrorMessage(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
+}
+
+function UserAvatar({ person }: { person: Pick<UserPreview, 'avatar' | 'name' | 'username'> }) {
+  const label = getUserDisplayName(person);
+  const avatar = (person.avatar || '').trim();
+
+  if (isImageAvatar(avatar)) {
+    return (
+      <div className="relative h-10 w-10 overflow-hidden rounded-full border border-white/10 bg-[var(--bg-card)]">
+        <Image
+          src={avatar}
+          alt={`${label} avatar`}
+          fill
+          sizes="40px"
+          className="object-cover object-top"
+        />
+      </div>
+    );
+  }
+
+  if (avatar && !looksLikeAvatarPath(avatar)) {
+    return (
+      <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-card)] text-lg leading-none">
+        {avatar}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-card)] text-sm font-semibold text-[var(--text-primary)]">
+      {label.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
 const supabaseAnonKey = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
-const supabaseProjectRef = (() => {
-  if (!supabaseUrl) return '';
-  try {
-    return new URL(supabaseUrl).hostname.split('.')[0] || '';
-  } catch {
-    return '';
-  }
-})();
-
-const getAccessToken = () => {
-  if (typeof window === 'undefined' || !supabaseProjectRef) return null;
-  const raw = safeLocalStorageGet(`sb-${supabaseProjectRef}-auth-token`);
-  if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    return parsed?.access_token ?? null;
-  } catch {
-    return null;
-  }
-};
-
 const supabaseRequest = async <T,>(
   path: string,
   options: RequestInit & { timeoutMs?: number } = {},
@@ -59,7 +102,7 @@ const supabaseRequest = async <T,>(
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error('Supabase is not configured.');
   }
-  const token = (accessToken || getAccessToken() || supabaseAnonKey).trim();
+  const token = (accessToken || getSupabaseAccessToken() || supabaseAnonKey).trim();
   const { timeoutMs = 8000, headers, ...rest } = options;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -132,7 +175,7 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
 
     try {
       console.log('[FriendsManager] Starting friends query for user:', user.id);
-      const accessToken = getAccessToken();
+      const accessToken = getSupabaseAccessToken();
 
       // Step 1: Get friend relationships
       let slowTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
@@ -229,16 +272,16 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
     const timer = setTimeout(async () => {
       setIsSearching(true);
 
-      const accessToken = getAccessToken();
+        const accessToken = getSupabaseAccessToken();
       const sanitizedQuery = searchQuery.replace(/[%_(),]/g, ' ').trim();
 
       try {
-        let slowTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        const slowTimer = setTimeout(() => {
           if (!cancelled) setErrorMessage('Searching… please wait.');
         }, 7000);
 
         if (!sanitizedQuery) {
-          if (slowTimer) clearTimeout(slowTimer);
+          clearTimeout(slowTimer);
           setSearchResults([]);
           setErrorMessage('');
           return;
@@ -257,17 +300,16 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
           { method: 'GET' },
           accessToken,
         );
-        if (slowTimer) clearTimeout(slowTimer);
+        clearTimeout(slowTimer);
 
         if (cancelled) return;
 
         setErrorMessage('');
         setSearchResults(data || []);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      } catch (err: any) {
+      } catch (err: unknown) {
         if (!cancelled) {
           console.error('FriendsManager: Search exception:', err);
-          setErrorMessage(err?.message || 'Search failed. Please try again.');
+          setErrorMessage(getErrorMessage(err, 'Search failed. Please try again.'));
           setSearchResults([]);
         }
       } finally {
@@ -298,9 +340,9 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
             friend_id: friendUser.id,
           }),
         },
-        getAccessToken(),
+        getSupabaseAccessToken(),
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('FriendsManager: Add friend error:', err);
       setErrorMessage('Unable to add friend. Please try again.');
       return;
@@ -327,9 +369,9 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
             Prefer: 'return=minimal',
           },
         },
-        getAccessToken(),
+        getSupabaseAccessToken(),
       );
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('FriendsManager: Remove friend error:', err);
       setErrorMessage('Unable to remove friend. Please try again.');
       return;
@@ -403,8 +445,15 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
                   className="flex items-center justify-between p-2 bg-[var(--bg-secondary)] rounded-lg"
                 >
                   <div className="flex items-center gap-2">
-                    <span className="text-lg">{result.avatar}</span>
-                    <span className="text-sm text-[var(--text-primary)]">{result.name}</span>
+                    <UserAvatar person={result} />
+                    <div className="min-w-0">
+                      <span className="block truncate text-sm text-[var(--text-primary)]">
+                        {getUserDisplayName(result)}
+                      </span>
+                      {result.username ? (
+                        <span className="block truncate text-xs text-[var(--text-muted)]">@{result.username}</span>
+                      ) : null}
+                    </div>
                   </div>
                   {isFriend(result.id) ? (
                     <span className="text-xs text-[var(--text-muted)]">Already friends</span>
@@ -457,9 +506,9 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
                   className="flex items-center justify-between p-3 bg-[var(--bg-secondary)] rounded-xl"
                 >
                   <div className="flex items-center gap-3">
-                    <span className="text-2xl">{friend.avatar}</span>
+                    <UserAvatar person={friend} />
                     <div>
-                      <p className="font-medium text-[var(--text-primary)]">{friend.name}</p>
+                      <p className="font-medium text-[var(--text-primary)]">{getUserDisplayName(friend)}</p>
                       {friend.username && (
                         <p className="text-xs text-[var(--text-muted)]">@{friend.username}</p>
                       )}

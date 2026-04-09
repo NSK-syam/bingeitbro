@@ -26,6 +26,23 @@ type RatingRow = {
   rating: number;
 };
 
+type PlaylistUserRelation = {
+  id: string | number;
+  name?: string | null;
+  username?: string | null;
+  avatar?: string | null;
+};
+
+type PlaylistQueryRow = {
+  id: string | number;
+  user_id: string | number;
+  platform?: string | null;
+  url?: string | null;
+  title?: string | null;
+  created_at?: string | null;
+  users?: PlaylistUserRelation | PlaylistUserRelation[] | null;
+};
+
 function looksLikeAvatarPath(value: string | null | undefined): boolean {
   const v = (value ?? '').trim().toLowerCase();
   return v.startsWith('/avatars/') || v.endsWith('.jpg') || v.endsWith('.jpeg') || v.endsWith('.png') || v.endsWith('.webp');
@@ -101,9 +118,9 @@ export default function SongsHome() {
         .select('id,user_id,platform,url,title,created_at,users(id,name,username,avatar)')
         .order('created_at', { ascending: false });
       if (error) throw error;
-      const raw = Array.isArray(data) ? (data as any[]) : [];
+      const raw = Array.isArray(data) ? (data as PlaylistQueryRow[]) : [];
       nextPlaylists = raw.map((r) => {
-        const rel = (r as any).users;
+        const rel = r.users;
         const u = Array.isArray(rel) ? rel[0] : rel;
         return {
           id: String(r.id),

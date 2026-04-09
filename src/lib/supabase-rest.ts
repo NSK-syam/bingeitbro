@@ -3,7 +3,7 @@
  * (e.g. cold start). Reads the session token from localStorage and calls the REST API directly.
  */
 
-import type { DBUser } from './supabase';
+import { createClient, type DBUser } from './supabase';
 import { safeLocalStorageGet } from './safe-storage';
 
 const supabaseUrl = (process.env.NEXT_PUBLIC_SUPABASE_URL || '').trim();
@@ -17,13 +17,93 @@ const supabaseProjectRef = (() => {
   }
 })();
 
-export function getSupabaseAccessToken(): string | null {
-  if (typeof window === 'undefined' || !supabaseProjectRef) return null;
-  const raw = safeLocalStorageGet(`sb-${supabaseProjectRef}-auth-token`);
+let cachedSupabaseAccessToken: string | null = null;
+
+function normalizeAccessToken(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function extractAccessToken(value: unknown): string | null {
+  const direct = normalizeAccessToken(value);
+  if (direct) return direct;
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const nested = extractAccessToken(item);
+      if (nested) return nested;
+    }
+    return null;
+  }
+
+  if (!value || typeof value !== 'object') return null;
+
+  const record = value as Record<string, unknown>;
+  return (
+    extractAccessToken(record.access_token) ||
+    extractAccessToken(record.currentSession) ||
+    extractAccessToken(record.session) ||
+    extractAccessToken(record.data)
+  );
+}
+
+function readAccessTokenFromStorage(raw: string | null): string | null {
   if (!raw) return null;
   try {
-    const parsed = JSON.parse(raw);
-    return typeof parsed?.access_token === 'string' ? parsed.access_token.trim() : null;
+    return extractAccessToken(JSON.parse(raw));
+  } catch {
+    return normalizeAccessToken(raw);
+  }
+}
+
+function readSessionStorageToken(key: string): string | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    return readAccessTokenFromStorage(window.sessionStorage.getItem(key));
+  } catch {
+    return null;
+  }
+}
+
+function readStoredSupabaseAccessToken(): string | null {
+  if (typeof window === 'undefined' || !supabaseProjectRef) return null;
+  const storageKey = `sb-${supabaseProjectRef}-auth-token`;
+  return (
+    readAccessTokenFromStorage(safeLocalStorageGet(storageKey)) ||
+    readSessionStorageToken(storageKey)
+  );
+}
+
+export function setSupabaseAccessToken(token: string | null | undefined): void {
+  cachedSupabaseAccessToken = normalizeAccessToken(token) ?? null;
+}
+
+export function getSupabaseAccessToken(): string | null {
+  const cached = normalizeAccessToken(cachedSupabaseAccessToken);
+  if (cached) return cached;
+
+  const stored = readStoredSupabaseAccessToken();
+  if (stored) {
+    cachedSupabaseAccessToken = stored;
+    return stored;
+  }
+
+  return null;
+}
+
+export async function resolveSupabaseAccessToken(): Promise<string | null> {
+  const immediate = getSupabaseAccessToken();
+  if (immediate) return immediate;
+  if (typeof window === 'undefined') return null;
+
+  try {
+    const { data } = await createClient().auth.getSession();
+    const token = normalizeAccessToken(data.session?.access_token);
+    if (token) {
+      cachedSupabaseAccessToken = token;
+    }
+    return token;
   } catch {
     return null;
   }
@@ -32,9 +112,13 @@ export function getSupabaseAccessToken(): string | null {
 const DEFAULT_TIMEOUT_MS = 25000;
 let chatThemeSyncUnsupported = false;
 let directMessagesOptionalColumnsUnsupported = false;
+let watchGroupMessagesOptionalColumnsUnsupported = false;
 const DIRECT_MESSAGES_OPTIONAL_COLUMNS_UNSUPPORTED_KEY = supabaseProjectRef
   ? `bib-${supabaseProjectRef}-direct-messages-legacy-schema`
   : 'bib-direct-messages-legacy-schema';
+const WATCH_GROUP_MESSAGES_OPTIONAL_COLUMNS_UNSUPPORTED_KEY = supabaseProjectRef
+  ? `bib-${supabaseProjectRef}-watch-group-messages-legacy-schema`
+  : 'bib-watch-group-messages-legacy-schema';
 
 function hydrateDirectMessagesOptionalColumnsUnsupported(): void {
   if (directMessagesOptionalColumnsUnsupported || typeof window === 'undefined') return;
@@ -53,6 +137,28 @@ function markDirectMessagesOptionalColumnsUnsupported(): void {
   if (typeof window === 'undefined') return;
   try {
     window.sessionStorage.setItem(DIRECT_MESSAGES_OPTIONAL_COLUMNS_UNSUPPORTED_KEY, '1');
+  } catch {
+    // Ignore storage write failures; in-memory fallback still prevents repeat errors this session.
+  }
+}
+
+function hydrateWatchGroupMessagesOptionalColumnsUnsupported(): void {
+  if (watchGroupMessagesOptionalColumnsUnsupported || typeof window === 'undefined') return;
+  try {
+    const raw = window.sessionStorage.getItem(WATCH_GROUP_MESSAGES_OPTIONAL_COLUMNS_UNSUPPORTED_KEY);
+    if (raw === '1') {
+      watchGroupMessagesOptionalColumnsUnsupported = true;
+    }
+  } catch {
+    // Ignore storage read failures; runtime can still detect and cache in memory.
+  }
+}
+
+function markWatchGroupMessagesOptionalColumnsUnsupported(): void {
+  watchGroupMessagesOptionalColumnsUnsupported = true;
+  if (typeof window === 'undefined') return;
+  try {
+    window.sessionStorage.setItem(WATCH_GROUP_MESSAGES_OPTIONAL_COLUMNS_UNSUPPORTED_KEY, '1');
   } catch {
     // Ignore storage write failures; in-memory fallback still prevents repeat errors this session.
   }
@@ -321,7 +427,7 @@ async function authedApiRequest<T>(
   options: RequestInit = {},
   timeoutMs: number = 15000,
 ): Promise<T> {
-  const token = getSupabaseAccessToken();
+  const token = await resolveSupabaseAccessToken();
   if (!token) {
     throw new Error('Not authenticated');
   }
@@ -409,6 +515,69 @@ export async function deleteWatchReminder(movieId: string): Promise<void> {
       method: 'DELETE',
       body: JSON.stringify({ movieId }),
     },
+  );
+}
+
+export async function requestAccountDeletion(): Promise<void> {
+  await authedApiRequest<{ ok?: boolean }>(
+    '/api/account/delete',
+    { method: 'POST' },
+    30000,
+  );
+}
+
+export interface UserBlockRelationship {
+  blockedUserIds: string[];
+  blockedByCurrentUser: boolean;
+  blockedByTargetUser: boolean;
+}
+
+export async function getUserBlockRelationship(targetUserId?: string): Promise<UserBlockRelationship> {
+  const query = targetUserId ? `?targetUserId=${encodeURIComponent(targetUserId)}` : '';
+  const payload = await authedApiRequest<UserBlockRelationship>(
+    `/api/user-blocks${query}`,
+    { method: 'GET' },
+  );
+
+  return {
+    blockedUserIds: Array.isArray(payload.blockedUserIds) ? payload.blockedUserIds : [],
+    blockedByCurrentUser: Boolean(payload.blockedByCurrentUser),
+    blockedByTargetUser: Boolean(payload.blockedByTargetUser),
+  };
+}
+
+export async function blockUserById(targetUserId: string): Promise<string[]> {
+  const payload = await authedAppRequest<{ blockedUserIds?: string[] }>(
+    '/api/user-blocks',
+    { targetUserId },
+    { method: 'POST' },
+  );
+  return Array.isArray(payload.blockedUserIds) ? payload.blockedUserIds : [];
+}
+
+export async function unblockUserById(targetUserId: string): Promise<string[]> {
+  const payload = await authedAppRequest<{ blockedUserIds?: string[] }>(
+    '/api/user-blocks',
+    { targetUserId },
+    { method: 'DELETE' },
+  );
+  return Array.isArray(payload.blockedUserIds) ? payload.blockedUserIds : [];
+}
+
+export type SafetyReportKind = 'user' | 'direct_message' | 'group_message';
+
+export async function submitSafetyReport(input: {
+  kind: SafetyReportKind;
+  reason: string;
+  targetUserId?: string;
+  targetMessageId?: string;
+  groupId?: string;
+  details?: string;
+}): Promise<void> {
+  await authedAppRequest<{ ok?: boolean }>(
+    '/api/reports',
+    input,
+    { method: 'POST' },
   );
 }
 
@@ -1229,6 +1398,65 @@ function ensureAuthedToken(): string {
   return token;
 }
 
+async function ensureResolvedAuthedToken(): Promise<string> {
+  const token = await resolveSupabaseAccessToken();
+  if (!token) {
+    throw new Error('Not authenticated');
+  }
+  return token;
+}
+
+async function authedAppRequest<T>(
+  path: string,
+  body: unknown,
+  options: { method?: 'POST' | 'PATCH' | 'DELETE'; timeoutMs?: number } = {},
+): Promise<T> {
+  const token = await ensureResolvedAuthedToken();
+  const method = options.method ?? 'POST';
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(path, {
+      method,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: body == null ? undefined : JSON.stringify(body),
+      signal: controller.signal,
+    });
+
+    const text = await response.text();
+    let data: unknown = null;
+    if (text) {
+      try {
+        data = JSON.parse(text);
+      } catch {
+        data = text;
+      }
+    }
+
+    if (!response.ok) {
+      const message =
+        typeof data === 'object' && data !== null && 'message' in data
+          ? String((data as { message?: string }).message || response.statusText)
+          : response.statusText || 'Request failed.';
+      throw new Error(message);
+    }
+
+    return data as T;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === 'AbortError') {
+      throw new Error(`Request timed out after ${timeoutMs / 1000}s`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 function normalizeReactionValue(raw: string): string {
   const trimmed = raw.trim();
   if (!trimmed) return '';
@@ -1307,41 +1535,72 @@ function isMissingDirectMessagesTableError(err: unknown): boolean {
 
 function isMissingDirectMessageOptionalColumnsError(err: unknown): boolean {
   const message = err instanceof Error ? err.message.toLowerCase() : '';
-  return (
-    message.includes('schema cache') ||
-    message.includes('bad request') ||
+  const mentionsOptionalColumn =
     message.includes('reply_to_id') ||
     message.includes('shared_media_type') ||
     message.includes('shared_tmdb_id') ||
     message.includes('shared_title') ||
     message.includes('shared_poster') ||
-    message.includes('shared_release_year') ||
-    (message.includes('column') && message.includes('direct_messages'))
+    message.includes('shared_release_year');
+
+  return (
+    message.includes('schema cache') ||
+    (mentionsOptionalColumn && message.includes('column') && message.includes('direct_messages'))
   );
 }
 
 const LEGACY_DIRECT_REPLY_PREFIX = '[[bib_reply_to:';
+const LEGACY_GROUP_REPLY_PREFIX = '[[bib_reply_to:';
 
-function encodeLegacyDirectReplyBody(body: string, replyToId?: string | null): string {
-  const trimmedReplyId = (replyToId ?? '').trim();
-  if (!trimmedReplyId) return body;
-  return `${LEGACY_DIRECT_REPLY_PREFIX}${trimmedReplyId}]]\n${body}`;
+function normalizeLegacyReplyBody(body: string | null | undefined): string {
+  const value = body ?? '';
+  return value.startsWith('\u2063') ? value.slice(1) : value;
 }
 
 function decodeLegacyDirectReplyBody(body: string | null | undefined): {
   body: string;
   replyToId: string | null;
 } {
-  const raw = (body ?? '').trimStart();
+  const rawBody = body ?? '';
+  if (rawBody.startsWith('\u2063')) {
+    return { body: rawBody.slice(1), replyToId: null };
+  }
+
+  const raw = rawBody.trimStart();
   if (!raw.startsWith(LEGACY_DIRECT_REPLY_PREFIX)) {
-    return { body: body ?? '', replyToId: null };
+    return { body: normalizeLegacyReplyBody(body), replyToId: null };
   }
   const prefixEnd = raw.indexOf(']]');
   if (prefixEnd === -1) {
-    return { body: body ?? '', replyToId: null };
+    return { body: normalizeLegacyReplyBody(body), replyToId: null };
   }
   const replyToId = raw.slice(LEGACY_DIRECT_REPLY_PREFIX.length, prefixEnd).trim();
-  const withoutPrefix = raw.slice(prefixEnd + 2).replace(/^\n+/, '');
+  const withoutPrefix = raw.slice(prefixEnd + 2).replace(/^\s+/, '');
+  return {
+    body: withoutPrefix,
+    replyToId: replyToId || null,
+  };
+}
+
+function decodeLegacyGroupReplyBody(body: string | null | undefined): {
+  body: string;
+  replyToId: string | null;
+} {
+  const rawBody = body ?? '';
+  if (rawBody.startsWith('\u2063')) {
+    return { body: rawBody.slice(1), replyToId: null };
+  }
+
+  const raw = rawBody.trimStart();
+  if (!raw.startsWith(LEGACY_GROUP_REPLY_PREFIX)) {
+    return { body: normalizeLegacyReplyBody(body), replyToId: null };
+  }
+  const prefixEnd = raw.indexOf(']]');
+  if (prefixEnd === -1) {
+    return { body: normalizeLegacyReplyBody(body), replyToId: null };
+  }
+  const replyToId = raw.slice(LEGACY_GROUP_REPLY_PREFIX.length, prefixEnd).trim();
+  const withoutPrefix = raw.slice(prefixEnd + 2).replace(/^\s+/, '');
   return {
     body: withoutPrefix,
     replyToId: replyToId || null,
@@ -1355,8 +1614,6 @@ export async function sendDirectMessage(input: {
   replyToId?: string | null;
   sharedMovie?: WatchGroupSharedMovie | null;
 }): Promise<void> {
-  hydrateDirectMessagesOptionalColumnsUnsupported();
-  const token = ensureAuthedToken();
   const body = input.body.trim();
   const sharedMovie = input.sharedMovie
     ? {
@@ -1370,80 +1627,12 @@ export async function sendDirectMessage(input: {
   if (!body && !sharedMovie) {
     throw new Error('Message cannot be empty.');
   }
-  if (directMessagesOptionalColumnsUnsupported) {
-    const fallbackBody = body
-      ? body.slice(0, 1200)
-      : `Shared movie: ${sharedMovie?.title ?? 'Movie'}`.slice(0, 1200);
-    await supabaseRestRequest(
-      'direct_messages',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({
-          sender_id: input.senderId,
-          recipient_id: input.recipientId,
-          body: encodeLegacyDirectReplyBody(fallbackBody, input.replyToId),
-        }),
-        timeoutMs: DEFAULT_TIMEOUT_MS,
-      },
-      token,
-    );
-    return;
-  }
-  try {
-    await supabaseRestRequest(
-      'direct_messages',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({
-          sender_id: input.senderId,
-          recipient_id: input.recipientId,
-          body: body ? body.slice(0, 1200) : null,
-          reply_to_id: input.replyToId ?? null,
-          shared_media_type: sharedMovie?.mediaType ?? null,
-          shared_tmdb_id: sharedMovie?.tmdbId ?? null,
-          shared_title: sharedMovie?.title ?? null,
-          shared_poster: sharedMovie?.poster ?? null,
-          shared_release_year: sharedMovie?.releaseYear ?? null,
-        }),
-        timeoutMs: DEFAULT_TIMEOUT_MS,
-      },
-      token,
-    );
-  } catch (err) {
-    if (!isMissingDirectMessageOptionalColumnsError(err)) {
-      throw err;
-    }
-    markDirectMessagesOptionalColumnsUnsupported();
-
-    const fallbackBody = body
-      ? body.slice(0, 1200)
-      : `Shared movie: ${sharedMovie?.title ?? 'Movie'}`.slice(0, 1200);
-    await supabaseRestRequest(
-      'direct_messages',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({
-          sender_id: input.senderId,
-          recipient_id: input.recipientId,
-          body: encodeLegacyDirectReplyBody(fallbackBody, input.replyToId),
-        }),
-        timeoutMs: DEFAULT_TIMEOUT_MS,
-      },
-      token,
-    );
-  }
+  await authedAppRequest('/api/direct-messages/send', {
+    recipientId: input.recipientId,
+    body,
+    replyToId: input.replyToId ?? null,
+    sharedMovie,
+  });
 }
 
 export async function getDirectMessagesWithUser(
@@ -1528,6 +1717,7 @@ export async function getDirectMessagesWithUser(
 
     return messages.map((msg) => {
       const decodedLegacy = decodeLegacyDirectReplyBody(msg.body);
+      const normalizedBody = normalizeLegacyReplyBody(msg.body);
       const sender = userMap.get(msg.sender_id);
       const sharedMovie =
         msg.shared_media_type && msg.shared_tmdb_id && msg.shared_title
@@ -1545,7 +1735,7 @@ export async function getDirectMessagesWithUser(
         recipientId: msg.recipient_id,
         senderName: sender?.name || 'Member',
         senderAvatar: sender?.avatar ?? null,
-        body: decodedLegacy.body,
+        body: msg.reply_to_id ? normalizedBody : decodedLegacy.body,
         sharedMovie,
         replyToId: msg.reply_to_id ?? decodedLegacy.replyToId ?? null,
         reactions: reactionsByMessage.get(msg.id) ?? [],
@@ -2836,7 +3026,6 @@ export async function getWatchGroupPicks(groupId: string, currentUserId: string)
       } satisfies WatchGroupPick;
     })
     .sort((a, b) => {
-      if (a.score !== b.score) return b.score - a.score;
       return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
     });
 }
@@ -2922,7 +3111,6 @@ export async function sendWatchGroupMessage(input: {
   replyToId?: string | null;
   sharedMovie?: WatchGroupSharedMovie | null;
 }): Promise<void> {
-  const token = ensureAuthedToken();
   const body = input.body.trim();
   const sharedMovie = input.sharedMovie
     ? {
@@ -2936,104 +3124,82 @@ export async function sendWatchGroupMessage(input: {
   if (!body && !sharedMovie) {
     throw new Error('Message cannot be empty.');
   }
-
-  const payload = {
-    group_id: input.groupId,
-    sender_id: input.senderId,
-    body: body ? body.slice(0, 1200) : null,
-    shared_media_type: sharedMovie?.mediaType ?? null,
-    shared_tmdb_id: sharedMovie?.tmdbId ?? null,
-    shared_title: sharedMovie?.title ?? null,
-    shared_poster: sharedMovie?.poster ?? null,
-    shared_release_year: sharedMovie?.releaseYear ?? null,
-    reply_to_id: input.replyToId ?? null,
-  };
-
-  try {
-    await supabaseRestRequest(
-      'watch_group_messages',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify(payload),
-        timeoutMs: DEFAULT_TIMEOUT_MS,
-      },
-      token,
-    );
-  } catch (err) {
-    // If migration for shared movie fields is not applied yet, fall back to text-only send.
-    const message = err instanceof Error ? err.message.toLowerCase() : '';
-    const missingSharedColumns =
-      message.includes('shared_media_type') ||
-      message.includes('shared_tmdb_id') ||
-      message.includes('shared_title') ||
-      message.includes('schema cache');
-    if (!sharedMovie || !missingSharedColumns) {
-      throw err;
-    }
-
-    await supabaseRestRequest(
-      'watch_group_messages',
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Prefer: 'return=minimal',
-        },
-        body: JSON.stringify({
-          group_id: input.groupId,
-          sender_id: input.senderId,
-          body: body ? body.slice(0, 1200) : `Shared movie: ${sharedMovie.title}`.slice(0, 1200),
-          reply_to_id: input.replyToId ?? null,
-        }),
-        timeoutMs: DEFAULT_TIMEOUT_MS,
-      },
-      token,
-    );
-  }
+  await authedAppRequest('/api/watch-groups/messages/send', {
+    groupId: input.groupId,
+    body,
+    replyToId: input.replyToId ?? null,
+    sharedMovie,
+  });
 }
 
 export async function getWatchGroupMessages(
   groupId: string,
   currentUserId: string,
 ): Promise<WatchGroupMessage[]> {
+  hydrateWatchGroupMessagesOptionalColumnsUnsupported();
   const token = ensureAuthedToken();
   try {
-    const makeParams = (includeSharedColumns: boolean) =>
+    const makeParams = (mode: 'full' | 'reply-only' | 'legacy') =>
       new URLSearchParams({
-        select: includeSharedColumns
-          ? 'id,group_id,sender_id,body,reply_to_id,shared_media_type,shared_tmdb_id,shared_title,shared_poster,shared_release_year,created_at'
-          : 'id,group_id,sender_id,body,reply_to_id,created_at',
+        select:
+          mode === 'full'
+            ? 'id,group_id,sender_id,body,reply_to_id,shared_media_type,shared_tmdb_id,shared_title,shared_poster,shared_release_year,created_at'
+            : mode === 'reply-only'
+              ? 'id,group_id,sender_id,body,reply_to_id,created_at'
+              : 'id,group_id,sender_id,body,created_at',
         group_id: `eq.${groupId}`,
         order: 'created_at.desc',
         limit: '200',
       });
 
     let rows: WatchGroupMessageRow[] = [];
-    try {
+    if (watchGroupMessagesOptionalColumnsUnsupported) {
       rows = await supabaseRestRequest<WatchGroupMessageRow[]>(
-        `watch_group_messages?${makeParams(true).toString()}`,
+        `watch_group_messages?${makeParams('legacy').toString()}`,
         { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
         token,
       );
-    } catch (err) {
-      const message = err instanceof Error ? err.message.toLowerCase() : '';
-      const missingSharedColumns =
-        message.includes('shared_media_type') ||
-        message.includes('shared_tmdb_id') ||
-        message.includes('shared_title') ||
-        message.includes('schema cache');
-      if (!missingSharedColumns) {
-        throw err;
+    } else {
+      try {
+        rows = await supabaseRestRequest<WatchGroupMessageRow[]>(
+          `watch_group_messages?${makeParams('full').toString()}`,
+          { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+          token,
+        );
+      } catch (err) {
+        const message = err instanceof Error ? err.message.toLowerCase() : '';
+        const missingReplyToColumn =
+          message.includes('schema cache') ||
+          (message.includes('reply_to_id') && message.includes('column') && message.includes('watch_group_messages'));
+        const missingSharedColumns =
+          message.includes('schema cache') ||
+          ((
+            message.includes('shared_media_type') ||
+            message.includes('shared_tmdb_id') ||
+            message.includes('shared_title') ||
+            message.includes('shared_poster') ||
+            message.includes('shared_release_year')
+          ) && message.includes('column') && message.includes('watch_group_messages'));
+
+        if (!missingReplyToColumn && !missingSharedColumns) {
+          throw err;
+        }
+
+        if (missingReplyToColumn) {
+          markWatchGroupMessagesOptionalColumnsUnsupported();
+          rows = await supabaseRestRequest<WatchGroupMessageRow[]>(
+            `watch_group_messages?${makeParams('legacy').toString()}`,
+            { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+            token,
+          );
+        } else {
+          rows = await supabaseRestRequest<WatchGroupMessageRow[]>(
+            `watch_group_messages?${makeParams('reply-only').toString()}`,
+            { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
+            token,
+          );
+        }
       }
-      rows = await supabaseRestRequest<WatchGroupMessageRow[]>(
-        `watch_group_messages?${makeParams(false).toString()}`,
-        { method: 'GET', timeoutMs: DEFAULT_TIMEOUT_MS },
-        token,
-      );
     }
 
     const messages = Array.isArray(rows) ? rows : [];
@@ -3071,6 +3237,8 @@ export async function getWatchGroupMessages(
     }
 
     return messages.reverse().map((msg) => {
+      const decodedLegacy = decodeLegacyGroupReplyBody(msg.body);
+      const normalizedBody = normalizeLegacyReplyBody(msg.body);
       const sender = userMap.get(msg.sender_id);
       const sharedMovie =
         msg.shared_media_type && msg.shared_tmdb_id && msg.shared_title
@@ -3088,8 +3256,8 @@ export async function getWatchGroupMessages(
         senderId: msg.sender_id,
         senderName: sender?.name || 'Member',
         senderAvatar: sender?.avatar ?? null,
-        body: msg.body ?? '',
-        replyToId: msg.reply_to_id ?? null,
+        body: msg.reply_to_id ? normalizedBody : decodedLegacy.body,
+        replyToId: msg.reply_to_id ?? decodedLegacy.replyToId ?? null,
         reactions: reactionsByMessage.get(msg.id) ?? [],
         sharedMovie,
         createdAt: msg.created_at,

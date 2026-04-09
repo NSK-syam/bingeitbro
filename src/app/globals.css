@@ -50,6 +50,10 @@
 
 html {
   scroll-behavior: smooth;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
 }
 
 body {
@@ -57,6 +61,10 @@ body {
   color: var(--text-primary);
   font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   min-height: 100vh;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+  overscroll-behavior-x: none;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -1006,4 +1014,21 @@ button:focus-visible {
 
 .scrollbar-thin::-webkit-scrollbar-thumb:hover {
   background-color: var(--bg-card-hover);
+}
+
+.hide-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+html[data-bib-ios-review="1"] .bib-ios-review-hidden {
+  display: none !important;
+}
+
+html:not([data-bib-ios-review="1"]) .bib-ios-review-only {
+  display: none !important;
 }

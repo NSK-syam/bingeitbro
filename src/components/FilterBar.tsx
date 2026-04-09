@@ -1,6 +1,42 @@
 'use client';
 
+import type { ReactNode } from 'react';
 import { Recommendation, Recommender } from '@/types';
+
+function looksLikeAvatarPath(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim().toLowerCase();
+  return (
+    trimmed.startsWith('/avatars/') ||
+    trimmed.includes('.jpg') ||
+    trimmed.includes('.jpeg') ||
+    trimmed.includes('.png') ||
+    trimmed.includes('.webp')
+  );
+}
+
+function getRecommenderDisplayName(person: Recommender): string {
+  const rawName = (person.name || '').trim();
+  if (rawName && !looksLikeAvatarPath(rawName)) return rawName;
+  return 'Friend';
+}
+
+function renderRecommenderAvatar(avatar: string | undefined): ReactNode {
+  const trimmed = (avatar || '').trim();
+  if (!trimmed) return null;
+
+  if (looksLikeAvatarPath(trimmed)) {
+    return (
+      <img
+        src={trimmed}
+        alt=""
+        className="h-5 w-5 rounded-full object-cover object-top"
+      />
+    );
+  }
+
+  return <span>{trimmed}</span>;
+}
 
 function FilterButton({
   active,
@@ -121,7 +157,10 @@ export function FilterBar({
                       : 'bg-[var(--bg-secondary)] text-[var(--text-secondary)] hover:bg-[var(--bg-card)] hover:text-[var(--text-primary)] border border-white/10'
                   }`}
                 >
-                  {person.avatar} {person.name}
+                  <span className="inline-flex items-center gap-2">
+                    {renderRecommenderAvatar(person.avatar)}
+                    <span>{getRecommenderDisplayName(person)}</span>
+                  </span>
                 </button>
                 {onRemoveFriend && (
                   <button

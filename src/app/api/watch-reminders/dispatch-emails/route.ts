@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
 import { buildBibEmailTemplate } from '@/lib/email-template';
 import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
+import { dispatchPushNotification, type PushDispatchPayload } from '@/lib/server/push-dispatch';
 
 export const runtime = 'nodejs';
 
@@ -99,6 +100,11 @@ type DispatchSummary = {
   skipped: number;
   failed: number;
   failedDetails: string[];
+  push?: {
+    sent: number;
+    failed: number;
+    failedDetails: string[];
+  };
 };
 
 const unosendBaseUrl = 'https://www.unosend.co/api/v1';
@@ -108,6 +114,37 @@ const UNOSEND_FETCH_OPTIONS = {
   retryDelayMs: 350,
 } as const;
 type SupabaseServiceClient = SupabaseClient;
+
+async function sendPushJobs(jobs: PushDispatchPayload[]): Promise<{
+  sent: number;
+  failed: number;
+  failedDetails: string[];
+}> {
+  let sent = 0;
+  let failed = 0;
+  const failedDetails: string[] = [];
+
+  for (const job of jobs) {
+    try {
+      const result = await dispatchPushNotification(job);
+      if (result.ok) {
+        sent += 1;
+      } else if (!result.skipped) {
+        failed += 1;
+        if (result.message) failedDetails.push(result.message);
+      }
+    } catch (error) {
+      failed += 1;
+      failedDetails.push(error instanceof Error ? error.message : 'Push dispatch failed.');
+    }
+  }
+
+  return {
+    sent,
+    failed,
+    failedDetails: failedDetails.slice(0, 10),
+  };
+}
 
 function normalizeSecretCandidate(value: string | null | undefined): string {
   return String(value ?? '')
@@ -279,10 +316,23 @@ async function dispatchWatchReminderEmails(
   const userRows = (users ?? []) as UserRow[];
   const userMap = new Map<string, UserRow>(userRows.map((u) => [u.id, u]));
   const jobs: EmailJob[] = [];
+  const pushJobs: PushDispatchPayload[] = [];
   let skipped = 0;
 
   for (const reminder of due) {
     const recipient = userMap.get(reminder.user_id);
+    const movieLabel = reminder.movie_year
+      ? `${reminder.movie_title} (${reminder.movie_year})`
+      : reminder.movie_title;
+    pushJobs.push({
+      userIds: [reminder.user_id],
+      category: 'schedule',
+      title: 'Movie reminder',
+      body: `Time to watch ${movieLabel}`.slice(0, 220),
+      url: getWatchReminderOpenPath(reminder.movie_id),
+      tag: `watch-reminder-${reminder.id}`,
+    });
+
     const email = (recipient?.email ?? '').trim();
     if (!EMAIL_RE.test(email)) {
       skipped += 1;
@@ -290,9 +340,6 @@ async function dispatchWatchReminderEmails(
     }
 
     const receiverName = recipient?.name?.trim() || 'there';
-    const movieLabel = reminder.movie_year
-      ? `${reminder.movie_title} (${reminder.movie_year})`
-      : reminder.movie_title;
     const openLink = `${siteUrl}${getWatchReminderOpenPath(reminder.movie_id)}`;
     const subject = `Reminder: Watch ${movieLabel}`;
     const text = [
@@ -334,6 +381,7 @@ async function dispatchWatchReminderEmails(
   }
 
   const sendResult = await sendJobs(jobs);
+  const pushResult = await sendPushJobs(pushJobs);
 
   if (sendResult.sentIds.length > 0) {
     const updateNow = new Date().toISOString();
@@ -354,6 +402,7 @@ async function dispatchWatchReminderEmails(
     skipped,
     failed: sendResult.failed,
     failedDetails: sendResult.failedDetails.slice(0, 10),
+    push: pushResult,
   };
 }
 
@@ -400,6 +449,7 @@ async function dispatchFriendRecommendationReminderEmails(
   const userRows = (users ?? []) as UserRow[];
   const userMap = new Map<string, UserRow>(userRows.map((u) => [u.id, u]));
   const jobs: EmailJob[] = [];
+  const pushJobs: PushDispatchPayload[] = [];
   let skipped = 0;
 
   for (const reminder of due) {
@@ -425,6 +475,18 @@ async function dispatchFriendRecommendationReminderEmails(
       : recommendationId
         ? `${siteUrl}/movie/${encodeURIComponent(recommendationId)}`
         : `${siteUrl}/?view=friends`;
+    pushJobs.push({
+      userIds: [reminder.recipient_id],
+      category: 'schedule',
+      title: `${senderName} sent you a watch reminder`.slice(0, 120),
+      body: `${senderName} reminded you to watch ${movieLabel}`.slice(0, 220),
+      url: tmdbId
+        ? `/movie/tmdb-${encodeURIComponent(tmdbId)}`
+        : recommendationId
+          ? `/movie/${encodeURIComponent(recommendationId)}`
+          : '/?view=friends',
+      tag: `friend-reminder-${reminder.id}`,
+    });
 
     const subject = `${senderName} reminded you to watch ${movieLabel}`;
     const text = [
@@ -466,6 +528,7 @@ async function dispatchFriendRecommendationReminderEmails(
   }
 
   const sendResult = await sendJobs(jobs);
+  const pushResult = await sendPushJobs(pushJobs);
 
   if (sendResult.sentIds.length > 0) {
     const updateNow = new Date().toISOString();
@@ -486,6 +549,7 @@ async function dispatchFriendRecommendationReminderEmails(
     skipped,
     failed: sendResult.failed,
     failedDetails: sendResult.failedDetails.slice(0, 10),
+    push: pushResult,
   };
 }
 
@@ -520,6 +584,7 @@ export async function POST(request: Request) {
       skipped: 0,
       failed: 0,
       failedDetails: [],
+      push: { sent: 0, failed: 0, failedDetails: [] },
     };
 
     try {

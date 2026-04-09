@@ -3,8 +3,9 @@ self.addEventListener('push', (event) => {
   const title = payload.title || 'BiB';
   const options = {
     body: payload.body || 'You have a new recommendation.',
-    icon: '/bib-icon.svg',
-    badge: '/bib-icon.svg',
+    icon: payload.icon || '/bib-icon.svg',
+    badge: payload.badge || '/bib-icon.svg',
+    tag: payload.tag || undefined,
     data: {
       url: payload.url || '/',
     },

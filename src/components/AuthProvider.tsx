@@ -2,16 +2,26 @@
 
 import { createContext, useContext, useEffect, useState, useRef, ReactNode } from 'react';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { setSupabaseAccessToken } from '@/lib/supabase-rest';
 import { safeLocalStorageGet, safeLocalStorageKeys, safeLocalStorageRemove, safeLocalStorageSet, safeSessionStorageKeys, safeSessionStorageRemove } from '@/lib/safe-storage';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
-import { hasNativeAuthBridge, postNativeAuthMessage } from '@/lib/native-webview';
+import {
+  hasNativeAuthBridge,
+  isNativeAppShell,
+  isNativeAppleSignInSupported,
+  postNativeAuthMessage,
+  postNativePushClearContextMessage,
+  postNativePushSyncContextMessage,
+} from '@/lib/native-webview';
 import { trackFunnelEvent } from '@/lib/funnel';
+import { isPushNotificationsConfigured, syncPushSubscription } from '@/lib/push';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
 import { WatchReminderCenter } from './WatchReminderCenter';
 import { FriendRecommendationReminderCenter } from './FriendRecommendationReminderCenter';
 import type { User, Session } from '@supabase/supabase-js';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
 
 interface AuthContextType {
   user: User | null;
@@ -27,6 +37,7 @@ interface AuthContextType {
     captchaToken?: string,
   ) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
+  signInWithApple: () => Promise<{ error: Error | null }>;
   checkUsernameAvailable: (username: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   isConfigured: boolean;
@@ -42,9 +53,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initializedRef = useRef(false);
   const ensuredProfileRef = useRef<string | null>(null);
   const previousUserIdRef = useRef<string | null>(null);
+  const previousNativePushContextRef = useRef<{ userId: string; accessToken: string } | null>(null);
   const [birthdayOpen, setBirthdayOpen] = useState(false);
   const [birthdayName, setBirthdayName] = useState('');
   const [birthdayToday, setBirthdayToday] = useState(false);
+  const iosReviewMode = useIosReviewMode();
   // Confetti removed by request; keep balloons + popup only.
 
   const resetBirthdayState = () => {
@@ -127,6 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         trackFunnelEvent('auth_success', { source: 'auth_state_change' });
       }
       previousUserIdRef.current = nextUserId;
+      setSupabaseAccessToken(session?.access_token ?? null);
       initializedRef.current = true;
       setSession(session);
       setUser(session?.user ?? null);
@@ -147,6 +161,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           trackFunnelEvent('auth_success', { source: 'initial_session' });
         }
         previousUserIdRef.current = nextUserId;
+        setSupabaseAccessToken(session?.access_token ?? null);
         initializedRef.current = true;
         setSession(session);
         setUser(session?.user ?? null);
@@ -215,6 +230,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true;
     };
   }, [isConfigured, user?.id, user?.email, user?.user_metadata?.name]);
+
+  useEffect(() => {
+    if (!isNativeAppShell()) return;
+
+    const nextContext =
+      session?.user?.id && session.access_token
+        ? {
+            userId: session.user.id,
+            accessToken: session.access_token,
+          }
+        : null;
+    const previousContext = previousNativePushContextRef.current;
+
+    if (nextContext) {
+      postNativePushSyncContextMessage(nextContext);
+      previousNativePushContextRef.current = nextContext;
+      return;
+    }
+
+    if (previousContext) {
+      postNativePushClearContextMessage(previousContext);
+      previousNativePushContextRef.current = null;
+    }
+  }, [session?.access_token, session?.user?.id]);
+
+  useEffect(() => {
+    if (!isConfigured || !user?.id || iosReviewMode) return;
+    if (!isPushNotificationsConfigured()) return;
+    if (typeof window === 'undefined' || !('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+
+    void syncPushSubscription(user.id).catch(() => {
+      // Best-effort sync so signed-in browsers stay subscribed without extra prompts.
+    });
+  }, [isConfigured, iosReviewMode, user?.id]);
 
   const signIn = async (email: string, password: string) => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
@@ -292,10 +342,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signInWithGoogle = async () => {
     if (!isConfigured) return { error: new Error('Supabase not configured') };
-    if (hasNativeAuthBridge()) {
-      postNativeAuthMessage('BIB_AUTH_GOOGLE_SIGN_IN');
-      return { error: null };
+
+    if (isNativeAppShell()) {
+      const startedAt = Date.now();
+      while (!hasNativeAuthBridge() && Date.now() - startedAt < 1500) {
+        await new Promise((resolve) => setTimeout(resolve, 125));
+      }
+
+      if (hasNativeAuthBridge()) {
+        postNativeAuthMessage('BIB_AUTH_GOOGLE_SIGN_IN');
+        return { error: null };
+      }
+
+      return {
+        error: new Error(
+          'Native auth bridge not ready yet. Please close and reopen the app, then try Google sign-in again.',
+        ),
+      };
     }
+
     if (typeof window !== 'undefined' && isLikelyInAppBrowser(window.navigator.userAgent || '')) {
       return {
         error: new Error(
@@ -328,6 +393,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     return { error };
+  };
+
+  const signInWithApple = async () => {
+    if (!isConfigured) return { error: new Error('Supabase not configured') };
+    if (!isNativeAppleSignInSupported()) {
+      return { error: new Error('Apple sign-in is only available in the iOS app.') };
+    }
+
+    if (!postNativeAuthMessage('BIB_AUTH_APPLE_SIGN_IN')) {
+      return {
+        error: new Error('Apple sign-in is still loading. Wait a moment and try again.'),
+      };
+    }
+
+    return { error: null };
   };
 
   const signOut = async () => {
@@ -367,6 +447,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // 4. Clear React state after remote sign-out + local storage cleanup.
+    setSupabaseAccessToken(null);
     setUser(null);
     setSession(null);
   };
@@ -379,13 +460,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signUp,
       signInWithGoogle,
+      signInWithApple,
       checkUsernameAvailable,
       signOut,
       isConfigured
     }}>
       {children}
-      <WatchReminderCenter />
-      <FriendRecommendationReminderCenter />
+      <WatchReminderCenter key={user?.id ?? 'watch-reminders-guest'} />
+      {!iosReviewMode && <FriendRecommendationReminderCenter key={user?.id ?? 'friend-reminders-guest'} />}
       <BalloonRain isOn={birthdayToday} />
       <BirthdayPopup
         isOpen={birthdayOpen}

@@ -68,8 +68,18 @@ export const ALL_AVATAR_EMOJIS: string[] = AVATAR_THEMES.flatMap((t) =>
   t.options.map((o) => o.emoji)
 );
 
+function randomIndex(max: number): number {
+  if (max <= 0) return 0;
+  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
+    const values = new Uint32Array(1);
+    crypto.getRandomValues(values);
+    return values[0] % max;
+  }
+  return Math.floor(Math.random() * max);
+}
+
 export function getRandomMovieAvatar(): string {
-  return ALL_AVATAR_EMOJIS[Math.floor(Math.random() * ALL_AVATAR_EMOJIS.length)];
+  return ALL_AVATAR_EMOJIS[randomIndex(ALL_AVATAR_EMOJIS.length)];
 }
 
 export interface ImageAvatarOption {

@@ -225,6 +225,11 @@ NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 NEXT_PUBLIC_TMDB_API_KEY=your-tmdb-api-key
 SUPABASE_SERVICE_ROLE_KEY=your-service-key (optional, reduces OOM)
+
+# Stripe (optional; for payments)
+STRIPE_SECRET_KEY=sk_test_... or sk_live_...
+STRIPE_WEBHOOK_SECRET=whsec_... (from Stripe Dashboard → Webhooks)
+NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_test_... or pk_live_... (client-side Checkout/Elements)
 ```
 
 ## Troubleshooting Guide

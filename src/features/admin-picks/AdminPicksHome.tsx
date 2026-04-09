@@ -1,7 +1,7 @@
 'use client';
 
-import { AdDisplayUnit } from '@/components/AdDisplayUnit';
 import { AdminRecommendationsShelf } from '@/components/AdminRecommendationsShelf';
+import { AdminPushBroadcastPanel } from '@/components/AdminPushBroadcastPanel';
 import { Header } from '@/components/Header';
 import { HubTabs } from '@/components/HubTabs';
 import { MovieBackground } from '@/components/MovieBackground';
@@ -14,10 +14,8 @@ export default function AdminPicksHome() {
       <Header searchMode="off" />
       <HubTabs placement="center" />
 
-      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="mb-8">
-          <AdDisplayUnit className="mx-auto max-w-3xl" />
-        </div>
+      <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 sm:py-8">
+        <AdminPushBroadcastPanel />
 
         <AdminRecommendationsShelf
           title="Movies"

@@ -630,34 +630,101 @@ export function normalizeWatchProviderKey(name: string): string {
   return lower;
 }
 
-export function getDirectOttLink(platformName: string, title: string): string | null {
+export type OTTProviderTarget = {
+  browserUrl: string;
+  appUrl?: string;
+};
+
+function buildOttProviderTarget(browserUrl: string, appUrl?: string): OTTProviderTarget {
+  return {
+    browserUrl,
+    appUrl: appUrl || browserUrl,
+  };
+}
+
+export function getDirectOttTarget(platformName: string, title: string): OTTProviderTarget | null {
   const encodedTitle = encodeURIComponent((title || '').trim());
   if (!encodedTitle) return null;
   const lowerName = platformName.toLowerCase();
 
-  if (lowerName.includes('netflix')) return `https://www.netflix.com/search?q=${encodedTitle}`;
-  if (lowerName.includes('prime') || lowerName.includes('amazon')) return `https://app.primevideo.com/search?phrase=${encodedTitle}`;
-  if (lowerName.includes('jiohotstar')) return `https://www.jiohotstar.com/in/search?q=${encodedTitle}`;
-  if (lowerName.includes('hotstar')) return `https://www.hotstar.com/in/search?q=${encodedTitle}`;
-  if (lowerName.includes('disney')) return `https://www.disneyplus.com/search?q=${encodedTitle}`;
-  if (lowerName.includes('aha')) return `https://www.aha.video/search?q=${encodedTitle}`;
-  if (lowerName.includes('apple')) return `https://tv.apple.com/search?term=${encodedTitle}`;
-  if (lowerName.includes('zee5')) return `https://www.zee5.com/search?q=${encodedTitle}`;
-  if (lowerName.includes('sony') || lowerName.includes('sonyliv')) return `https://www.sonyliv.com/search?searchTerm=${encodedTitle}`;
+  if (lowerName.includes('netflix')) return buildOttProviderTarget(
+    `https://www.netflix.com/search?q=${encodedTitle}`,
+    `nflx://www.netflix.com/search?q=${encodedTitle}`,
+  );
+  if (lowerName.includes('prime') || lowerName.includes('amazon')) return buildOttProviderTarget(
+    `https://www.primevideo.com/search?phrase=${encodedTitle}`,
+    `https://app.primevideo.com/search?phrase=${encodedTitle}`,
+  );
+  if (lowerName.includes('jiohotstar')) return buildOttProviderTarget(
+    `https://www.jiohotstar.com/in/search?q=${encodedTitle}`,
+    `https://www.jiohotstar.com/in/search?q=${encodedTitle}`,
+  );
+  if (lowerName.includes('hotstar')) return buildOttProviderTarget(
+    `https://www.hotstar.com/in/search?q=${encodedTitle}`,
+    `https://www.hotstar.com/in/search?q=${encodedTitle}`,
+  );
+  if (lowerName.includes('disney')) return buildOttProviderTarget(
+    `https://www.disneyplus.com/search?q=${encodedTitle}`,
+    `https://www.disneyplus.com/search?q=${encodedTitle}`,
+  );
+  if (lowerName.includes('aha')) return buildOttProviderTarget(
+    `https://www.aha.video/search?q=${encodedTitle}`,
+    `https://www.aha.video/search?q=${encodedTitle}`,
+  );
+  if (lowerName.includes('apple')) return buildOttProviderTarget(
+    `https://tv.apple.com/search?term=${encodedTitle}`,
+    `https://tv.apple.com/search?term=${encodedTitle}`,
+  );
+  if (lowerName.includes('zee5')) return buildOttProviderTarget(
+    `https://www.zee5.com/search?q=${encodedTitle}`,
+    `https://www.zee5.com/search?q=${encodedTitle}`,
+  );
+  if (lowerName.includes('sony') || lowerName.includes('sonyliv')) return buildOttProviderTarget(
+    `https://www.sonyliv.com/search?searchTerm=${encodedTitle}`,
+    `https://www.sonyliv.com/search?searchTerm=${encodedTitle}`,
+  );
   if (lowerName.includes('jio') && (lowerName.includes('cinema') || lowerName.includes('cinema premium'))) {
-    return `https://www.jiocinema.com/search/${encodedTitle}`;
+    return buildOttProviderTarget(
+      `https://www.jiocinema.com/search/${encodedTitle}`,
+      `https://www.jiocinema.com/search/${encodedTitle}`,
+    );
   }
-  if (lowerName.includes('youtube')) return `https://www.youtube.com/results?search_query=${encodedTitle}`;
-  if (lowerName.includes('hulu')) return `https://www.hulu.com/search?q=${encodedTitle}`;
-  if (lowerName === 'max' || lowerName.includes('hbo')) return `https://www.max.com/search?q=${encodedTitle}`;
-  if (lowerName.includes('peacock')) return `https://www.peacocktv.com/search?q=${encodedTitle}`;
-  if (lowerName.includes('paramount')) return `https://www.paramountplus.com/search/?q=${encodedTitle}`;
-  if (lowerName.includes('lionsgate')) return `https://www.lionsgateplay.com/search?q=${encodedTitle}`;
-  if (lowerName.includes('voot')) return `https://www.voot.com/search?q=${encodedTitle}`;
-  if (lowerName.includes('mx player')) return `https://www.mxplayer.in/search?query=${encodedTitle}`;
-  if (lowerName.includes('sun nxt')) return `https://www.sunnxt.com/search?query=${encodedTitle}`;
-  if (lowerName.includes('crunchyroll')) return `https://www.crunchyroll.com/search?q=${encodedTitle}`;
+  if (lowerName.includes('youtube')) return buildOttProviderTarget(
+    `https://www.youtube.com/results?search_query=${encodedTitle}`,
+    `youtube://www.youtube.com/results?search_query=${encodedTitle}`,
+  );
+  if (lowerName.includes('hulu')) return buildOttProviderTarget(
+    `https://www.hulu.com/search?q=${encodedTitle}`,
+    `https://www.hulu.com/search?q=${encodedTitle}`,
+  );
+  if (lowerName === 'max' || lowerName.includes('hbo')) return buildOttProviderTarget(
+    `https://play.max.com/search?q=${encodedTitle}`,
+    `https://play.max.com/search?q=${encodedTitle}`,
+  );
+  if (lowerName.includes('peacock')) return buildOttProviderTarget(
+    `https://www.peacocktv.com/search?q=${encodedTitle}`,
+    `https://www.peacocktv.com/search?q=${encodedTitle}`,
+  );
+  if (lowerName.includes('paramount')) return buildOttProviderTarget(
+    `https://www.paramountplus.com/search/?q=${encodedTitle}`,
+    `https://www.paramountplus.com/search/?q=${encodedTitle}`,
+  );
+  if (lowerName.includes('lionsgate')) return buildOttProviderTarget(`https://www.lionsgateplay.com/search?q=${encodedTitle}`);
+  if (lowerName.includes('voot')) return buildOttProviderTarget(`https://www.voot.com/search?q=${encodedTitle}`);
+  if (lowerName.includes('mx player')) return buildOttProviderTarget(
+    `https://www.mxplayer.in/search?query=${encodedTitle}`,
+    `https://www.mxplayer.in/search?query=${encodedTitle}`,
+  );
+  if (lowerName.includes('sun nxt')) return buildOttProviderTarget(`https://www.sunnxt.com/search?query=${encodedTitle}`);
+  if (lowerName.includes('crunchyroll')) return buildOttProviderTarget(
+    `https://www.crunchyroll.com/search?q=${encodedTitle}`,
+    `https://www.crunchyroll.com/search?q=${encodedTitle}`,
+  );
   return null;
+}
+
+export function getDirectOttLink(platformName: string, title: string): string | null {
+  return getDirectOttTarget(platformName, title)?.browserUrl ?? null;
 }
 
 type ProviderEntryAny = { provider_name?: string; logo_path?: string | null };
@@ -680,7 +747,14 @@ export function tmdbWatchProvidersToOttLinks(
   if (!results) return [];
 
   const regionLabels: Record<string, string> = { IN: 'India', US: 'USA' };
-  const byPlatform = new Map<string, { platform: string; logoPath?: string; url?: string; regions: Set<string> }>();
+  const byPlatform = new Map<string, {
+    platform: string;
+    logoPath?: string;
+    url?: string;
+    browserUrl?: string;
+    appUrl?: string;
+    regions: Set<string>;
+  }>();
 
   for (const [region, label] of Object.entries(regionLabels)) {
     const r = results[region];
@@ -697,13 +771,21 @@ export function tmdbWatchProvidersToOttLinks(
       if (!name) continue;
       const key = normalizeWatchProviderKey(name);
       if (!key) continue;
-      const providerDeepLink = getDirectOttLink(name, title);
-      if (!providerDeepLink) continue;
+      const providerTarget = getDirectOttTarget(name, title);
+      if (!providerTarget) continue;
       const prev =
-        byPlatform.get(key) ?? { platform: name, regions: new Set<string>(), url: providerDeepLink };
+        byPlatform.get(key) ?? {
+          platform: name,
+          regions: new Set<string>(),
+          url: providerTarget.browserUrl,
+          browserUrl: providerTarget.browserUrl,
+          appUrl: providerTarget.appUrl,
+        };
       prev.regions.add(label);
       if (!prev.logoPath && p.logo_path) prev.logoPath = p.logo_path;
-      prev.url = providerDeepLink;
+      prev.url = providerTarget.browserUrl;
+      prev.browserUrl = providerTarget.browserUrl;
+      prev.appUrl = providerTarget.appUrl;
       // Prefer the "cleaner" display name if we see multiple variants.
       if (prev.platform.length > name.length) prev.platform = name;
       byPlatform.set(key, prev);
@@ -715,6 +797,8 @@ export function tmdbWatchProvidersToOttLinks(
     links.push({
       platform: meta.platform,
       url: meta.url!,
+      browserUrl: meta.browserUrl,
+      appUrl: meta.appUrl,
       availableIn: Array.from(meta.regions).join(' & '),
       logoPath: meta.logoPath,
     });

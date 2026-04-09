@@ -22,13 +22,6 @@ export function WatchReminderCenter() {
   const { user } = useAuth();
   const [toasts, setToasts] = useState<ToastReminder[]>([]);
   const seenIdsRef = useRef<Set<string>>(new Set());
-  const permissionRequestedRef = useRef(false);
-
-  useEffect(() => {
-    setToasts([]);
-    seenIdsRef.current = new Set();
-    permissionRequestedRef.current = false;
-  }, [user?.id]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -50,17 +43,7 @@ export function WatchReminderCenter() {
     const showBrowserNotifications = async (reminders: WatchReminder[]) => {
       if (typeof window === 'undefined' || reminders.length === 0) return;
       if (!('Notification' in window)) return;
-
-      let permission = Notification.permission;
-      if (permission === 'default' && !permissionRequestedRef.current) {
-        permissionRequestedRef.current = true;
-        try {
-          permission = await Notification.requestPermission();
-        } catch {
-          permission = Notification.permission;
-        }
-      }
-      if (permission !== 'granted') return;
+      if (Notification.permission !== 'granted') return;
 
       reminders.forEach((reminder) => {
         const openPath = getWatchReminderOpenPath(reminder.movieId);

@@ -10,12 +10,11 @@ export function BibSplash({ enabled = true }: BibSplashProps) {
   const [visible, setVisible] = useState(false);
 
   useEffect(() => {
-    if (!enabled) {
-      setVisible(false);
-      return;
-    }
-    if (typeof window === 'undefined') return;
-    setVisible(true);
+    if (!enabled || typeof window === 'undefined') return;
+
+    queueMicrotask(() => {
+      setVisible(true);
+    });
 
     const prefersReduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const duration = prefersReduced ? 800 : 2400;
@@ -64,7 +63,7 @@ export function BibSplash({ enabled = true }: BibSplashProps) {
     return () => window.clearTimeout(timer);
   }, [enabled]);
 
-  if (!visible) return null;
+  if (!enabled || !visible) return null;
 
   return (
     <div className="bib-splash" aria-hidden="true">

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from './AuthProvider';
 import { createClient } from '@/lib/supabase';
+import { buildOttLaunchHref } from '@/lib/ott-launch';
 import {
   searchMovies,
   searchTV,
@@ -447,9 +448,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess, defaultType =
                   {ottLinks.map((link, index) => (
                     <a
                       key={index}
-                      href={link.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      href={buildOttLaunchHref(link)}
                       className="px-3 py-1.5 bg-[var(--bg-secondary)] rounded-full text-sm text-[var(--text-primary)] hover:bg-[var(--accent)] hover:text-[var(--bg-primary)] transition-colors flex items-center gap-1.5"
                     >
                       {link.platform}
@@ -459,7 +458,7 @@ export function SubmitRecommendation({ isOpen, onClose, onSuccess, defaultType =
                     </a>
                   ))}
                 </div>
-                <p className="text-xs text-[var(--text-muted)] mt-2">Click to open streaming link</p>
+                <p className="text-xs text-[var(--text-muted)] mt-2">Tap to open the provider app or website</p>
               </div>
             )}
 

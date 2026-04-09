@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
+import { IosReviewAccessGuard } from '@/components';
 import { useAuth } from '@/components/AuthProvider';
 import { AuthModal } from '@/components/AuthModal';
 import { getTriviaLeaderboard, submitTriviaAttempt, type TriviaLanguage, type TriviaLeaderboardEntry } from '@/lib/supabase-rest';
@@ -15,6 +16,8 @@ type WeeklyTriviaQuestion = {
   question: string;
   options: string[];
   correctIndex: number;
+  contextKind?: 'movie' | 'show' | 'topic';
+  contextLabel?: string;
 };
 
 type WeeklyTriviaPayload = {
@@ -42,6 +45,17 @@ function getTitleInitials(title: string): string {
   const parts = title.trim().split(/\s+/).filter(Boolean).slice(0, 2);
   if (parts.length === 0) return '??';
   return parts.map((part) => part.charAt(0).toUpperCase()).join('');
+}
+
+function getQuestionContextLabel(question: WeeklyTriviaQuestion): string {
+  const label = question.contextLabel?.trim() || question.title?.trim();
+  return label || 'Cinema';
+}
+
+function getQuestionContextHeading(question: WeeklyTriviaQuestion): string {
+  if (question.contextKind === 'show') return 'Show';
+  if (question.contextKind === 'topic') return 'Topic';
+  return 'Movie';
 }
 
 function resolveAvatarImageSrc(avatar: string | null | undefined): string | null {
@@ -85,7 +99,6 @@ function LeaderboardAvatar({
       aria-hidden
     >
       {src && !imageFailed ? (
-        // eslint-disable-next-line @next/next/no-img-element
         <img
           src={src}
           alt={name}
@@ -223,10 +236,6 @@ export default function TriviaPage() {
   }, [weekly?.weekKey, weekly?.language, user?.id]);
 
   const start = () => {
-    if (!user) {
-      setShowAuthModal(true);
-      return;
-    }
     if (!weekly) return;
     setStartedAt(Date.now());
     setFinishedAt(null);
@@ -283,9 +292,12 @@ export default function TriviaPage() {
 
   const q = weekly?.questions?.[currentIndex] ?? null;
   const answered = typeof answers[currentIndex] === 'number' && answers[currentIndex] >= 0;
+  const qContextLabel = q ? getQuestionContextLabel(q) : '';
+  const qContextHeading = q ? getQuestionContextHeading(q) : 'Movie';
 
   return (
-    <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
+    <IosReviewAccessGuard fallbackHref="/movies">
+      <div className="min-h-screen bg-[var(--bg-primary)] text-[var(--text-primary)]">
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10">
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-3">
@@ -296,7 +308,7 @@ export default function TriviaPage() {
                 <span className="ml-2 text-sm font-semibold text-[var(--text-muted)]">({activeLangMeta.label})</span>
               </h1>
               <p className="text-sm text-[var(--text-muted)] mt-1">
-                10 questions, picked fresh every week. Years: 2000 to 2026. Rank by score, then fastest time.
+                10 questions, picked fresh every week. Rank by score, then fastest time.
               </p>
             </div>
             <Link
@@ -475,11 +487,10 @@ export default function TriviaPage() {
                     <div className="flex items-start gap-4">
                       <div className="w-16 h-24 rounded-2xl overflow-hidden bg-black/30 border border-white/10 flex-shrink-0">
                         {q.poster ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={q.poster} alt={q.title} className="w-full h-full object-cover" />
+                          <img src={q.poster} alt={qContextLabel} className="w-full h-full object-cover" />
                         ) : (
                           <div className="w-full h-full flex items-center justify-center bg-[linear-gradient(180deg,rgba(245,158,11,0.14),rgba(15,23,42,0.4))] text-sm font-extrabold tracking-[0.12em] text-amber-100">
-                            {getTitleInitials(q.title)}
+                            {getTitleInitials(qContextLabel)}
                           </div>
                         )}
                       </div>
@@ -489,7 +500,7 @@ export default function TriviaPage() {
                         </p>
                         <h3 className="mt-1 text-xl sm:text-2xl font-extrabold leading-snug">{q.question}</h3>
                         <p className="mt-2 text-sm text-[var(--text-muted)]">
-                          Movie: <span className="text-[var(--text-primary)] font-semibold">{q.title}</span>
+                          {qContextHeading}: <span className="text-[var(--text-primary)] font-semibold">{qContextLabel}</span>
                         </p>
                       </div>
                     </div>
@@ -646,6 +657,7 @@ export default function TriviaPage() {
       </div>
 
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
-    </div>
+      </div>
+    </IosReviewAccessGuard>
   );
 }

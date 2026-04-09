@@ -8,7 +8,7 @@ export default function Copyright() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Copyright Policy &amp; DMCA</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 16, 2026</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: March 11, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -142,7 +142,7 @@ export default function Copyright() {
             </p>
             <div className="mt-2">
               <p className="font-medium">BiB Copyright Agent</p>
-              <p>Email: bingeitbro@gmail.com</p>
+              <p>Email: bingeitbroo@gmail.com</p>
               <p>Subject Line: DMCA Notice - [Brief Description]</p>
             </div>
           </section>
@@ -156,6 +156,8 @@ export default function Copyright() {
           <Link href="/terms" className="hover:underline">Terms of Service</Link>
           {' | '}
           <Link href="/cookies" className="hover:underline">Cookie Policy</Link>
+          {' | '}
+          <Link href="/support" className="hover:underline">Support</Link>
           {' | '}
           <Link href="/disclaimer" className="hover:underline">Disclaimer</Link>
         </div>

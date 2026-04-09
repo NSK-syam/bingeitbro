@@ -42,6 +42,23 @@ type NudgePayload =
       message?: string | null;
     };
 
+type LegacyReceivedNudgeRow = Nudge & {
+  sender_id?: string | null;
+  recipient_id?: string | null;
+};
+
+type SentNudgeRow = {
+  recommendation_id?: string | null;
+  tmdb_id?: string | null;
+  movie_id?: string | null;
+};
+
+function getErrorCode(error: unknown): string | null {
+  if (!error || typeof error !== 'object' || !('code' in error)) return null;
+  const code = (error as { code?: unknown }).code;
+  return typeof code === 'string' ? code : null;
+}
+
 export function useNudges() {
   const { user } = useAuth();
   const [receivedNudges, setReceivedNudges] = useState<Nudge[]>([]);
@@ -107,7 +124,7 @@ export function useNudges() {
           .order('created_at', { ascending: false });
 
         if (!legacyReceived.error && legacyReceived.data) {
-          receivedData = legacyReceived.data.map((row: any) => ({
+          receivedData = (legacyReceived.data as LegacyReceivedNudgeRow[]).map((row) => ({
             ...row,
             from_user_id: row.from_user_id ?? row.sender_id,
             to_user_id: row.to_user_id ?? row.recipient_id,
@@ -125,32 +142,42 @@ export function useNudges() {
         setUnreadCount(receivedData.filter((n) => !n.is_read).length);
       }
 
-      // Fetch sent nudge IDs (new schema)
-      let sentResult: any = await supabase
+      // Fetch sent nudge IDs (new schema, with older-schema fallbacks)
+      let sentRows: SentNudgeRow[] | null = null;
+      let sentResult = await supabase
         .from('nudges')
         .select('recommendation_id, tmdb_id')
         .eq('from_user_id', user.id);
 
-      if (sentResult.error && typeof sentResult.error.message === 'string') {
-        if (sentResult.error.message.includes('tmdb_id')) {
-        sentResult = await supabase
+      if (sentResult.error && typeof sentResult.error.message === 'string' && sentResult.error.message.includes('tmdb_id')) {
+        const recommendationOnlyResult = await supabase
           .from('nudges')
           .select('recommendation_id')
           .eq('from_user_id', user.id);
+
+        if (!recommendationOnlyResult.error) {
+          sentRows = (recommendationOnlyResult.data ?? []) as SentNudgeRow[];
+        } else {
+          sentResult = recommendationOnlyResult;
         }
+      } else if (!sentResult.error) {
+        sentRows = (sentResult.data ?? []) as SentNudgeRow[];
       }
 
-      if (sentResult.error) {
-        // Fallback: older schema
-        sentResult = await supabase
+      if (!sentRows && sentResult.error) {
+        const legacySentResult = await supabase
           .from('nudges')
           .select('movie_id')
           .eq('sender_id', user.id);
+
+        if (!legacySentResult.error) {
+          sentRows = (legacySentResult.data ?? []) as SentNudgeRow[];
+        }
       }
 
-      if (sentResult.data) {
+      if (sentRows) {
         const set = new Set<string>();
-        sentResult.data.forEach((n: any) => {
+        sentRows.forEach((n) => {
           if (n.recommendation_id) set.add(`rec:${n.recommendation_id}`);
           if (n.tmdb_id) set.add(`tmdb:${n.tmdb_id}`);
           if (!n.recommendation_id && !n.tmdb_id && n.movie_id) {
@@ -262,7 +289,7 @@ export function useNudges() {
         msg.includes('duplicate') ||
         msg.includes('unique') ||
         msg.includes('already exists') ||
-        (typeof (error as any).code === 'string' && (error as any).code === '23505');
+        getErrorCode(error) === '23505';
       if (isDuplicate) {
         error = null;
       }
@@ -294,7 +321,7 @@ export function useNudges() {
     if (!user || !isSupabaseConfigured()) return;
 
     const supabase = createClient();
-    let result = await supabase
+    const result = await supabase
       .from('nudges')
       .update({ is_read: true })
       .eq('to_user_id', user.id)

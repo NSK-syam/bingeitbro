@@ -5,6 +5,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
 
 interface HeaderProps {
   searchMode?: 'movie' | 'tv' | 'off';
@@ -45,6 +46,7 @@ export function Header({
   const [userAvatar, setUserAvatar] = useState<string | null>(null);
   const searchRef = useRef<HTMLDivElement>(null);
   const { user, signOut, isConfigured } = useAuth();
+  const iosReviewMode = useIosReviewMode();
 
   // Fetch current user's avatar from DB (for header + picker)
   useEffect(() => {
@@ -195,7 +197,7 @@ export function Header({
               <span className="sr-only">Binge It Bro</span>
             </Link>
             <a
-              href="https://www.instagram.com/bingeitbroo?igsh=dThqdnhkNmtwa2h4"
+              href="https://www.instagram.com/bingeitbro?igsh=dThqdnhkNmtwa2h4"
               target="_blank"
               rel="noopener noreferrer"
               aria-label="Follow BiB on Instagram"
@@ -290,7 +292,7 @@ export function Header({
                 <button
                   onClick={onFriendRecommendationsClick}
                   aria-label="Open friend recommendations"
-                  className="relative p-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
+                  className={`bib-ios-review-hidden relative p-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10 ${iosReviewMode ? 'hidden' : ''}`}
                   title="Friend Recommendations"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -306,7 +308,7 @@ export function Header({
                 <button
                   onClick={onNudgesClick}
                   aria-label="Open nudges"
-                  className="relative p-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10"
+                  className={`bib-ios-review-hidden relative p-2 text-sm bg-[var(--bg-secondary)] text-[var(--text-primary)] rounded-full hover:bg-[var(--bg-card)] transition-colors border border-white/10 ${iosReviewMode ? 'hidden' : ''}`}
                   title="Nudges"
                 >
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -378,6 +380,7 @@ export function Header({
                       <button
                         type="button"
                         onClick={() => {
+                          setShowUserMenu(false);
                           window.location.href = `/profile/${user.id}`;
                         }}
                         className="w-full px-4 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 cursor-pointer"
@@ -387,16 +390,31 @@ export function Header({
                         </svg>
                         View My Profile
                       </button>
-                      <Link
-                        href="/trivia"
-                        onClick={() => setShowUserMenu(false)}
-                        className="w-full px-4 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 cursor-pointer"
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          window.location.href = `/profile/${user.id}#delete-account`;
+                        }}
+                        className="w-full px-4 py-2 text-left text-sm text-red-300 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer"
                       >
                         <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6M9 11h6M9 15h4M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6M9 7V4a1 1 0 011-1h4a1 1 0 011 1v3m-7 0h8" />
                         </svg>
-                        Weekly Trivia
-                      </Link>
+                        Delete Account & Data
+                      </button>
+                      {!iosReviewMode && (
+                        <Link
+                          href="/trivia"
+                          onClick={() => setShowUserMenu(false)}
+                          className="bib-ios-review-hidden w-full px-4 py-2 text-left text-sm text-[var(--text-primary)] hover:bg-[var(--bg-secondary)] transition-colors flex items-center gap-2 cursor-pointer"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6M9 11h6M9 15h4M5 5h14a2 2 0 012 2v12a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2z" />
+                          </svg>
+                          Weekly Trivia
+                        </Link>
+                      )}
                       <button
                         type="button"
                         onClick={() => {

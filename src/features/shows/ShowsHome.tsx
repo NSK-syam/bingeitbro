@@ -9,9 +9,9 @@ import { Header } from '@/components/Header';
 import { HubTabs } from '@/components/HubTabs';
 import { MovieCalendarSpotlightPopup } from '@/components/MovieCalendarSpotlightPopup';
 import { ShowBackground } from '@/components/ShowBackground';
-import { AdDisplayUnit } from '@/components/AdDisplayUnit';
 import { useAuth } from '@/components/AuthProvider';
 import { useCountry } from '@/hooks';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
 
 const SubmitRecommendation = dynamic(
   () => import('@/components/SubmitRecommendation').then((mod) => mod.SubmitRecommendation),
@@ -31,7 +31,8 @@ const TrendingShows = dynamic(
 );
 
 export default function ShowsHome() {
-  const { user, loading: authLoading } = useAuth();
+  const { user } = useAuth();
+  const iosReviewMode = useIosReviewMode();
   const [country, setCountry] = useCountry();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -59,18 +60,20 @@ export default function ShowsHome() {
         searchMode="tv"
         onSearch={setSearchQuery}
         onLoginClick={() => setShowAuthModal(true)}
-        onAddClick={() => setShowSubmitModal(true)}
+        onAddClick={iosReviewMode ? undefined : () => setShowSubmitModal(true)}
       />
       {user && <HubTabs placement="center" />}
 
       <AuthModal isOpen={showAuthModal} onClose={() => setShowAuthModal(false)} />
 
-      <SubmitRecommendation
-        isOpen={showSubmitModal}
-        onClose={() => setShowSubmitModal(false)}
-        onSuccess={onSuccess}
-        defaultType="series"
-      />
+      {!iosReviewMode && (
+        <SubmitRecommendation
+          isOpen={showSubmitModal}
+          onClose={() => setShowSubmitModal(false)}
+          onSuccess={onSuccess}
+          defaultType="series"
+        />
+      )}
       {user && <MovieCalendarSpotlightPopup userId={user.id} mediaType="tv" />}
 
       <main className="relative z-10 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-16">
@@ -84,12 +87,10 @@ export default function ShowsHome() {
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">Shows</p>
               <h1 className="mt-2 text-3xl sm:text-4xl font-bold text-[var(--text-primary)]">{hero}</h1>
               <p className="mt-3 text-sm text-[var(--text-secondary)]">
-                Trending across languages, plus your friends&apos; picks. Add a show to your profile or send it directly to a friend.
+                {iosReviewMode
+                  ? 'Trending across languages, with watchlist and reminder tools to keep your next show queued up.'
+                  : 'Trending across languages, plus your friends&apos; picks. Add a show to your profile or send it directly to a friend.'}
               </p>
-            </div>
-
-            <div className="mt-6">
-              <AdDisplayUnit className="max-w-3xl" />
             </div>
 
             <div className="mt-8 bg-[var(--bg-card)] border border-white/10 rounded-3xl p-4 sm:p-6">
@@ -103,15 +104,6 @@ export default function ShowsHome() {
                     <span className="text-xs text-[var(--text-muted)]">Country</span>
                     <CountryToggle value={country} onChange={setCountry} />
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => (user ? setShowSubmitModal(true) : setShowAuthModal(true))}
-                    className="px-4 py-2 rounded-full bg-[var(--accent)] text-[var(--bg-primary)] font-semibold hover:opacity-90 transition-opacity"
-                    disabled={authLoading}
-                    title={user ? 'Share a show' : 'Sign in to share'}
-                  >
-                    + Share
-                  </button>
                 </div>
               </div>
               <div className="mt-3 sm:hidden">

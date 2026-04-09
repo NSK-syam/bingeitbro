@@ -21,29 +21,32 @@ function NativeAuthBridgeContent() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-
-    if (!isSupabaseConfigured()) {
-      setStatus('error');
-      setErrorMessage('Supabase is not configured.');
-      return;
-    }
-
-    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-    const accessToken = hash.get('access_token');
-    const refreshToken = hash.get('refresh_token');
-    const next = safeRedirect(hash.get('next') || '/');
-    window.history.replaceState(null, '', window.location.pathname);
-
-    if (!accessToken || !refreshToken) {
-      setStatus('error');
-      setErrorMessage('Missing authentication tokens.');
-      return;
-    }
-
-    const supabase = createClient();
     let cancelled = false;
 
     void (async () => {
+      if (!isSupabaseConfigured()) {
+        if (!cancelled) {
+          setStatus('error');
+          setErrorMessage('Supabase is not configured.');
+        }
+        return;
+      }
+
+      const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+      const accessToken = hash.get('access_token');
+      const refreshToken = hash.get('refresh_token');
+      const next = safeRedirect(hash.get('next') || '/');
+      window.history.replaceState(null, '', window.location.pathname);
+
+      if (!accessToken || !refreshToken) {
+        if (!cancelled) {
+          setStatus('error');
+          setErrorMessage('Missing authentication tokens.');
+        }
+        return;
+      }
+
+      const supabase = createClient();
       const { error } = await supabase.auth.setSession({
         access_token: accessToken,
         refresh_token: refreshToken,

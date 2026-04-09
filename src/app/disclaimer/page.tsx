@@ -8,7 +8,7 @@ export default function Disclaimer() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Disclaimer</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 18, 2026</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: March 11, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -138,7 +138,7 @@ export default function Disclaimer() {
             <p>
               If you have any questions about this Disclaimer, please contact us at:
             </p>
-            <p className="mt-2 font-medium">bingeitbro@gmail.com</p>
+            <p className="mt-2 font-medium">bingeitbroo@gmail.com</p>
           </section>
         </div>
 
@@ -150,6 +150,8 @@ export default function Disclaimer() {
           <Link href="/terms" className="hover:underline">Terms of Service</Link>
           {' | '}
           <Link href="/cookies" className="hover:underline">Cookie Policy</Link>
+          {' | '}
+          <Link href="/support" className="hover:underline">Support</Link>
           {' | '}
           <Link href="/copyright" className="hover:underline">Copyright</Link>
         </div>

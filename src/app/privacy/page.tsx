@@ -8,7 +8,7 @@ export default function PrivacyPolicy() {
       <div className="max-w-3xl mx-auto px-4 py-12">
         <Link href="/" className="text-[var(--accent)] hover:underline text-sm mb-8 inline-block">&larr; Back to BiB</Link>
         <h1 className="text-3xl font-bold mb-2">Privacy Policy</h1>
-        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: February 20, 2026</p>
+        <p className="text-sm text-[var(--text-muted)] mb-8">Last updated: March 25, 2026</p>
 
         <div className="space-y-8 text-[var(--text-secondary)] leading-relaxed">
           <section>
@@ -26,19 +26,22 @@ export default function PrivacyPolicy() {
 
             <h3 className="text-lg font-medium text-[var(--text-primary)] mt-4 mb-2">2.1 Information You Provide</h3>
             <ul className="list-disc pl-6 space-y-1">
-              <li><strong>Account Information:</strong> When you create an account, we collect your name, email address, and username.</li>
+              <li><strong>Account Information:</strong> When you create an account, we collect your name, email address, and username. Birthday is optional profile information and can be left blank.</li>
               <li><strong>Profile Information:</strong> Your chosen avatar (emoji) and display name.</li>
               <li><strong>Recommendations:</strong> Movies and series you recommend, including personal notes, mood tags, ratings, and watch context.</li>
               <li><strong>Social Data:</strong> Your friends list, nudges sent and received, and friend-to-friend recommendations.</li>
+              <li><strong>Direct Messages and Group Chat:</strong> Messages you send, reactions, mentions, shared titles, and message metadata inside chats and group watch conversations.</li>
               <li><strong>Group Watch:</strong> Groups you create or join, voting picks, and group activity.</li>
+              <li><strong>Safety Actions:</strong> Blocking actions and safety reports you submit about users or messages.</li>
               <li><strong>Scheduled Watchlist:</strong> Movies and series you schedule to watch, including reminder preferences.</li>
               <li><strong>Trivia Data:</strong> Your Weekly Trivia scores, answers, and leaderboard rankings.</li>
-              <li><strong>Watchlist:</strong> Movies and series you save to your watchlist.</li>
+              <li><strong>Watchlist:</strong> Movies and series you save to your watchlist. Your watchlist is tied to your account so it persists across signed-in sessions until you remove items or delete the account.</li>
             </ul>
 
             <h3 className="text-lg font-medium text-[var(--text-primary)] mt-4 mb-2">2.2 Information Collected Automatically</h3>
             <ul className="list-disc pl-6 space-y-1">
               <li><strong>Authentication Data:</strong> Session tokens and authentication cookies necessary to keep you signed in.</li>
+              <li><strong>Push Notification Data:</strong> On supported devices, we may store notification permission status and push tokens so we can deliver direct-message, recommendation, reminder, and group-watch notifications.</li>
               <li><strong>Local Storage Data:</strong> We store certain preferences locally in your browser, including your watched movies list and UI preferences. This data stays on your device and is not transmitted to our servers.</li>
               <li><strong>Usage Events:</strong> We collect privacy-focused page and interaction events through DataFast analytics.</li>
             </ul>
@@ -46,6 +49,7 @@ export default function PrivacyPolicy() {
             <h3 className="text-lg font-medium text-[var(--text-primary)] mt-4 mb-2">2.3 Information from Third Parties</h3>
             <ul className="list-disc pl-6 space-y-1">
               <li><strong>Google OAuth:</strong> If you sign in with Google, we receive your name and email address from Google. We do not access any other Google account data.</li>
+              <li><strong>Sign in with Apple:</strong> If you sign in with Apple, we receive the identity data Apple shares with us for authentication. The current shipped Sign in with Apple flow usually does not retain the short-lived Apple token material required for automatic Apple authorization revocation, so deleting your BiB account still works but you may also need to remove BiB manually from the Sign in with Apple section of your Apple account settings.</li>
               <li><strong>TMDB (The Movie Database):</strong> We use TMDB&apos;s API to fetch movie metadata, posters, and streaming availability. TMDB does not receive any of your personal information from us.</li>
             </ul>
           </section>
@@ -57,9 +61,11 @@ export default function PrivacyPolicy() {
               <li>Create and manage your account</li>
               <li>Display your movie recommendations to your friends and the community</li>
               <li>Enable the friends and social features of the platform</li>
+              <li>Deliver and display direct messages, group messages, reactions, and shared-title conversations</li>
               <li>Facilitate Group Watch sessions, voting, and group picks</li>
+              <li>Process blocking actions, safety reports, and moderation reviews</li>
               <li>Send nudge notifications between friends</li>
-              <li>Send email notifications for scheduled reminders, friend activity, and group invites</li>
+              <li>Send email notifications and push notifications for scheduled reminders, friend activity, direct messages, and group invites</li>
               <li>Power the Weekly Trivia feature and maintain leaderboards</li>
               <li>Show relevant streaming availability for recommended titles</li>
               <li>Improve and maintain the Service</li>
@@ -85,9 +91,9 @@ export default function PrivacyPolicy() {
             <p>We do not sell, trade, or rent your personal information. We may share your information in the following cases:</p>
             <ul className="list-disc pl-6 space-y-1 mt-2">
               <li><strong>Public Recommendations:</strong> Your movie recommendations, username, and avatar are visible to other users of the Service.</li>
-              <li><strong>Friends:</strong> Your friends can see your recommendations and send you nudges.</li>
-              <li><strong>Service Providers:</strong> We use Supabase for database hosting, Vercel for website hosting, Cloudflare for CDN and edge caching, TMDB for movie data, DataFast for privacy-focused analytics, and Google AdSense for advertising. These providers process data as necessary to provide their services.</li>
-              <li><strong>Email Notifications:</strong> Your email address is used to send scheduled watch reminders, friend recommendations, group invites, and birthday celebrations. You can manage notification preferences in your profile settings.</li>
+              <li><strong>Friends:</strong> Your friends can see your recommendations and group-watch activity where those features are intended to be visible. Direct messages are only visible to the participants in that conversation.</li>
+              <li><strong>Service Providers:</strong> We use Supabase for database hosting and authentication, Cloudflare for website hosting, CDN, and edge caching, TMDB for movie data, DataFast for privacy-focused analytics, Expo for mobile push delivery, and UnoSend for transactional emails. These providers process data as necessary to provide their services.</li>
+              <li><strong>Email and Push Notifications:</strong> Your email address and device push token may be used to send scheduled watch reminders, friend recommendations, direct-message alerts, and group invites. You can manage notification preferences in your profile settings or device settings.</li>
               <li><strong>Legal Requirements:</strong> We may disclose your information if required by law, regulation, or legal process.</li>
             </ul>
           </section>
@@ -96,7 +102,6 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">6. Cookies and Local Storage</h2>
             <p>
               We use essential cookies and browser local storage for authentication and basic functionality.
-              When sponsored placements are shown, Google AdSense may set advertising-related cookies or similar identifiers for ad delivery and measurement.
               For more details, see our <Link href="/cookies" className="text-[var(--accent)] hover:underline">Cookie Policy</Link>.
             </p>
           </section>
@@ -107,7 +112,7 @@ export default function PrivacyPolicy() {
             <ul className="list-disc pl-6 space-y-1 mt-2">
               <li><strong>Access:</strong> Request a copy of the personal data we hold about you.</li>
               <li><strong>Correction:</strong> Update or correct your personal information through your profile settings.</li>
-              <li><strong>Deletion:</strong> Request deletion of your account and associated data by contacting us.</li>
+              <li><strong>Deletion:</strong> Delete your account from the native app Profile tab, from signed-in account settings on the website, or contact support if you cannot access either.</li>
               <li><strong>Portability:</strong> Request your data in a portable format.</li>
               <li><strong>Withdraw Consent:</strong> You can stop using the Service at any time and request account deletion.</li>
             </ul>
@@ -131,8 +136,9 @@ export default function PrivacyPolicy() {
             <h2 className="text-xl font-semibold text-[var(--text-primary)] mb-3">9. Data Retention</h2>
             <p>
               We retain your personal information for as long as your account is active or as needed to provide
-              you the Service. If you delete your account, we will delete your personal data within 30 days,
-              except where we are required to retain it for legal or regulatory purposes.
+              you the Service. Account-linked data such as your watchlist stays associated with your profile until
+              you remove it or delete the account. If you delete your account, we will delete your personal data
+              within 30 days, except where we are required to retain it for legal or regulatory purposes.
             </p>
           </section>
 
@@ -159,7 +165,13 @@ export default function PrivacyPolicy() {
               If you have any questions about this Privacy Policy or wish to exercise your data rights,
               please contact us at:
             </p>
-            <p className="mt-2 font-medium">bingeitbro@gmail.com</p>
+            <p className="mt-2 font-medium">bingeitbroo@gmail.com</p>
+            <p className="mt-2">
+              Support page:{' '}
+              <Link href="/support" className="text-[var(--accent)] hover:underline">
+                /support
+              </Link>
+            </p>
           </section>
         </div>
 
@@ -169,6 +181,8 @@ export default function PrivacyPolicy() {
           <Link href="/terms" className="hover:underline">Terms of Service</Link>
           {' | '}
           <Link href="/cookies" className="hover:underline">Cookie Policy</Link>
+          {' | '}
+          <Link href="/support" className="hover:underline">Support</Link>
           {' | '}
           <Link href="/copyright" className="hover:underline">Copyright</Link>
           {' | '}

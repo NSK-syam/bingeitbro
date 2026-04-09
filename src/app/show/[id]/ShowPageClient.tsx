@@ -10,8 +10,9 @@ import { useAuth } from '@/components/AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 import { getImageUrl, getLanguageName, tmdbWatchProvidersToOttLinks } from '@/lib/tmdb';
-import type { OTTLink, Recommendation } from '@/types';
-import { TrailerSection } from '@/components';
+import type { OTTLink, Recommendation, RecommendationRecord } from '@/types';
+import { TrailerSection, WhereToWatchPanel } from '@/components';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
 
 interface ShowPageClientProps {
   id: string;
@@ -34,6 +35,7 @@ type TMDBTVDetailsAny = {
 export default function ShowPageClient({ id }: ShowPageClientProps) {
   const backUrl = '/shows';
   const { user } = useAuth();
+  const iosReviewMode = useIosReviewMode();
 
   const [resolvedId, setResolvedId] = useState(id);
   const [loading, setLoading] = useState(true);
@@ -77,7 +79,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
           if (error) throw error;
           if (!data) throw new Error('Not found');
 
-          const rec = data as any;
+          const rec = data as RecommendationRecord;
           const mapped: Recommendation = {
             id: rec.id,
             title: rec.title,
@@ -85,7 +87,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
             year: rec.year,
             type: rec.type,
             poster: rec.poster,
-            backdrop: rec.backdrop,
+            backdrop: rec.backdrop ?? undefined,
             genres: Array.isArray(rec.genres) ? rec.genres : [],
             language: rec.language ?? '',
             duration: rec.duration ?? undefined,
@@ -94,14 +96,14 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
             mood: rec.mood ?? [],
             watchWith: rec.watch_with ?? undefined,
             ottLinks: (rec.ott_links ?? []) as OTTLink[],
-            recommendedBy: { id: rec.user_id, name: 'User', avatar: '' },
+            recommendedBy: { id: rec.user_id ?? 'unknown', name: 'User', avatar: '' },
             addedOn: rec.created_at,
           };
 
           if (!cancelled) {
             setShow(mapped);
             setOttLinks(mapped.ottLinks || []);
-            const rawTmdb = (rec as any)?.tmdb_id;
+            const rawTmdb = rec.tmdb_id;
             const num = typeof rawTmdb === 'number' ? rawTmdb : Number(String(rawTmdb || ''));
             setTmdbTrailerId(Number.isFinite(num) && num > 0 ? num : null);
           }
@@ -233,6 +235,10 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
     }
     return url;
   };
+  const preferredOttLinks = ottLinks.map((link) => ({
+    ...link,
+    url: getPreferredOttUrl(link.platform, link.url),
+  }));
 
   if (loading) {
     return (
@@ -306,20 +312,22 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
                   showLabel
                 />
               </div>
-              <div className="flex justify-center">
-                <button
-                  type="button"
-                  className="h-11 px-4 rounded-full border border-pink-300/45 bg-gradient-to-r from-fuchsia-500/35 to-rose-500/35 text-fuchsia-50 font-semibold inline-flex items-center gap-2 hover:from-fuchsia-500/45 hover:to-rose-500/45 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  onClick={handleOpenSendModal}
-                  title={user ? 'Send to friend' : 'Sign in to send'}
-                  disabled={!user}
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
-                  </svg>
-                  Send
-                </button>
-              </div>
+              {!iosReviewMode ? (
+                <div className="flex justify-center">
+                  <button
+                    type="button"
+                    className="h-11 px-4 rounded-full border border-pink-300/45 bg-gradient-to-r from-fuchsia-500/35 to-rose-500/35 text-fuchsia-50 font-semibold inline-flex items-center gap-2 hover:from-fuchsia-500/45 hover:to-rose-500/45 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    onClick={handleOpenSendModal}
+                    title={user ? 'Send to friend' : 'Sign in to send'}
+                    disabled={!user}
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                    </svg>
+                    Send
+                  </button>
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -336,36 +344,11 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
             ) : null}
           </div>
 
-          <div className="bg-[var(--bg-card)] border border-white/10 rounded-2xl p-4">
-            <div className="text-lg font-semibold text-[var(--text-primary)]">Where to watch</div>
-            {ottLinks.length === 0 ? (
-              <div className="mt-2 text-sm text-[var(--text-muted)]">
-                No direct OTT links available for this title right now.
-              </div>
-            ) : (
-              <div className="mt-3 flex flex-wrap gap-2">
-                {ottLinks.slice(0, 8).map((l) => (
-                  <a
-                    key={`${l.platform}-${l.url}`}
-                    href={getPreferredOttUrl(l.platform, l.url)}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 px-3 py-2 rounded-full bg-[var(--bg-secondary)] border border-white/10 hover:bg-[var(--bg-card-hover)] transition-colors"
-                  >
-                    {l.logoPath ? (
-                      <img src={`https://image.tmdb.org/t/p/w92${l.logoPath}`} alt={l.platform} className="h-4 w-4 object-contain" />
-                    ) : null}
-                    <span className="text-sm text-[var(--text-primary)]">{l.platform}</span>
-                    <span className="text-xs text-[var(--text-muted)]">{l.availableIn || ''}</span>
-                  </a>
-                ))}
-              </div>
-            )}
-          </div>
+          <WhereToWatchPanel links={preferredOttLinks} />
         </div>
       </main>
 
-      {sendModalOpen && sendRecommendationId && (
+      {!iosReviewMode && sendModalOpen && sendRecommendationId ? (
         <SendToFriendModal
           isOpen={sendModalOpen}
           onClose={() => setSendModalOpen(false)}
@@ -375,7 +358,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
           movieYear={year}
           recommendationId={sendRecommendationId}
         />
-      )}
+      ) : null}
     </div>
   );
 }

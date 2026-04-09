@@ -11,6 +11,7 @@ import { useWatched, useNudges } from '@/hooks';
 import { useAuth } from './AuthProvider';
 import { SendToFriendModal } from './SendToFriendModal';
 import { WatchlistPlusButton } from './WatchlistPlusButton';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
 import { normalizeWatchProviderKey } from '@/lib/tmdb';
 
 const CHAT_MOVIE_DRAG_MIME = 'application/x-bib-watch-group-pick';
@@ -50,6 +51,56 @@ function matchesCountry(availableIn: string | undefined, country: 'IN' | 'US'): 
   return v.includes('usa') || v.includes('us');
 }
 
+function isImageAvatar(value: string | null | undefined): value is string {
+  if (!value) return false;
+  const trimmed = value.trim();
+  return trimmed.startsWith('/avatars/') || trimmed.startsWith('http://') || trimmed.startsWith('https://');
+}
+
+function looksLikeAvatarPath(value: string | null | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim().toLowerCase();
+  return (
+    trimmed.startsWith('/avatars/') ||
+    trimmed.includes('.jpg') ||
+    trimmed.includes('.jpeg') ||
+    trimmed.includes('.png') ||
+    trimmed.includes('.webp')
+  );
+}
+
+function getRecommenderDisplayName(name: string | undefined, fallback = 'Friend'): string {
+  const trimmed = (name || '').trim();
+  if (trimmed && !looksLikeAvatarPath(trimmed)) return trimmed;
+  return fallback;
+}
+
+function renderRecommenderAvatar(avatar: string | undefined, label: string) {
+  const trimmed = (avatar || '').trim();
+
+  if (isImageAvatar(trimmed)) {
+    return (
+      <span className="relative inline-flex h-8 w-8 overflow-hidden rounded-full border border-white/10 bg-[var(--bg-card)]">
+        <Image src={trimmed} alt="" fill sizes="32px" className="object-cover object-top" />
+      </span>
+    );
+  }
+
+  if (trimmed && !looksLikeAvatarPath(trimmed)) {
+    return (
+      <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-card)] text-sm leading-none">
+        {trimmed}
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-[var(--bg-card)] text-xs font-semibold text-[var(--text-primary)]">
+      {label.slice(0, 1).toUpperCase()}
+    </span>
+  );
+}
+
 export function MovieCard({ recommendation, index = 0, country }: MovieCardProps) {
   const { id, title, year, type, poster, genres, rating, recommendedBy, personalNote, ottLinks, addedOn, certification } = recommendation;
   const [imageError, setImageError] = useState(false);
@@ -57,10 +108,12 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
   const [showSendModal, setShowSendModal] = useState(false);
   const { isWatched } = useWatched();
   const { user } = useAuth();
+  const iosReviewMode = useIosReviewMode();
 
   const { sendNudge, hasNudged } = useNudges();
   const watched = isWatched(id);
   const alreadyNudged = hasNudged(id) || nudgeSent;
+  const recommenderLabel = getRecommenderDisplayName(recommendedBy?.name, 'Friend');
 
   // Check if this is a friend's recommendation (not the user's own)
   const isFriendRecommendation = user && recommendedBy.id !== user.id;
@@ -135,8 +188,9 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
     <Link
       href={`${detailBase}/${id}`}
       prefetch={false}
-      draggable
+      draggable={!iosReviewMode}
       onDragStart={(event) => {
+        if (iosReviewMode) return;
         const payload = JSON.stringify({
           mediaType: type === 'series' ? 'show' : 'movie',
           tmdbId: String(tmdbId ?? id),
@@ -248,10 +302,10 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
         <div className="absolute bottom-3 left-3 right-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <span className="text-lg">{recommendedBy?.avatar ?? ''}</span>
+              {renderRecommenderAvatar(recommendedBy?.avatar, recommenderLabel)}
               <div className="flex flex-col">
                 <span className="text-xs text-[var(--text-secondary)]">
-                  {recommendedBy?.name ?? 'Anonymous'}
+                  {recommenderLabel}
                 </span>
                 <span className="text-[10px] text-[var(--text-muted)]">
                   {addedOn ? getRelativeTime(addedOn) : ''}
@@ -311,7 +365,7 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
         </div>
 
         {/* Nudge & Send to Friend */}
-        {user && (
+        {user && !iosReviewMode ? (
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5">
             <div className="flex items-center gap-2 ml-auto">
               {/* Send to Friend button */}
@@ -343,20 +397,22 @@ export function MovieCard({ recommendation, index = 0, country }: MovieCardProps
               )}
             </div>
           </div>
-        )}
+        ) : null}
       </div>
 
       {/* Send to Friend Modal */}
-      <SendToFriendModal
-        isOpen={showSendModal}
-        onClose={() => setShowSendModal(false)}
-        movieId={id}
-        movieTitle={title}
-        moviePoster={poster}
-        movieYear={year}
-        tmdbId={tmdbId}
-        recommendationId={recommendationId}
-      />
+      {!iosReviewMode ? (
+        <SendToFriendModal
+          isOpen={showSendModal}
+          onClose={() => setShowSendModal(false)}
+          movieId={id}
+          movieTitle={title}
+          moviePoster={poster}
+          movieYear={year}
+          tmdbId={tmdbId}
+          recommendationId={recommendationId}
+        />
+      ) : null}
     </Link>
   );
 }

@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 const fs = require('fs');
 const path = require('path');
 const https = require('https');
@@ -41,11 +43,9 @@ function sanitizeName(name) {
 
 async function main() {
   if (!API_KEY) {
-    throw new Error('Missing TMDB_API_KEY (or NEXT_PUBLIC_TMDB_API_KEY) environment variable');
+    throw new Error('Missing TMDB_API_KEY environment variable');
   }
   const baseDir = path.join(__dirname, 'public', 'avatars');
-  const avatarConfigFile = path.join(__dirname, 'src', 'lib', 'avatar-options.ts');
-
   // We'll regenerate the avatar-options.ts content entirely or just generate a new structure to append.
   let tsBlocks = [];
 

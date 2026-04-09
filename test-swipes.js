@@ -1,3 +1,5 @@
+/* eslint-disable @typescript-eslint/no-require-imports */
+
 const { chromium } = require('playwright');
 (async () => {
   const browser = await chromium.launch({ headless: true });

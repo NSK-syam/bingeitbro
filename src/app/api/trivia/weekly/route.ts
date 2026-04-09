@@ -5,6 +5,20 @@ export const runtime = 'nodejs';
 
 type TriviaLanguage = 'en' | 'te' | 'hi' | 'ta';
 type TriviaQuestionType = 'year' | 'director' | 'actor' | 'genre' | 'runtime';
+type TriviaContextKind = 'movie' | 'show' | 'topic';
+
+type WeeklyTriviaQuestion = {
+  id: string;
+  tmdbId: number;
+  title: string;
+  year: number;
+  poster: string | null;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  contextKind: TriviaContextKind;
+  contextLabel: string;
+};
 
 const LANGUAGE_LABEL: Record<TriviaLanguage, string> = {
   en: 'English',
@@ -443,7 +457,10 @@ const PRESET_QUESTIONS_BY_LANGUAGE: Record<TriviaLanguage, PresetQuestion[]> = {
   ta: TAMIL_PRESET_QUESTIONS,
 };
 
-function buildPresetQuestions(language: TriviaLanguage, weekKey: string) {
+function buildPresetQuestions(
+  language: TriviaLanguage,
+  weekKey: string,
+): Array<WeeklyTriviaQuestion & { mediaType: 'movie' | 'tv' }> {
   return PRESET_QUESTIONS_BY_LANGUAGE[language].map((q, idx) => ({
     id: `${weekKey}:${language}:preset:${idx + 1}`,
     tmdbId: q.tmdbId,
@@ -454,6 +471,8 @@ function buildPresetQuestions(language: TriviaLanguage, weekKey: string) {
     question: q.question,
     options: q.options,
     correctIndex: q.correctIndex,
+    contextKind: (q.mediaType ?? 'movie') === 'tv' ? 'show' : 'movie',
+    contextLabel: q.title,
   }));
 }
 
@@ -517,6 +536,8 @@ async function hydratePresetQuestionPosters(
     question: string;
     options: string[];
     correctIndex: number;
+    contextKind: TriviaContextKind;
+    contextLabel: string;
   }>,
   apiKey: string,
   origin: string,
@@ -557,6 +578,32 @@ function isoWeekKeyUTC(date = new Date()): string {
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
   const weekNo = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
   return `${d.getUTCFullYear()}-W${String(weekNo).padStart(2, '0')}`;
+};
+
+type DiscoverMovieCandidate = {
+  id: number;
+  title: string;
+  release_date: string;
+  poster_path?: string | null;
+};
+
+type TmdbMovieDetailPayload = {
+  genres?: Array<{ name?: string | null }>;
+  runtime?: number | null;
+  credits?: {
+    crew?: Array<{ job?: string | null; name?: string | null }>;
+    cast?: Array<{ name?: string | null }>;
+  };
+};
+
+function isDiscoverMovieCandidate(value: unknown): value is DiscoverMovieCandidate {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.id === 'number' &&
+    typeof candidate.title === 'string' &&
+    typeof candidate.release_date === 'string'
+  );
 }
 
 async function fetchDiscoverMovies(params: {
@@ -664,6 +711,9 @@ export async function GET(req: Request) {
   const weekKey = (url.searchParams.get('week') || '').trim() || isoWeekKeyUTC();
   const origin = url.origin;
   const apiKey = (process.env.TMDB_API_KEY ?? process.env.NEXT_PUBLIC_TMDB_API_KEY ?? '').trim();
+  const responseHeaders = {
+    'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
+  };
 
   if (PRESET_QUESTIONS_BY_LANGUAGE[language]?.length === 10) {
     let questions = buildPresetQuestions(language, weekKey);
@@ -676,9 +726,7 @@ export async function GET(req: Request) {
         questions,
       },
       {
-        headers: {
-          'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
-        },
+        headers: responseHeaders,
       },
     );
   }
@@ -708,19 +756,17 @@ export async function GET(req: Request) {
       pages.map((page) => fetchDiscoverMovies({ apiKey, language, page, voteCountMin, origin })),
     );
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const merged: any[] = [];
+    const merged: unknown[] = [];
     for (const s of settled) merged.push(...(Array.isArray(s.results) ? s.results : []));
 
     const seenIds = new Set<number>();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const candidates = merged
-      .filter((m: any) => m && typeof m.id === 'number' && typeof m.title === 'string' && typeof m.release_date === 'string')
-      .filter((m: any) => {
+      .filter(isDiscoverMovieCandidate)
+      .filter((m) => {
         const year = Number(String(m.release_date).slice(0, 4));
         return Number.isFinite(year) && year >= 2000 && year <= 2026;
       })
-      .filter((m: any) => {
+      .filter((m) => {
         if (seenIds.has(m.id)) return false;
         seenIds.add(m.id);
         return true;
@@ -749,9 +795,7 @@ export async function GET(req: Request) {
     release_date: string;
     poster_path: string | null;
   };
-  const basePicked: PickedBase[] = picked
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    .map((m: any) => ({
+  const basePicked: PickedBase[] = picked.map((m) => ({
       id: m.id as number,
       title: m.title as string,
       release_date: m.release_date as string,
@@ -761,23 +805,25 @@ export async function GET(req: Request) {
   const details = await mapWithConcurrency(basePicked, 4, async (m) => {
     const detailUrl = `https://api.themoviedb.org/3/movie/${m.id}?api_key=${apiKey}&append_to_response=credits`;
     const res = await fetchTmdbWithProxy(detailUrl, undefined, { preferProxy: true, origin });
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const json: any = res.ok ? await res.json() : null;
+    const json: TmdbMovieDetailPayload | null = res.ok ? (await res.json()) as TmdbMovieDetailPayload : null;
     const year = Number(String(m.release_date).slice(0, 4));
     const poster = m.poster_path ? `https://image.tmdb.org/t/p/w342${m.poster_path}` : null;
 
     const genres: string[] = Array.isArray(json?.genres)
-      ? json.genres.map((g: any) => String(g?.name || '')).filter(Boolean)
+      ? json.genres.map((g) => String(g?.name || '')).filter(Boolean)
       : [];
 
-    const runtime = Number.isFinite(Number(json?.runtime)) ? Number(json.runtime) : null;
+    const runtimeValue = json?.runtime ?? null;
+    const runtime = Number.isFinite(Number(runtimeValue)) ? Number(runtimeValue) : null;
 
-    const director = Array.isArray(json?.credits?.crew)
-      ? (json.credits.crew.find((c: any) => c?.job === 'Director')?.name as string | undefined)
+    const credits = json?.credits;
+
+    const director = Array.isArray(credits?.crew)
+      ? credits.crew.find((c) => c?.job === 'Director')?.name ?? undefined
       : undefined;
 
-    const cast: string[] = Array.isArray(json?.credits?.cast)
-      ? json.credits.cast.slice(0, 8).map((c: any) => String(c?.name || '')).filter(Boolean)
+    const cast: string[] = Array.isArray(credits?.cast)
+      ? credits.cast.slice(0, 8).map((c) => String(c?.name || '')).filter(Boolean)
       : [];
 
     return {
@@ -922,6 +968,8 @@ export async function GET(req: Request) {
       question: finalBuilt.question,
       options: finalBuilt.options,
       correctIndex: finalBuilt.correctIndex,
+      contextKind: 'movie',
+      contextLabel: d.title,
     };
   });
 
@@ -933,10 +981,7 @@ export async function GET(req: Request) {
       questions,
     },
     {
-      headers: {
-        // Cache per week+language. Safe to share.
-        'Cache-Control': 'public, max-age=300, s-maxage=3600, stale-while-revalidate=86400',
-      },
+      headers: responseHeaders,
     },
   );
 }

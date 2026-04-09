@@ -5,13 +5,24 @@ import Link from 'next/link';
 import { useAuth } from '@/components';
 import { isSupabaseConfigured, DBUser, DBRecommendation } from '@/lib/supabase';
 import { createClient } from '@/lib/supabase';
-import { fetchProfileUser, getSupabaseAccessToken, supabaseRestRequest } from '@/lib/supabase-rest';
+import {
+  blockUserById,
+  fetchProfileUser,
+  getSupabaseAccessToken,
+  getUserBlockRelationship,
+  requestAccountDeletion,
+  submitSafetyReport,
+  supabaseRestRequest,
+  unblockUserById,
+} from '@/lib/supabase-rest';
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { searchMovies, getMovieDetails, getWatchProviders, getImageUrl, getLanguageName, formatRuntime, tmdbWatchProvidersToOttLinks } from '@/lib/tmdb';
 import type { TMDBMovie } from '@/lib/tmdb';
 import { Recommendation, OTTLink } from '@/types';
-import { MovieCard, StarRating, AvatarPickerModal } from '@/components';
+import { MovieCard, StarRating, AvatarPickerModal, NotificationPreferencesCard } from '@/components';
 import { useWatched, useWatchlist } from '@/hooks';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
+import { safeLocalStorageRemove } from '@/lib/safe-storage';
 
 interface ProfilePageClientProps {
   userId: string;
@@ -79,7 +90,8 @@ const looksLikeAvatarPath = (value: string | null | undefined) => {
 };
 
 export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
-  const { user, loading: authLoading } = useAuth();
+  const { user, loading: authLoading, signOut } = useAuth();
+  const iosReviewMode = useIosReviewMode();
   const { watchedState } = useWatched();
   const { getWatchlistCount } = useWatchlist();
 
@@ -89,6 +101,10 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const [isFriend, setIsFriend] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isAdding, setIsAdding] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [blockedByThem, setBlockedByThem] = useState(false);
+  const [blockSaving, setBlockSaving] = useState(false);
+  const [blockError, setBlockError] = useState('');
   const [topLanguage, setTopLanguage] = useState('All');
   const [topPicks, setTopPicks] = useState<Array<{ id: string; user_id: string; recommendation_id: string; rank: number; language: string }>>([]);
   const [topLoading, setTopLoading] = useState(false);
@@ -117,6 +133,16 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   const [watchedItems, setWatchedItems] = useState<WatchedMovieItem[]>([]);
   const [watchedLoading, setWatchedLoading] = useState(false);
   const [watchedError, setWatchedError] = useState('');
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmValue, setDeleteConfirmValue] = useState('');
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
+  const [reportDialogOpen, setReportDialogOpen] = useState(false);
+  const [reportReason, setReportReason] = useState('harassment');
+  const [reportDetails, setReportDetails] = useState('');
+  const [reportSaving, setReportSaving] = useState(false);
+  const [reportError, setReportError] = useState('');
+  const [reportSuccess, setReportSuccess] = useState('');
 
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
@@ -374,6 +400,40 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
     checkFriendStatus();
   }, [user, profileUser?.id, accessToken]);
+
+  useEffect(() => {
+    const targetUserId = profileUser?.id;
+    if (!user || !targetUserId || user.id === targetUserId || !isSupabaseConfigured()) {
+      setIsBlocked(false);
+      setBlockedByThem(false);
+      setBlockError('');
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadBlockRelationship = async () => {
+      try {
+        const relationship = await getUserBlockRelationship(targetUserId);
+        if (cancelled) return;
+        setIsBlocked(relationship.blockedByCurrentUser);
+        setBlockedByThem(relationship.blockedByTargetUser);
+        if (relationship.blockedByCurrentUser || relationship.blockedByTargetUser) {
+          setIsFriend(false);
+        }
+      } catch {
+        if (cancelled) return;
+        setIsBlocked(false);
+        setBlockedByThem(false);
+      }
+    };
+
+    void loadBlockRelationship();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [user, profileUser?.id]);
 
   const recommendationsById = useMemo(() => {
     return new Map(recommendations.map((rec) => [rec.id, rec]));
@@ -1276,7 +1336,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
   };
 
   const addFriend = async () => {
-    if (!user || !profileUser) return;
+    if (!user || !profileUser || isBlocked || blockedByThem) return;
 
     setIsAdding(true);
     try {
@@ -1321,6 +1381,110 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
       setIsAdding(false);
     }
   };
+
+  const toggleBlockedUser = async () => {
+    if (!user || !profileUser || isOwnProfile || blockSaving) return;
+
+    const targetName = safeDisplayName;
+    const confirmed = isBlocked
+      ? window.confirm(`Unblock ${targetName}?`)
+      : window.confirm(`Block ${targetName}? This will remove them from your friends list and stop direct interactions.`);
+
+    if (!confirmed) return;
+
+    setBlockSaving(true);
+    setBlockError('');
+
+    try {
+      if (isBlocked) {
+        await unblockUserById(profileUser.id);
+        setIsBlocked(false);
+      } else {
+        await blockUserById(profileUser.id);
+        setIsBlocked(true);
+        setIsFriend(false);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to update block status.';
+      setBlockError(message);
+    } finally {
+      setBlockSaving(false);
+    }
+  };
+
+  const handleSubmitUserReport = useCallback(async () => {
+    if (!profileUser || isOwnProfile || reportSaving) return;
+
+    setReportSaving(true);
+    setReportError('');
+    setReportSuccess('');
+
+    try {
+      await submitSafetyReport({
+        kind: 'user',
+        targetUserId: profileUser.id,
+        reason: reportReason,
+        details: reportDetails,
+      });
+      setReportSuccess('Report submitted. Our team will review it.');
+      setReportDetails('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Failed to submit report.';
+      setReportError(message);
+    } finally {
+      setReportSaving(false);
+    }
+  }, [isOwnProfile, profileUser, reportDetails, reportReason, reportSaving]);
+
+  const handleDeleteAccount = useCallback(async () => {
+    if (!isOwnProfile || deleteSaving) return;
+    if (deleteConfirmValue.trim().toUpperCase() !== 'DELETE') {
+      setDeleteError('Type DELETE to confirm account deletion.');
+      return;
+    }
+
+    setDeleteSaving(true);
+    setDeleteError('');
+
+    try {
+      await requestAccountDeletion();
+      safeLocalStorageRemove('cinema-chudu-watchlist');
+      safeLocalStorageRemove('cinema-chudu-watched');
+      safeLocalStorageRemove('bib-default-hub');
+      await signOut();
+      window.location.href = '/';
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to delete account.';
+      setDeleteError(message);
+      setDeleteSaving(false);
+    }
+  }, [deleteConfirmValue, deleteSaving, isOwnProfile, signOut]);
+
+  useEffect(() => {
+    if (!isOwnProfile || typeof window === 'undefined') return;
+
+    const openDeleteFlowFromLocation = () => {
+      if (window.location.hash !== '#delete-account') return;
+
+      setDeleteDialogOpen(true);
+      setDeleteConfirmValue('');
+      setDeleteError('');
+
+      window.requestAnimationFrame(() => {
+        document.getElementById('delete-account')?.scrollIntoView({
+          behavior: 'smooth',
+          block: 'center',
+        });
+      });
+    };
+
+    openDeleteFlowFromLocation();
+    window.addEventListener('hashchange', openDeleteFlowFromLocation);
+
+    return () => {
+      window.removeEventListener('hashchange', openDeleteFlowFromLocation);
+    };
+  }, [isOwnProfile]);
 
   if (isLoading || authLoading) {
     return (
@@ -1475,57 +1639,107 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             </div>
 
             <div className="flex gap-3 items-center">
-              {user && !isOwnProfile && profileUser && (
-                <div>
-                  {isFriend ? (
-                    <button
-                      onClick={removeFriend}
-                      disabled={isAdding}
-                      className="px-6 py-2.5 bg-[var(--bg-secondary)] text-red-400 font-medium rounded-full hover:bg-red-500/20 transition-colors disabled:opacity-50"
-                    >
-                      {isAdding ? 'Removing...' : 'Remove Friend'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={addFriend}
-                      disabled={isAdding}
-                      className="px-6 py-2.5 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
-                    >
-                      {isAdding ? 'Adding...' : 'Add Friend'}
-                    </button>
-                  )}
-                </div>
-              )}
+              {!iosReviewMode && user && !isOwnProfile && profileUser ? (
+                <div className="flex flex-col items-end gap-2">
+                  {!isBlocked && !blockedByThem ? (
+                    <div>
+                      {isFriend ? (
+                        <button
+                          onClick={removeFriend}
+                          disabled={isAdding}
+                          className="px-6 py-2.5 bg-[var(--bg-secondary)] text-red-400 font-medium rounded-full hover:bg-red-500/20 transition-colors disabled:opacity-50"
+                        >
+                          {isAdding ? 'Removing...' : 'Remove Friend'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={addFriend}
+                          disabled={isAdding}
+                          className="px-6 py-2.5 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50"
+                        >
+                          {isAdding ? 'Adding...' : 'Add Friend'}
+                        </button>
+                      )}
+                    </div>
+                  ) : null}
 
-              {!user && (
+                  <button
+                    onClick={toggleBlockedUser}
+                    disabled={blockSaving}
+                    className={`px-5 py-2 text-sm font-medium rounded-full border transition-colors disabled:opacity-50 ${
+                      isBlocked
+                        ? 'bg-[var(--bg-secondary)] text-[var(--text-primary)] border-white/10 hover:border-[var(--accent)]/40'
+                        : 'bg-red-500/10 text-red-300 border-red-400/30 hover:bg-red-500/20'
+                    }`}
+                  >
+                    {blockSaving ? (isBlocked ? 'Unblocking...' : 'Blocking...') : isBlocked ? 'Unblock User' : 'Block User'}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setReportDialogOpen(true);
+                      setReportReason('harassment');
+                      setReportDetails('');
+                      setReportError('');
+                      setReportSuccess('');
+                    }}
+                    className="px-5 py-2 text-sm font-medium rounded-full border border-white/10 bg-[var(--bg-secondary)] text-[var(--text-primary)] hover:border-[var(--accent)]/40 transition-colors"
+                  >
+                    Report User
+                  </button>
+
+                  {blockedByThem && !isBlocked ? (
+                    <p className="text-xs text-red-300">This user has blocked you.</p>
+                  ) : null}
+
+                  {blockError ? (
+                    <p className="max-w-[240px] text-right text-xs text-red-300">{blockError}</p>
+                  ) : null}
+
+                  {reportSuccess ? (
+                    <p className="max-w-[240px] text-right text-xs text-green-300">{reportSuccess}</p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {!iosReviewMode && !user ? (
                 <Link
                   href="/"
                   className="px-6 py-2.5 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors"
                 >
                   Sign in to add friend
                 </Link>
-              )}
+              ) : null}
 
-              <button
-                onClick={() => {
-                  const profileHandle = displayUser.username || resolvedUserId;
-                  const profileUrl = `${window.location.origin}/profile/${profileHandle}`;
-                  const message = `Check out ${displayUser.name}'s movie recommendations on BiB (Binge it bro)! ${profileUrl}`;
-                  const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
-                  window.open(whatsappUrl, '_blank');
-                }}
-                className="w-12 h-12 bg-[#25D366] rounded-full flex items-center justify-center hover:bg-[#20BA5A] transition-colors shadow-lg"
-                title="Share on WhatsApp"
-              >
-                <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
-                </svg>
-              </button>
+              {!iosReviewMode ? (
+                <button
+                  onClick={() => {
+                    const profileHandle = displayUser.username || resolvedUserId;
+                    const profileUrl = `${window.location.origin}/profile/${profileHandle}`;
+                    const message = `Check out ${displayUser.name}'s movie recommendations on BiB (Binge it bro)! ${profileUrl}`;
+                    const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;
+                    window.open(whatsappUrl, '_blank');
+                  }}
+                  className="w-12 h-12 bg-[#25D366] rounded-full flex items-center justify-center hover:bg-[#20BA5A] transition-colors shadow-lg"
+                  title="Share on WhatsApp"
+                >
+                  <svg className="w-6 h-6 text-white" fill="currentColor" viewBox="0 0 24 24">
+                    <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z" />
+                  </svg>
+                </button>
+              ) : null}
             </div>
           </div>
         </div>
 
-        <div className="bg-[var(--bg-card)] rounded-2xl p-6 border border-white/10 mb-8">
+        {!iosReviewMode && isOwnProfile && user && (
+          <>
+            <NotificationPreferencesCard />
+          </>
+        )}
+
+        {!iosReviewMode ? (
+          <div className="bg-[var(--bg-card)] rounded-2xl p-6 border border-white/10 mb-8">
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-5">
             <div>
               <p className="text-xs uppercase tracking-[0.2em] text-[var(--text-muted)]">
@@ -1866,7 +2080,34 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
               <p>No picks yet for this language</p>
             </div>
           )}
-        </div>
+          </div>
+        ) : null}
+
+        {isOwnProfile && (
+          <div id="delete-account" className="bg-[var(--bg-card)] rounded-2xl p-6 border border-red-500/20 mb-8 scroll-mt-28">
+            <p className="text-xs uppercase tracking-[0.2em] text-red-300">Account</p>
+            <h2 className="mt-2 text-xl font-bold text-[var(--text-primary)]">Delete Account</h2>
+            <p className="mt-3 text-sm text-[var(--text-secondary)]">
+              This permanently deletes your BiB account and removes your associated data from the service.
+            </p>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeleteDialogOpen(true);
+                  setDeleteConfirmValue('');
+                  setDeleteError('');
+                }}
+                className="rounded-full border border-red-400/35 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/15 transition-colors"
+              >
+                Delete Account
+              </button>
+              <Link href="/support" className="text-sm text-[var(--accent)] hover:underline">
+                Need help instead?
+              </Link>
+            </div>
+          </div>
+        )}
 
         {/* Recommendations grid removed per request */}
       </main>
@@ -1943,7 +2184,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
         </>
       )}
 
-      {showTopModal && (
+      {!iosReviewMode && showTopModal ? (
         <>
           <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-40" onClick={() => !topSaving && setShowTopModal(false)} />
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -2073,7 +2314,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
             </div>
           </div>
         </>
-      )}
+      ) : null}
 
       {isOwnProfile && (
         <AvatarPickerModal
@@ -2081,6 +2322,133 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
           onClose={() => setIsAvatarPickerOpen(false)}
           onSelect={handleAvatarSelect}
         />
+      )}
+
+      {reportDialogOpen && !isOwnProfile && profileUser && (
+        <>
+          <div
+            className="fixed inset-0 z-[220] bg-black/80 backdrop-blur-sm"
+            onClick={() => !reportSaving && setReportDialogOpen(false)}
+          />
+          <div className="fixed inset-0 z-[230] flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[var(--bg-card)] shadow-2xl">
+              <div className="border-b border-white/10 p-6">
+                <p className="text-xs uppercase tracking-[0.2em] text-[var(--accent)]">Safety</p>
+                <h3 className="mt-2 text-xl font-semibold text-[var(--text-primary)]">Report {safeDisplayName}</h3>
+                <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                  Tell us what happened and our team will review this profile.
+                </p>
+              </div>
+              <div className="space-y-4 p-6">
+                <div>
+                  <label className="mb-1 block text-sm text-[var(--text-secondary)]">Reason</label>
+                  <select
+                    value={reportReason}
+                    onChange={(event) => setReportReason(event.target.value)}
+                    className="w-full rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40"
+                  >
+                    <option value="harassment">Harassment or bullying</option>
+                    <option value="hate_speech">Hate speech</option>
+                    <option value="impersonation">Impersonation</option>
+                    <option value="spam">Spam</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="mb-1 block text-sm text-[var(--text-secondary)]">Details (optional)</label>
+                  <textarea
+                    value={reportDetails}
+                    onChange={(event) => setReportDetails(event.target.value.slice(0, 1000))}
+                    rows={4}
+                    placeholder="Add any context that will help us review this report."
+                    className="w-full rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent)]/40"
+                  />
+                </div>
+                {reportError ? (
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                    {reportError}
+                  </div>
+                ) : null}
+                {reportSuccess ? (
+                  <div className="rounded-lg border border-green-500/20 bg-green-500/10 p-3 text-sm text-green-300">
+                    {reportSuccess}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex justify-end gap-3 border-t border-white/10 p-6">
+                <button
+                  type="button"
+                  onClick={() => !reportSaving && setReportDialogOpen(false)}
+                  className="rounded-full bg-[var(--bg-secondary)] px-4 py-2 text-sm text-[var(--text-primary)]"
+                  disabled={reportSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleSubmitUserReport()}
+                  disabled={reportSaving}
+                  className="rounded-full bg-[var(--accent)] px-4 py-2 text-sm font-semibold text-[var(--bg-primary)] hover:bg-[var(--accent-hover)] disabled:opacity-60"
+                >
+                  {reportSaving ? 'Submitting...' : 'Submit Report'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
+
+      {deleteDialogOpen && (
+        <>
+          <div
+            className="fixed inset-0 z-[220] bg-black/80 backdrop-blur-sm"
+            onClick={() => !deleteSaving && setDeleteDialogOpen(false)}
+          />
+          <div className="fixed inset-0 z-[230] flex items-center justify-center p-4">
+            <div className="w-full max-w-md rounded-2xl border border-red-500/25 bg-[var(--bg-card)] shadow-2xl">
+              <div className="border-b border-white/10 p-6">
+                <p className="text-xs uppercase tracking-[0.2em] text-red-300">Danger Zone</p>
+                <h3 className="mt-2 text-xl font-semibold text-[var(--text-primary)]">Delete your account</h3>
+                <p className="mt-3 text-sm text-[var(--text-secondary)]">
+                  Type <strong>DELETE</strong> to confirm. This action cannot be undone.
+                </p>
+              </div>
+              <div className="space-y-4 p-6">
+                <input
+                  type="text"
+                  value={deleteConfirmValue}
+                  onChange={(event) => setDeleteConfirmValue(event.target.value)}
+                  placeholder="Type DELETE"
+                  autoCapitalize="characters"
+                  className="w-full rounded-xl border border-white/10 bg-[var(--bg-secondary)] px-3 py-2 text-sm text-[var(--text-primary)] focus:outline-none focus:ring-2 focus:ring-red-400/40"
+                />
+                {deleteError ? (
+                  <div className="rounded-lg border border-red-500/20 bg-red-500/10 p-3 text-sm text-red-300">
+                    {deleteError}
+                  </div>
+                ) : null}
+              </div>
+              <div className="flex justify-end gap-3 border-t border-white/10 p-6">
+                <button
+                  type="button"
+                  onClick={() => !deleteSaving && setDeleteDialogOpen(false)}
+                  className="rounded-full bg-[var(--bg-secondary)] px-4 py-2 text-sm text-[var(--text-primary)]"
+                  disabled={deleteSaving}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleDeleteAccount()}
+                  disabled={deleteSaving}
+                  className="rounded-full bg-red-500 px-4 py-2 text-sm font-semibold text-white hover:bg-red-400 disabled:opacity-60"
+                >
+                  {deleteSaving ? 'Deleting...' : 'Delete Account'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

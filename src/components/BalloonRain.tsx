@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type CSSProperties } from 'react';
 
 type Balloon = {
   left: string;
@@ -9,6 +9,11 @@ type Balloon = {
   scale: number;
   hue: number;
   sway: number;
+};
+
+type BalloonStyle = CSSProperties & {
+  '--hue': number;
+  '--sway': string;
 };
 
 function todayKeyLocal() {
@@ -42,11 +47,11 @@ export function BalloonRain({ isOn }: { isOn: boolean }) {
     });
   }, []);
 
-  if (!isOn) return null;
-
   // Remount balloons after pop so the rain continues all day.
   const [gens, setGens] = useState<number[]>(() => balloons.map(() => 0));
   const [popping, setPopping] = useState<Record<number, boolean>>({});
+
+  if (!isOn) return null;
 
   const pop = (index: number) => {
     setPopping((prev) => ({ ...prev, [index]: true }));
@@ -67,6 +72,17 @@ export function BalloonRain({ isOn }: { isOn: boolean }) {
   return (
     <>
       {balloons.map((b, i) => (
+        (() => {
+          const style: BalloonStyle = {
+            left: b.left,
+            animationDelay: b.delay,
+            animationDuration: b.duration,
+            transform: `translate3d(0,-120px,0) scale(${b.scale})`,
+            '--hue': b.hue,
+            '--sway': `${b.sway}px`,
+          };
+
+          return (
         <button
           key={`${i}-${gens[i] ?? 0}`}
           type="button"
@@ -77,15 +93,10 @@ export function BalloonRain({ isOn }: { isOn: boolean }) {
             e.stopPropagation();
             pop(i);
           }}
-          style={{
-            left: b.left,
-            animationDelay: b.delay,
-            animationDuration: b.duration,
-            transform: `translate3d(0,-120px,0) scale(${b.scale})`,
-            ['--hue' as any]: b.hue,
-            ['--sway' as any]: `${b.sway}px`,
-          }}
+          style={style}
         />
+          );
+        })()
       ))}
 
       <style jsx global>{`

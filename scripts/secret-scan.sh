@@ -30,10 +30,10 @@ scan_blob() {
   if [[ -n "$hard_hits" || -n "$assign_hits" ]]; then
     echo "Potential secrets found in $display_path:" >&2
     if [[ -n "$hard_hits" ]]; then
-      echo "$hard_hits" | sed 's/^/  /' >&2
+      echo "$hard_hits" | sed -E 's/^([0-9]+):.*/\1:[REDACTED]/' | sed 's/^/  /' >&2
     fi
     if [[ -n "$assign_hits" ]]; then
-      echo "$assign_hits" | sed 's/^/  /' >&2
+      echo "$assign_hits" | sed -E 's/^([0-9]+):.*/\1:[REDACTED]/' | sed 's/^/  /' >&2
     fi
     fail=1
   fi

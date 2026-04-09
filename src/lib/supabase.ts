@@ -60,7 +60,7 @@ export interface DBRecommendation {
   personal_note: string;
   mood?: string[];
   watch_with?: string;
-  ott_links: { platform: string; url: string; availableIn?: string }[];
+  ott_links: { platform: string; url: string; browserUrl?: string; appUrl?: string; availableIn?: string }[];
   tmdb_id?: number;
   created_at: string;
   updated_at: string;

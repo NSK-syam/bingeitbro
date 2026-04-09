@@ -65,6 +65,22 @@ function getRateLimitRule(request: NextRequest): RateLimitRule | null {
 
   if (
     method === 'POST' &&
+    (pathname === '/api/direct-messages/send' ||
+      pathname === '/api/watch-groups/messages/send')
+  ) {
+    return { key: 'chat-send', limit: 120, windowMs: 60 * 1000 };
+  }
+
+  if (method === 'POST' && pathname === '/api/reports') {
+    return { key: 'reports', limit: 20, windowMs: 5 * 60 * 1000 };
+  }
+
+  if (method === 'POST' && pathname === '/api/admin/push-broadcast') {
+    return { key: 'admin-push', limit: 20, windowMs: 5 * 60 * 1000 };
+  }
+
+  if (
+    method === 'POST' &&
     (pathname === '/api/watch-reminders' ||
       pathname === '/api/watch-reminders/poll' ||
       pathname === '/api/friend-recommendation-reminders/poll')

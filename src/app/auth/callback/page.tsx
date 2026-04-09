@@ -15,9 +15,27 @@ function safeRedirect(raw: string): string {
   }
 }
 
+function buildNativeAppCallbackUrl(params: URLSearchParams): string {
+  const callbackUrl = new URL('bingeitbro://auth/callback');
+  const code = params.get('code');
+  const error = params.get('error');
+  const errorDescription = params.get('error_description');
+  const accessToken = params.get('access_token');
+  const refreshToken = params.get('refresh_token');
+
+  if (code) callbackUrl.searchParams.set('code', code);
+  if (error) callbackUrl.searchParams.set('error', error);
+  if (errorDescription) callbackUrl.searchParams.set('error_description', errorDescription);
+  if (accessToken) callbackUrl.searchParams.set('access_token', accessToken);
+  if (refreshToken) callbackUrl.searchParams.set('refresh_token', refreshToken);
+
+  return callbackUrl.toString();
+}
+
 function AuthCallbackContent() {
-  const [status, setStatus] = useState<'loading' | 'success' | 'error'>('loading');
+  const [status, setStatus] = useState<'loading' | 'returning' | 'success' | 'error'>('loading');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [nativeOpenHref, setNativeOpenHref] = useState<string | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -25,9 +43,81 @@ function AuthCallbackContent() {
     const errorDescription = params.get('error_description');
     const next = safeRedirect(params.get('next') ?? '/');
     const code = params.get('code');
+    const nativeApp = params.get('native_app') === '1';
+
+    if (nativeApp) {
+      if (errorParam) {
+        const callbackUrl = buildNativeAppCallbackUrl(params);
+        setNativeOpenHref(callbackUrl);
+        setStatus('returning');
+        window.location.replace(callbackUrl);
+        return;
+      }
+
+      if (!isSupabaseConfigured()) {
+        setStatus('error');
+        setErrorMessage('Supabase is not configured.');
+        return;
+      }
+
+      const supabase = createClient();
+      let isActive = true;
+
+      const handoffToNative = async () => {
+        try {
+          if (code) {
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) {
+              throw error;
+            }
+          }
+
+          const {
+            data: { session },
+          } = await supabase.auth.getSession();
+
+          if (!session?.access_token || !session.refresh_token) {
+            throw new Error('Missing session tokens for native handoff.');
+          }
+
+          const nativeParams = new URLSearchParams();
+          nativeParams.set('access_token', session.access_token);
+          nativeParams.set('refresh_token', session.refresh_token);
+          const callbackUrl = buildNativeAppCallbackUrl(nativeParams);
+
+          if (!isActive) {
+            return;
+          }
+
+          setNativeOpenHref(callbackUrl);
+          setStatus('returning');
+          window.location.replace(callbackUrl);
+        } catch (error) {
+          const message =
+            error instanceof Error ? error.message : 'Authentication failed';
+          const failureParams = new URLSearchParams();
+          failureParams.set('error', 'oauth_failed');
+          failureParams.set('error_description', message);
+          const callbackUrl = buildNativeAppCallbackUrl(failureParams);
+
+          if (!isActive) {
+            return;
+          }
+
+          setNativeOpenHref(callbackUrl);
+          setStatus('returning');
+          window.location.replace(callbackUrl);
+        }
+      };
+
+      void handoffToNative();
+
+      return () => {
+        isActive = false;
+      };
+    }
 
     if (errorParam) {
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatus('error');
       setErrorMessage(errorDescription || errorParam || 'Authentication failed');
       return;
@@ -147,6 +237,21 @@ function AuthCallbackContent() {
         <>
           <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
           <p className="text-[var(--text-secondary)]">Signing you in...</p>
+        </>
+      )}
+
+      {status === 'returning' && (
+        <>
+          <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+          <p className="text-[var(--text-secondary)]">Returning you to the app...</p>
+          {nativeOpenHref && (
+            <a
+              href={nativeOpenHref}
+              className="inline-block px-6 py-2.5 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:opacity-90 transition-opacity"
+            >
+              Open app
+            </a>
+          )}
         </>
       )}
 

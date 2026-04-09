@@ -1,11 +1,12 @@
 'use client';
 
+import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
-import { hasNativeAuthBridge } from '@/lib/native-webview';
+import { hasNativeAuthBridge, isNativeAppShell, isNativeAppleSignInSupported } from '@/lib/native-webview';
 import { trackFunnelEvent } from '@/lib/funnel';
 
 declare global {
@@ -56,7 +57,7 @@ function loadTurnstileScript(): Promise<void> {
 
 export function CinematicAuth() {
     const router = useRouter();
-    const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
+    const { signIn, signUp, signInWithGoogle, signInWithApple, checkUsernameAvailable } = useAuth();
 
     // Animation Phases: 'viewfinder' -> 'auth'
     const [phase, setPhase] = useState<'viewfinder' | 'auth'>('viewfinder');
@@ -78,6 +79,8 @@ export function CinematicAuth() {
     const [birthMonth, setBirthMonth] = useState('');
     const [birthYear, setBirthYear] = useState('');
     const [inAppBrowser, setInAppBrowser] = useState(false);
+    const [nativeAuthBridge, setNativeAuthBridge] = useState(false);
+    const [nativeAppShell, setNativeAppShell] = useState(false);
     const [captchaToken, setCaptchaToken] = useState('');
     const [captchaLoading, setCaptchaLoading] = useState(false);
     const [captchaError, setCaptchaError] = useState('');
@@ -141,8 +144,28 @@ export function CinematicAuth() {
         setInAppBrowser(isLikelyInAppBrowser(window.navigator.userAgent || ''));
     }, []);
 
-    const nativeAuthBridge = hasNativeAuthBridge();
-    const blockGoogleInBrowser = inAppBrowser && !nativeAuthBridge;
+    useEffect(() => {
+        if (typeof window === 'undefined') return;
+
+        const syncNativeState = () => {
+            setNativeAuthBridge(hasNativeAuthBridge());
+            setNativeAppShell(isNativeAppShell());
+        };
+
+        syncNativeState();
+        const intervalId = window.setInterval(syncNativeState, 250);
+        const stopPollingId = window.setTimeout(() => window.clearInterval(intervalId), 4000);
+        window.addEventListener('bib-native-shell', syncNativeState);
+
+        return () => {
+            window.clearInterval(intervalId);
+            window.clearTimeout(stopPollingId);
+            window.removeEventListener('bib-native-shell', syncNativeState);
+        };
+    }, []);
+
+    const blockGoogleInBrowser = inAppBrowser && !nativeAuthBridge && !nativeAppShell;
+    const showAppleSignIn = isNativeAppleSignInSupported();
 
     useEffect(() => {
         if (username.length < 3) {
@@ -183,13 +206,17 @@ export function CinematicAuth() {
                 if (!name.trim()) throw new Error('Please enter your name');
                 if (password.length < 8) throw new Error('Password must be at least 8 characters');
 
-                const y = Number(birthYear);
-                const m = Number(birthMonth);
-                const d = Number(birthDay);
-                if (!y || !m || !d) throw new Error('Please select your birthday (day, month, year)');
-                const dt = new Date(Date.UTC(y, m - 1, d));
-                if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) throw new Error('Please select a valid birthday');
-                const birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                let birthdate: string | null = null;
+                const hasBirthdayInput = Boolean(birthYear || birthMonth || birthDay);
+                if (hasBirthdayInput) {
+                    const y = Number(birthYear);
+                    const m = Number(birthMonth);
+                    const d = Number(birthDay);
+                    if (!y || !m || !d) throw new Error('Complete all birthday fields or leave them blank');
+                    const dt = new Date(Date.UTC(y, m - 1, d));
+                    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) throw new Error('Please select a valid birthday');
+                    birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                }
 
                 if (turnstileSiteKey && !captchaToken) throw new Error('Please complete the verification challenge.');
 
@@ -221,7 +248,23 @@ export function CinematicAuth() {
             setLoading(false);
             trackFunnelEvent('oauth_error', { source: 'cinematic_auth', mode, message: error.message.slice(0, 120) });
         } else {
+            setLoading(false);
             trackFunnelEvent('oauth_redirect_started', { source: 'cinematic_auth', mode });
+        }
+    };
+
+    const handleAppleSignIn = async () => {
+        setError('');
+        setLoading(true);
+        trackFunnelEvent('oauth_start', { source: 'cinematic_auth', mode, provider: 'apple' });
+        const { error } = await signInWithApple();
+        if (error) {
+            setError(error.message);
+            setLoading(false);
+            trackFunnelEvent('oauth_error', { source: 'cinematic_auth', mode, provider: 'apple', message: error.message.slice(0, 120) });
+        } else {
+            setLoading(false);
+            trackFunnelEvent('oauth_redirect_started', { source: 'cinematic_auth', mode, provider: 'apple' });
         }
     };
 
@@ -363,6 +406,16 @@ export function CinematicAuth() {
                                                     <button onClick={openInBrowser} className="mt-2 w-full rounded-lg bg-amber-400/20 px-3 py-2 font-medium">Open in Browser</button>
                                                 </div>
                                             )}
+                                            {showAppleSignIn && (
+                                                <button
+                                                    onClick={handleAppleSignIn}
+                                                    disabled={loading}
+                                                    className="mb-3 w-full py-3 px-4 bg-black text-white border border-white/20 font-medium rounded-xl hover:bg-zinc-900 transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+                                                >
+                                                    Continue with Apple
+                                                </button>
+                                            )}
+
                                             <button
                                                 onClick={handleGoogleSignIn}
                                                 disabled={loading || blockGoogleInBrowser}
@@ -374,7 +427,7 @@ export function CinematicAuth() {
                                                     <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
                                                     <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
                                                 </svg>
-                                                Continue with Google
+                                                {blockGoogleInBrowser ? 'Google unavailable in this browser' : 'Continue with Google'}
                                             </button>
 
                                             <div className="relative my-6">
@@ -420,17 +473,17 @@ export function CinematicAuth() {
                                                         {usernameStatus === 'available' && <p className="text-xs text-green-400 mt-1">Username is available!</p>}
                                                     </div>
                                                     <div>
-                                                        <label className="block text-sm text-white/60 mb-1">Birthday</label>
+                                                        <label className="block text-sm text-white/60 mb-1">Birthday <span className="text-white/40">(optional)</span></label>
                                                         <div className="grid grid-cols-3 gap-2">
-                                                            <select value={birthDay} onChange={e => setBirthDay(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors" required>
+                                                            <select value={birthDay} onChange={e => setBirthDay(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors">
                                                                 <option value="">DD</option>
                                                                 {Array.from({ length: 31 }, (_, i) => String(i + 1)).map(v => <option key={v} value={v}>{v}</option>)}
                                                             </select>
-                                                            <select value={birthMonth} onChange={e => setBirthMonth(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors" required>
+                                                            <select value={birthMonth} onChange={e => setBirthMonth(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors">
                                                                 <option value="">MM</option>
                                                                 {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((l, i) => <option key={l} value={String(i + 1)}>{l}</option>)}
                                                             </select>
-                                                            <select value={birthYear} onChange={e => setBirthYear(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors" required>
+                                                            <select value={birthYear} onChange={e => setBirthYear(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors">
                                                                 <option value="">YYYY</option>
                                                                 {Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i)).map(v => <option key={v} value={v}>{v}</option>)}
                                                             </select>
@@ -466,6 +519,19 @@ export function CinematicAuth() {
                                             <button type="submit" disabled={loading} className="w-full mt-6 py-4 bg-gradient-to-r from-[#f59e0b] to-[#f97316] text-[#0a0a0c] font-bold uppercase tracking-widest hover:brightness-110 transition-all rounded-full disabled:opacity-50 shadow-[0_12px_30px_rgba(245,158,11,0.35)]">
                                                 {loading ? 'Rolling...' : mode === 'signup' ? 'Action!' : mode === 'login' ? 'Roll Camera' : 'Cut & Reset'}
                                             </button>
+                                            {mode === 'signup' && (
+                                                <p className="text-xs leading-relaxed text-white/55">
+                                                    By creating an account, you agree to our{' '}
+                                                    <Link href="/terms" className="text-[#fbbf24] hover:text-[#fde68a] transition-colors">
+                                                        Terms of Service
+                                                    </Link>{' '}
+                                                    and{' '}
+                                                    <Link href="/privacy" className="text-[#fbbf24] hover:text-[#fde68a] transition-colors">
+                                                        Privacy Policy
+                                                    </Link>
+                                                    .
+                                                </p>
+                                            )}
                                         </form>
                                     )}
                                 </div>
