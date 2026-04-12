@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.post {
+    width: 1080px; height: 1080px;
+    background: #0a0a0a;
+    font-family: 'Inter', sans-serif;
+    display: flex; flex-direction: column;
+    justify-content: center;
+    padding: 90px;
+    position: relative;
+}
+.msg {
+    display: flex; flex-direction: column; gap: 14px;
+    margin-bottom: 60px;
+}
+.bubble {
+    padding: 24px 32px;
+    border-radius: 24px;
+    font-size: 34px; line-height: 1.45;
+    max-width: 75%;
+    font-weight: 400;
+}
+.them {
+    background: #1c1c1e; color: rgba(255,255,255,.85);
+    align-self: flex-start;
+    border-bottom-left-radius: 6px;
+}
+.me {
+    background: #f97316; color: #000;
+    align-self: flex-end;
+    border-bottom-right-radius: 6px;
+    font-weight: 700;
+}
+.time {
+    font-size: 20px; color: rgba(255,255,255,.2);
+    text-align: center; margin-top: 16px;
+}
+.caption {
+    font-size: 30px; color: rgba(255,255,255,.35);
+    text-align: center; margin-top: 50px; line-height: 1.6;
+    font-weight: 400;
+}
+.caption strong { color: #fff; font-weight: 700; }
+.bottom {
+    position: absolute; bottom: 50px; left: 0; right: 0;
+    text-align: center;
+    font-size: 22px; color: rgba(255,255,255,.18);
+}
+</style>
+</head><body>
+<div class="post">
+    <div class="msg">
+        <div class="bubble them">bro are you free tonight</div>
+        <div class="bubble them">watch this movie trust me</div>
+        <div class="bubble them">don't google it just watch it</div>
+        <div class="bubble me">say less 🍿</div>
+        <div class="time">2:47 AM</div>
+    </div>
+    <div class="caption">this text hits different than<br><strong>"because you watched a cooking show"</strong></div>
+    <div class="bottom">bingeitbro.com</div>
+</div>
+</body></html>

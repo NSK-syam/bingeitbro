@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binge It Bro - Launch Poster</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Outfit:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --sunset-orange: #FF6B35;
+            --electric-purple: #9D4EDD;
+            --neon-pink: #FF006E;
+            --deep-navy: #0A0E27;
+            --midnight-blue: #1A1F3A;
+            --butter-yellow: #FFD23F;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .poster {
+            width: 1200px;
+            height: 628px;
+            background: linear-gradient(135deg, var(--deep-navy) 0%, var(--midnight-blue) 50%, #2A1A4D 100%);
+            position: relative;
+            overflow: hidden;
+            border-radius: 0;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+        }
+
+        /* Animated gradient mesh background */
+        .gradient-orb {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            opacity: 0.4;
+            animation: float 8s ease-in-out infinite;
+        }
+
+        .orb-1 {
+            width: 500px;
+            height: 500px;
+            background: radial-gradient(circle, var(--electric-purple), transparent);
+            top: -200px;
+            right: -100px;
+            animation-delay: 0s;
+        }
+
+        .orb-2 {
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, var(--sunset-orange), transparent);
+            bottom: -150px;
+            left: -100px;
+            animation-delay: 2s;
+        }
+
+        .orb-3 {
+            width: 300px;
+            height: 300px;
+            background: radial-gradient(circle, var(--neon-pink), transparent);
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation-delay: 4s;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translate(0, 0) scale(1); }
+            33% { transform: translate(30px, -30px) scale(1.1); }
+            66% { transform: translate(-20px, 20px) scale(0.9); }
+        }
+
+        /* Grain texture overlay */
+        .grain {
+            position: absolute;
+            inset: 0;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 400 400' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            opacity: 0.05;
+            pointer-events: none;
+        }
+
+        /* Popcorn explosion */
+        .popcorn-container {
+            position: absolute;
+            top: 50%;
+            right: -50px;
+            transform: translateY(-50%);
+            width: 600px;
+            height: 600px;
+        }
+
+        .popcorn {
+            position: absolute;
+            font-size: 60px;
+            animation: pop 3s ease-in-out infinite;
+            filter: drop-shadow(0 4px 20px rgba(255, 107, 53, 0.4));
+        }
+
+        .popcorn:nth-child(1) { left: 10%; top: 20%; animation-delay: 0s; }
+        .popcorn:nth-child(2) { left: 30%; top: 60%; animation-delay: 0.5s; font-size: 80px; }
+        .popcorn:nth-child(3) { left: 50%; top: 10%; animation-delay: 1s; font-size: 50px; }
+        .popcorn:nth-child(4) { left: 20%; top: 80%; animation-delay: 1.5s; font-size: 70px; }
+        .popcorn:nth-child(5) { left: 60%; top: 40%; animation-delay: 2s; font-size: 90px; }
+        .popcorn:nth-child(6) { left: 40%; top: 30%; animation-delay: 2.5s; font-size: 55px; }
+        .popcorn:nth-child(7) { left: 70%; top: 70%; animation-delay: 0.8s; font-size: 65px; }
+
+        @keyframes pop {
+            0%, 100% {
+                transform: translateY(0) rotate(0deg) scale(1);
+                opacity: 0.6;
+            }
+            50% {
+                transform: translateY(-30px) rotate(180deg) scale(1.2);
+                opacity: 1;
+            }
+        }
+
+        /* Content container */
+        .content {
+            position: relative;
+            z-index: 10;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 60px 70px;
+        }
+
+        /* Logo and title */
+        .title-section {
+            animation: slideInLeft 1s ease-out;
+        }
+
+        .logo {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 120px;
+            line-height: 0.9;
+            letter-spacing: 2px;
+            background: linear-gradient(135deg, var(--butter-yellow) 0%, var(--sunset-orange) 50%, var(--neon-pink) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+            filter: drop-shadow(0 4px 30px rgba(255, 107, 53, 0.5));
+            animation: glow 3s ease-in-out infinite;
+        }
+
+        @keyframes glow {
+            0%, 100% { filter: drop-shadow(0 4px 30px rgba(255, 107, 53, 0.5)); }
+            50% { filter: drop-shadow(0 4px 50px rgba(157, 78, 221, 0.8)); }
+        }
+
+        .tagline {
+            font-size: 28px;
+            font-weight: 600;
+            color: #fff;
+            max-width: 600px;
+            line-height: 1.3;
+            margin-top: 10px;
+            animation: slideInLeft 1s ease-out 0.2s backwards;
+        }
+
+        .tagline span {
+            background: linear-gradient(90deg, var(--electric-purple), var(--neon-pink));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            font-weight: 800;
+        }
+
+        /* Features */
+        .features {
+            display: flex;
+            gap: 30px;
+            margin-top: 40px;
+            animation: slideInLeft 1s ease-out 0.4s backwards;
+        }
+
+        .feature {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            padding: 16px 24px;
+            border-radius: 50px;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            transition: all 0.3s ease;
+        }
+
+        .feature:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--sunset-orange);
+            transform: translateY(-4px);
+        }
+
+        .feature-icon {
+            font-size: 24px;
+        }
+
+        .feature-text {
+            font-size: 16px;
+            font-weight: 600;
+            color: #fff;
+        }
+
+        /* Bottom section */
+        .bottom-section {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            animation: slideInUp 1s ease-out 0.6s backwards;
+        }
+
+        .cta {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .launch-badge {
+            display: inline-block;
+            background: linear-gradient(135deg, var(--sunset-orange), var(--neon-pink));
+            color: #fff;
+            font-size: 16px;
+            font-weight: 800;
+            text-transform: uppercase;
+            padding: 10px 28px;
+            border-radius: 50px;
+            letter-spacing: 1px;
+            animation: pulse 2s ease-in-out infinite;
+            box-shadow: 0 8px 30px rgba(255, 107, 53, 0.4);
+            align-self: flex-start;
+        }
+
+        @keyframes pulse {
+            0%, 100% { box-shadow: 0 8px 30px rgba(255, 107, 53, 0.4); }
+            50% { box-shadow: 0 8px 50px rgba(255, 0, 110, 0.6); }
+        }
+
+        .website {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 56px;
+            color: #fff;
+            letter-spacing: 2px;
+            text-decoration: none;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+
+        .website::after {
+            content: '';
+            position: absolute;
+            bottom: -5px;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, var(--sunset-orange), var(--electric-purple));
+            transform: scaleX(0);
+            transform-origin: right;
+            transition: transform 0.3s ease;
+        }
+
+        .website:hover::after {
+            transform: scaleX(1);
+            transform-origin: left;
+        }
+
+        .stats {
+            display: flex;
+            gap: 40px;
+            align-items: flex-end;
+        }
+
+        .stat {
+            text-align: right;
+        }
+
+        .stat-number {
+            font-family: 'Bebas Neue', cursive;
+            font-size: 48px;
+            background: linear-gradient(135deg, var(--butter-yellow), var(--sunset-orange));
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+            line-height: 1;
+        }
+
+        .stat-label {
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.6);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 5px;
+        }
+
+        /* Animations */
+        @keyframes slideInLeft {
+            from {
+                opacity: 0;
+                transform: translateX(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateX(0);
+            }
+        }
+
+        @keyframes slideInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        /* Decorative elements */
+        .film-strip {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 8px;
+            background: repeating-linear-gradient(
+                90deg,
+                var(--sunset-orange) 0px,
+                var(--sunset-orange) 20px,
+                var(--midnight-blue) 20px,
+                var(--midnight-blue) 40px
+            );
+        }
+
+        .film-strip-bottom {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 8px;
+            background: repeating-linear-gradient(
+                90deg,
+                var(--electric-purple) 0px,
+                var(--electric-purple) 20px,
+                var(--midnight-blue) 20px,
+                var(--midnight-blue) 40px
+            );
+        }
+    </style>
+</head>
+<body>
+    <div class="poster">
+        <!-- Background elements -->
+        <div class="gradient-orb orb-1"></div>
+        <div class="gradient-orb orb-2"></div>
+        <div class="gradient-orb orb-3"></div>
+        <div class="grain"></div>
+
+        <!-- Film strip decorations -->
+        <div class="film-strip"></div>
+        <div class="film-strip-bottom"></div>
+
+        <!-- Popcorn explosion -->
+        <div class="popcorn-container">
+            <div class="popcorn">🍿</div>
+            <div class="popcorn">🍿</div>
+            <div class="popcorn">🍿</div>
+            <div class="popcorn">🍿</div>
+            <div class="popcorn">🍿</div>
+            <div class="popcorn">🍿</div>
+            <div class="popcorn">🍿</div>
+        </div>
+
+        <!-- Main content -->
+        <div class="content">
+            <div class="title-section">
+                <h1 class="logo">Binge It<br>Bro</h1>
+                <p class="tagline">
+                    Get Movie Recommendations from <span>Friends</span>,<br>
+                    Not Algorithms
+                </p>
+
+                <div class="features">
+                    <div class="feature">
+                        <span class="feature-icon">👥</span>
+                        <span class="feature-text">Friend Picks</span>
+                    </div>
+                    <div class="feature">
+                        <span class="feature-icon">📺</span>
+                        <span class="feature-text">OTT Links</span>
+                    </div>
+                    <div class="feature">
+                        <span class="feature-icon">💬</span>
+                        <span class="feature-text">Personal Notes</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bottom-section">
+                <div class="cta">
+                    <div class="launch-badge">🎬 Launching Now</div>
+                    <a href="https://bingeitbro.com" class="website">bingeitbro.com</a>
+                </div>
+
+                <div class="stats">
+                    <div class="stat">
+                        <div class="stat-number">10+</div>
+                        <div class="stat-label">Languages</div>
+                    </div>
+                    <div class="stat">
+                        <div class="stat-number">20+</div>
+                        <div class="stat-label">OTT Platforms</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add subtle parallax effect on mouse move
+        document.addEventListener('mousemove', (e) => {
+            const poster = document.querySelector('.poster');
+            const rect = poster.getBoundingClientRect();
+            const x = (e.clientX - rect.left) / rect.width - 0.5;
+            const y = (e.clientY - rect.top) / rect.height - 0.5;
+
+            document.querySelectorAll('.gradient-orb').forEach((orb, index) => {
+                const speed = (index + 1) * 10;
+                orb.style.transform = `translate(${x * speed}px, ${y * speed}px)`;
+            });
+        });
+
+        // Add hover animation to popcorn
+        document.querySelectorAll('.popcorn').forEach(popcorn => {
+            popcorn.addEventListener('mouseenter', (e) => {
+                e.target.style.transform = 'scale(1.5) rotate(180deg)';
+                setTimeout(() => {
+                    e.target.style.transform = '';
+                }, 300);
+            });
+        });
+    </script>
+</body>
+</html>

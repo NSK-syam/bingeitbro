@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.post {
+    width: 1080px; height: 1080px;
+    background: #0a0a0a;
+    font-family: 'Inter', sans-serif;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    padding: 80px;
+    position: relative;
+}
+.notif {
+    width: 100%; max-width: 760px;
+    display: flex; flex-direction: column; gap: 16px;
+    margin-bottom: 52px;
+}
+.notif-card {
+    display: flex; align-items: center; gap: 20px;
+    padding: 22px 28px;
+    border-radius: 18px;
+    background: #161616;
+    border: 1px solid rgba(255,255,255,.06);
+}
+.notif-card.boring { opacity: .35; }
+.notif-card.good {
+    background: rgba(249,115,22,.08);
+    border: 1px solid rgba(249,115,22,.2);
+    opacity: 1;
+}
+.notif-icon {
+    width: 44px; height: 44px; border-radius: 12px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+    background: rgba(255,255,255,.05);
+}
+.notif-card.good .notif-icon { background: rgba(249,115,22,.15); }
+.notif-body { flex: 1; }
+.notif-title { font-size: 20px; font-weight: 700; color: rgba(255,255,255,.8); }
+.notif-sub { font-size: 17px; color: rgba(255,255,255,.3); margin-top: 3px; }
+.notif-card.good .notif-title { color: #fff; }
+.notif-card.good .notif-sub { color: rgba(255,255,255,.5); }
+.notif-time { font-size: 16px; color: rgba(255,255,255,.15); flex-shrink: 0; }
+.notif-card.good .notif-time { color: rgba(249,115,22,.5); }
+.caption {
+    text-align: center; font-size: 34px; font-weight: 700;
+    color: rgba(255,255,255,.7); line-height: 1.5;
+    max-width: 700px;
+}
+.caption strong { color: #fff; }
+.caption .orange { color: #f97316; }
+.bottom {
+    position: absolute; bottom: 44px;
+    font-size: 20px; color: rgba(255,255,255,.15);
+}
+</style>
+</head><body>
+<div class="post">
+    <div class="notif">
+        <div class="notif-card boring">
+            <div class="notif-icon">📧</div>
+            <div class="notif-body">
+                <div class="notif-title">Your order has shipped</div>
+                <div class="notif-sub">Estimated delivery: Thursday</div>
+            </div>
+            <div class="notif-time">2h ago</div>
+        </div>
+        <div class="notif-card boring">
+            <div class="notif-icon">📧</div>
+            <div class="notif-body">
+                <div class="notif-title">50% off everything!</div>
+                <div class="notif-sub">Limited time offer ends tonight</div>
+            </div>
+            <div class="notif-time">4h ago</div>
+        </div>
+        <div class="notif-card boring">
+            <div class="notif-icon">📧</div>
+            <div class="notif-body">
+                <div class="notif-title">Your weekly digest</div>
+                <div class="notif-sub">Here's what you missed</div>
+            </div>
+            <div class="notif-time">6h ago</div>
+        </div>
+        <div class="notif-card good">
+            <div class="notif-icon">🍿</div>
+            <div class="notif-body">
+                <div class="notif-title">Rahul recommended a movie for you</div>
+                <div class="notif-sub">"bro you HAVE to watch this tonight"</div>
+            </div>
+            <div class="notif-time">just now</div>
+        </div>
+    </div>
+    <div class="caption">the only email notification<br>you'll actually <span class="orange">care about</span></div>
+    <div class="bottom">🍿 bingeitbro.com</div>
+</div>
+</body></html>

@@ -1,0 +1,614 @@
+'use client';
+
+import { Recommendation, RecommendationRecord, OTTLink } from '@/types';
+import data from '@/data/recommendations.json';
+import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { WatchedButton } from '@/components/WatchedButton';
+import { WatchlistButton } from '@/components/WatchlistButton';
+import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
+import { useWatched } from '@/hooks';
+import { createClient, isSupabaseConfigured } from '@/lib/supabase';
+import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { getDirectOttTarget } from '@/lib/tmdb';
+import { TrailerSection, WhereToWatchPanel } from '@/components';
+import { SendToFriendModal } from '@/components/SendToFriendModal';
+import { useAuth } from '@/components/AuthProvider';
+import { useIosReviewMode } from '@/hooks/useIosReviewMode';
+
+function PosterImage({ src, alt, title }: { src: string; alt: string; title: string }) {
+  const [error, setError] = useState(false);
+
+  const getPlaceholderColor = (str: string) => {
+    const colors = ['#e50914', '#00a8e1', '#f59e0b', '#8b5cf6', '#ec4899', '#10b981'];
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  if (error) {
+    return (
+      <div
+        className="absolute inset-0 flex flex-col items-center justify-center p-4"
+        style={{ backgroundColor: getPlaceholderColor(title) }}
+      >
+        <span className="text-6xl mb-4"></span>
+        <span className="text-white text-lg font-semibold text-center">{title}</span>
+      </div>
+    );
+  }
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className="absolute inset-0 w-full h-full object-cover"
+      onError={() => setError(true)}
+    />
+  );
+}
+
+function BackdropImage({ src, posterSrc, alt, title }: { src?: string; posterSrc: string; alt: string; title: string }) {
+  const [error, setError] = useState(false);
+
+  const getPlaceholderColor = (str: string) => {
+    const colors = ['#e50914', '#00a8e1', '#f59e0b', '#8b5cf6', '#ec4899', '#10b981'];
+    let hash = 0;
+    for (let i = 0; i < str.length; i++) {
+      hash = str.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    return colors[Math.abs(hash) % colors.length];
+  };
+
+  if (error) {
+    return (
+      <div
+        className="absolute inset-0"
+        style={{ backgroundColor: getPlaceholderColor(title) }}
+      />
+    );
+  }
+
+  return (
+    <img
+      src={src || posterSrc}
+      alt={alt}
+      className={`absolute inset-0 w-full h-full object-cover ${!src ? 'blur-sm scale-110' : ''}`}
+      onError={() => setError(true)}
+    />
+  );
+}
+
+interface MoviePageClientProps {
+  id: string;
+}
+
+type TMDBProviderEntry = {
+  provider_name: string;
+  logo_path?: string | null;
+};
+
+type TMDBRegionWithExtras = {
+  flatrate?: TMDBProviderEntry[];
+  free?: TMDBProviderEntry[];
+  ads?: TMDBProviderEntry[];
+  rent?: TMDBProviderEntry[];
+  buy?: TMDBProviderEntry[];
+};
+
+export default function MoviePageClient({ id }: MoviePageClientProps) {
+  const searchParams = useSearchParams();
+  const fromLang = searchParams.get('from');
+  const backUrl = fromLang ? `/?lang=${fromLang}` : '/';
+  const { user } = useAuth();
+  const iosReviewMode = useIosReviewMode();
+
+  // When Vercel rewrites /movie/tmdb-123 to /movie/fallback, we get id=fallback; resolve real id from URL
+  const [resolvedId, setResolvedId] = useState(id);
+  useEffect(() => {
+    if (id === 'fallback' && typeof window !== 'undefined') {
+      const fromPath = window.location.pathname.replace(/^\/movie\/?/, '').trim();
+      if (fromPath && fromPath !== 'fallback') setResolvedId(fromPath);
+      else if (fromPath === 'fallback') {
+        setError(true);
+        setLoading(false);
+      }
+    }
+  }, [id]);
+
+  const staticRecommendations = data.recommendations as Recommendation[];
+  const { isWatched } = useWatched();
+
+  const [movie, setMovie] = useState<Recommendation | null>(() =>
+    resolvedId !== 'fallback' ? (staticRecommendations.find((r) => r.id === resolvedId) || null) : null
+  );
+  const [loading, setLoading] = useState(resolvedId === 'fallback' || !movie);
+  const [error, setError] = useState(false);
+  const [regionNote, setRegionNote] = useState('');
+  const [tmdbTrailerId, setTmdbTrailerId] = useState<number | null>(null);
+  const [sendModalOpen, setSendModalOpen] = useState(false);
+
+  useEffect(() => {
+    if (resolvedId === 'fallback') return;
+    if (movie) {
+      setLoading(false);
+      return;
+    }
+
+    const fetchMovie = async () => {
+      setLoading(true);
+      setError(false);
+
+      try {
+        // Support both "tmdb-123" and plain "123" (numeric) for TMDB movies
+        const isTmdb = resolvedId.startsWith('tmdb-') || /^\d+$/.test(resolvedId);
+        const tmdbId = resolvedId.startsWith('tmdb-') ? resolvedId.replace('tmdb-', '') : resolvedId;
+        if (isTmdb && tmdbId) {
+          const [movieResponse, providersResponse, releaseDatesResponse] = await Promise.all([
+            fetchTmdbWithProxy(buildTmdbV3Url(`/3/movie/${tmdbId}`, { append_to_response: 'credits' })),
+            fetchTmdbWithProxy(buildTmdbV3Url(`/3/movie/${tmdbId}/watch/providers`)),
+            fetchTmdbWithProxy(buildTmdbV3Url(`/3/movie/${tmdbId}/release_dates`))
+          ]);
+
+          if (!movieResponse.ok) {
+            setError(true);
+            return;
+          }
+
+          const tmdbData = await movieResponse.json();
+          const providersData = await providersResponse.json();
+          const releaseDatesData = await releaseDatesResponse.json();
+
+          let certification: string | undefined;
+          const releaseResults = releaseDatesData.results || [];
+          const indiaRelease = releaseResults.find((r: { iso_3166_1: string }) => r.iso_3166_1 === 'IN');
+          const usRelease = releaseResults.find((r: { iso_3166_1: string }) => r.iso_3166_1 === 'US');
+
+          if (indiaRelease?.release_dates?.[0]?.certification) {
+            certification = indiaRelease.release_dates[0].certification;
+          } else if (usRelease?.release_dates?.[0]?.certification) {
+            certification = usRelease.release_dates[0].certification;
+          } else if (tmdbData.adult) {
+            certification = '18+';
+          }
+
+          const languageMap: Record<string, string> = {
+            en: 'English', hi: 'Hindi', te: 'Telugu', ta: 'Tamil',
+            ml: 'Malayalam', ko: 'Korean', ja: 'Japanese', zh: 'Chinese',
+            fr: 'French', es: 'Spanish', de: 'German', it: 'Italian',
+          };
+
+          const ottLinks: OTTLink[] = [];
+          const platformsByRegion: Record<string, { regions: string[]; logoPath?: string }> = {};
+
+          const indiaData = providersData.results?.IN;
+          const usaData = providersData.results?.US;
+
+          const collectProviders = (regionData: TMDBRegionWithExtras) => [
+            ...(regionData.flatrate || []),
+            ...(regionData.free || []),
+            ...(regionData.ads || []),
+            ...(regionData.rent || []),
+            ...(regionData.buy || []),
+          ];
+
+          const shouldSkipProvider = (name: string) => {
+            const lowerName = name.toLowerCase();
+            const isAmazon = lowerName.includes('amazon');
+            const isPrime = lowerName.includes('prime video');
+            const isAmazonVideo = lowerName === 'amazon video' || (lowerName.includes('amazon video') && !isPrime);
+            const isAmazonWithAds = isAmazon && lowerName.includes('with ads');
+            return isAmazonVideo || isAmazonWithAds;
+          };
+
+          const indiaProviders = indiaData ? collectProviders(indiaData) : [];
+          const usaProviders = usaData ? collectProviders(usaData) : [];
+
+          if (indiaProviders.length > 0) {
+            for (const provider of indiaProviders) {
+              if (shouldSkipProvider(provider.provider_name)) continue;
+              if (!platformsByRegion[provider.provider_name]) {
+                platformsByRegion[provider.provider_name] = { regions: [], logoPath: provider.logo_path ?? undefined };
+              } else if (!platformsByRegion[provider.provider_name].logoPath && provider.logo_path) {
+                platformsByRegion[provider.provider_name].logoPath = provider.logo_path;
+              }
+              if (!platformsByRegion[provider.provider_name].regions.includes('India')) {
+                platformsByRegion[provider.provider_name].regions.push('India');
+              }
+            }
+          }
+
+          if (usaProviders.length > 0) {
+            for (const provider of usaProviders) {
+              if (shouldSkipProvider(provider.provider_name)) continue;
+              if (!platformsByRegion[provider.provider_name]) {
+                platformsByRegion[provider.provider_name] = { regions: [], logoPath: provider.logo_path ?? undefined };
+              } else if (!platformsByRegion[provider.provider_name].logoPath && provider.logo_path) {
+                platformsByRegion[provider.provider_name].logoPath = provider.logo_path;
+              }
+              if (!platformsByRegion[provider.provider_name].regions.includes('USA')) {
+                platformsByRegion[provider.provider_name].regions.push('USA');
+              }
+            }
+          }
+
+          for (const [platform, regionData] of Object.entries(platformsByRegion)) {
+            const directTarget = getDirectOttTarget(platform, tmdbData.title);
+            if (!directTarget) continue;
+            ottLinks.push({
+              platform,
+              url: directTarget.browserUrl,
+              browserUrl: directTarget.browserUrl,
+              appUrl: directTarget.appUrl,
+              availableIn: regionData.regions.join(' & '),
+              logoPath: regionData.logoPath,
+            });
+          }
+
+          const hasIndia = indiaProviders.length > 0;
+          const hasUSA = usaProviders.length > 0;
+
+          if (hasIndia && hasUSA) {
+            setRegionNote('Available in India & USA');
+          } else if (hasIndia && !hasUSA) {
+            setRegionNote('Available in India');
+          } else if (!hasIndia && hasUSA) {
+            setRegionNote('Available in USA');
+          } else {
+            setRegionNote('');
+          }
+
+          const mappedRecommendation: Recommendation = {
+            id: resolvedId,
+            title: tmdbData.title,
+            originalTitle: tmdbData.original_title !== tmdbData.title ? tmdbData.original_title : undefined,
+            year: tmdbData.release_date ? parseInt(tmdbData.release_date.split('-')[0]) : 0,
+            type: 'movie',
+            poster: tmdbData.poster_path ? `https://image.tmdb.org/t/p/w500${tmdbData.poster_path}` : '',
+            backdrop: tmdbData.backdrop_path ? `https://image.tmdb.org/t/p/original${tmdbData.backdrop_path}` : undefined,
+            genres: tmdbData.genres?.map((g: { name: string }) => g.name) || [],
+            language: languageMap[tmdbData.original_language] || tmdbData.original_language?.toUpperCase() || 'Unknown',
+            duration: tmdbData.runtime ? `${Math.floor(tmdbData.runtime / 60)}h ${tmdbData.runtime % 60}m` : undefined,
+            rating: tmdbData.vote_average || undefined,
+            certification: certification,
+            personalNote: tmdbData.overview || 'No description available.',
+            mood: [],
+            watchWith: undefined,
+            ottLinks: ottLinks,
+            recommendedBy: { id: 'tmdb', name: 'TMDB', avatar: '' },
+            addedOn: tmdbData.release_date || new Date().toISOString(),
+          };
+
+          setMovie(mappedRecommendation);
+          setTmdbTrailerId(Number(tmdbId));
+          return;
+        }
+
+        if (!isSupabaseConfigured() || !/^[0-9a-f-]{36}$/i.test(resolvedId)) {
+          setError(true);
+          return;
+        }
+
+        const supabase = createClient();
+        const { data: rec, error: supabaseError } = await supabase
+          .from('recommendations')
+          .select('*, user:users(*)')
+          .eq('id', resolvedId)
+          .single();
+
+        if (supabaseError || !rec) {
+          setError(true);
+          return;
+        }
+
+        const recommendationRow = rec as RecommendationRecord;
+
+        const mappedRecommendation: Recommendation = {
+          id: recommendationRow.id,
+          title: recommendationRow.title,
+          originalTitle: recommendationRow.original_title ?? undefined,
+          year: recommendationRow.year,
+          type: recommendationRow.type,
+          poster: recommendationRow.poster,
+          backdrop: recommendationRow.backdrop ?? undefined,
+          genres: Array.isArray(recommendationRow.genres) ? recommendationRow.genres : [],
+          language: recommendationRow.language ?? '',
+          duration: recommendationRow.duration ?? undefined,
+          rating: recommendationRow.rating ?? undefined,
+          personalNote: recommendationRow.personal_note ?? '',
+          mood: recommendationRow.mood ?? [],
+          watchWith: recommendationRow.watch_with ?? undefined,
+          ottLinks: recommendationRow.ott_links ?? [],
+          recommendedBy: {
+            id: recommendationRow.user?.id || 'unknown',
+            name: recommendationRow.user?.name || 'Anonymous',
+            avatar: recommendationRow.user?.avatar || '',
+          },
+          addedOn: recommendationRow.created_at,
+        };
+
+        setMovie(mappedRecommendation);
+        // Trailer: only if this recommendation is linked to TMDB.
+        const rawTmdb = recommendationRow.tmdb_id;
+        const num = typeof rawTmdb === 'number' ? rawTmdb : Number(String(rawTmdb || ''));
+        setTmdbTrailerId(Number.isFinite(num) && num > 0 ? num : null);
+      } catch (err) {
+        console.error('Error fetching movie:', err);
+        setError(true);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchMovie();
+  }, [resolvedId, movie]);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)] flex items-center justify-center">
+        <div className="text-[var(--accent)] text-xl animate-pulse">Loading amazing recommendation...</div>
+      </div>
+    );
+  }
+
+  if (error || !movie) {
+    return (
+      <div className="min-h-screen bg-[var(--bg-primary)] flex flex-col items-center justify-center gap-4 px-4">
+        <div className="text-6xl"></div>
+        <h1 className="text-2xl font-bold text-[var(--text-primary)]">Movie not found</h1>
+        <p className="text-[var(--text-muted)] text-center max-w-md">
+          We couldn&apos;t load this title. It might have been removed or the link is invalid.
+        </p>
+        <Link
+          href="/"
+          className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors"
+        >
+          Back to home
+        </Link>
+      </div>
+    );
+  }
+
+  const {
+    title,
+    originalTitle,
+    year,
+    type,
+    poster,
+    backdrop,
+    genres,
+    language,
+    duration,
+    rating,
+    certification,
+    recommendedBy,
+    personalNote,
+    mood,
+    watchWith,
+    ottLinks,
+    addedOn,
+  } = movie;
+
+  const watched = isWatched(resolvedId);
+
+  const typeLabels = {
+    movie: 'Movie',
+    series: 'Series',
+    documentary: 'Documentary',
+    anime: 'Anime',
+  };
+
+  const formattedDate = (addedOn
+    ? new Date(addedOn).toLocaleDateString('en-US', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      })
+    : '') || '';
+
+  const sendTmdbId = resolvedId.startsWith('tmdb-')
+    ? resolvedId.replace('tmdb-', '')
+    : /^\d+$/.test(resolvedId)
+      ? resolvedId
+      : null;
+  const sendRecommendationId = sendTmdbId ? null : resolvedId;
+  const uniqueOttLinks = (ottLinks || []).filter(
+    (link, index, arr) => arr.findIndex((l) => l.platform === link.platform) === index
+  );
+  const getOttLogoUrl = (logoPath?: string) => (logoPath ? `https://image.tmdb.org/t/p/w92${logoPath}` : '');
+  const posterOttLinks = uniqueOttLinks.slice(0, 4);
+
+  return (
+    <div className="min-h-screen bg-[var(--bg-primary)]">
+      <div className="relative h-[40vh] sm:h-[50vh] w-full overflow-hidden">
+        <BackdropImage src={backdrop} posterSrc={poster} alt={`${title} backdrop`} title={title} />
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--bg-primary)] via-[var(--bg-primary)]/60 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[var(--bg-primary)]/80 to-transparent" />
+
+        <Link
+          href={backUrl}
+          className="absolute top-6 left-6 flex items-center gap-2 px-4 py-2 bg-[var(--bg-primary)]/60 backdrop-blur-sm rounded-full text-sm text-[var(--text-primary)] hover:bg-[var(--bg-primary)]/80 transition-colors"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+          </svg>
+          Back
+        </Link>
+
+        {watched && (
+          <div className="absolute top-6 right-6 flex items-center gap-2 px-4 py-2 bg-green-500 rounded-full text-sm text-white font-medium">
+            <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+            </svg>
+            Watched
+          </div>
+        )}
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-32 sm:-mt-40 relative z-10">
+        <div className="text-center sm:text-left">
+          <div className="mb-4">
+            <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[var(--text-primary)]">{title}</h1>
+            {originalTitle && <p className="text-lg text-[var(--text-muted)] mt-1">{originalTitle}</p>}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 text-sm text-[var(--text-secondary)] mb-6">
+            <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{year}</span>
+            <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{typeLabels[type]}</span>
+            {duration && <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{duration}</span>}
+            <span className="px-2 py-1 bg-[var(--bg-secondary)] rounded">{language}</span>
+            {rating && (
+              <span className="flex items-center gap-1 px-2 py-1 bg-[var(--accent)] rounded text-[var(--bg-primary)] font-bold">
+                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z" />
+                </svg>
+                {rating.toFixed(1)}
+              </span>
+            )}
+            {certification && ['NC-17', 'X', '18+'].some(c => certification.toUpperCase() === c) && (
+              <span className="px-2 py-1 bg-red-600 rounded text-white font-bold">18+</span>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-6">
+            {genres.map((genre) => (
+              <span key={genre} className="px-3 py-1 text-sm bg-[var(--bg-card)] border border-white/10 rounded-full text-[var(--text-secondary)]">
+                {genre}
+              </span>
+            ))}
+          </div>
+
+          {mood && mood.length > 0 && (
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mb-6">
+              {mood.map((m) => (
+                <span key={m} className="mood-tag px-3 py-1 text-sm rounded-full">{m}</span>
+              ))}
+            </div>
+          )}
+
+          <div className="mt-6 grid gap-6 lg:grid-cols-[220px_minmax(0,1.8fr)_minmax(0,0.8fr)] items-start">
+            <div>
+              <div className={`relative hidden sm:block aspect-[2/3] rounded-xl overflow-hidden shadow-2xl shadow-black/50 ${watched ? 'ring-4 ring-green-500/50' : ''}`}>
+                <PosterImage src={poster} alt={`${title} poster`} title={title} />
+                {posterOttLinks.length > 0 && (
+                  <div className="absolute bottom-3 right-3 flex items-center -space-x-2">
+                    {posterOttLinks.map((link) => {
+                      const logoUrl = getOttLogoUrl(link.logoPath);
+                      return (
+                        <div
+                          key={link.platform}
+                          title={link.platform}
+                          className="w-8 h-8 rounded-full bg-[var(--bg-primary)]/80 border border-white/10 flex items-center justify-center overflow-hidden"
+                        >
+                          {logoUrl ? (
+                            <img src={logoUrl} alt={link.platform} className="w-6 h-6 object-contain" />
+                          ) : (
+                            <span className="text-[10px] font-bold text-white">
+                              {link.platform.charAt(0)}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              <div className="mt-4 sm:mt-4 grid grid-cols-2 gap-2">
+                <div className="flex justify-center">
+                  <WatchedButton movieId={resolvedId} size="lg" showLabel />
+                </div>
+                <div className="flex justify-center">
+                  <WatchlistButton movieId={resolvedId} title={title} poster={poster} size="lg" showLabel />
+                </div>
+                <div className="flex justify-center">
+                  <ScheduleWatchButton
+                    movieId={resolvedId}
+                    movieTitle={title}
+                    moviePoster={poster}
+                    movieYear={year}
+                    size="lg"
+                    showLabel
+                  />
+                </div>
+                {!iosReviewMode ? (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => setSendModalOpen(true)}
+                      disabled={!user}
+                      title={user ? 'Send to friend' : 'Sign in to send'}
+                      className="h-11 px-4 rounded-full border border-pink-300/45 bg-gradient-to-r from-fuchsia-500/35 to-rose-500/35 text-fuchsia-50 font-semibold inline-flex items-center gap-2 hover:from-fuchsia-500/45 hover:to-rose-500/45 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                      </svg>
+                      Send
+                    </button>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-6">
+              <div className="bg-[var(--bg-card)] rounded-2xl p-6 sm:p-7 border border-white/5">
+                <div className="flex items-center gap-3 mb-4">
+                  <span className="text-3xl">{recommendedBy.avatar}</span>
+                  <div>
+                    <p className="text-[var(--text-primary)] font-medium">
+                      {recommendedBy.id === 'tmdb' || recommendedBy.name === 'TMDB'
+                        ? 'Context'
+                        : `${recommendedBy.name}'s recommendation`}
+                    </p>
+                    <p className="text-xs text-[var(--text-muted)]">Added {formattedDate}</p>
+                  </div>
+                </div>
+                <blockquote className="text-lg sm:text-xl text-[var(--text-primary)] leading-relaxed italic">
+                  &ldquo;{personalNote}&rdquo;
+                </blockquote>
+                {watchWith && (
+                  <p className="mt-4 text-sm text-[var(--text-secondary)]">
+                    <span className="text-[var(--accent)]">Best watched:</span> {watchWith}
+                  </p>
+                )}
+              </div>
+
+              {tmdbTrailerId ? (
+                <TrailerSection tmdbId={tmdbTrailerId} mediaType="movie" title={title} />
+              ) : null}
+            </div>
+
+            <WhereToWatchPanel links={uniqueOttLinks} regionNote={regionNote} />
+          </div>
+        </div>
+
+        <div className="mt-10 text-center pb-16">
+          <Link
+            href={backUrl}
+            className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-full hover:bg-[var(--accent-hover)] transition-colors"
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+            </svg>
+            {fromLang ? 'Back to movies' : 'Back to all recommendations'}
+          </Link>
+        </div>
+      </div>
+
+      {!iosReviewMode ? (
+        <SendToFriendModal
+          isOpen={sendModalOpen}
+          onClose={() => setSendModalOpen(false)}
+          movieId={sendRecommendationId || `tmdb-${sendTmdbId || resolvedId}`}
+          movieTitle={title}
+          moviePoster={poster}
+          movieYear={year}
+          tmdbId={sendTmdbId ?? undefined}
+          recommendationId={sendRecommendationId ?? undefined}
+        />
+      ) : null}
+    </div>
+  );
+}

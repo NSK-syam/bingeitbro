@@ -1,0 +1,5 @@
+# Edge Function config: allow OPTIONS/preflight and POST to reach the function
+# so we can return CORS headers. Auth is validated inside the function via body access_token.
+# Deploy with: supabase functions deploy send-friend-recommendations --no-verify-jwt
+[functions.send-friend-recommendations]
+verify_jwt = false

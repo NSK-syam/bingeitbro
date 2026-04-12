@@ -1,0 +1,32 @@
+{
+  "headers": [
+    {
+      "source": "/_next/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/movie/:id",
+      "destination": "/movie/fallback"
+    },
+    {
+      "source": "/profile/:id",
+      "destination": "/profile/fallback"
+    }
+  ]
+}

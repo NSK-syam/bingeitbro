@@ -1,0 +1,27 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "main": ".open-next/worker.js",
+  "name": "bingeitbro",
+  "compatibility_date": "2026-02-06",
+  "compatibility_flags": [
+    "nodejs_compat",
+    "global_fetch_strictly_public"
+  ],
+  "routes": [
+    {
+      "pattern": "bingeitbro.com/*",
+      "zone_name": "bingeitbro.com"
+    },
+    {
+      "pattern": "www.bingeitbro.com/*",
+      "zone_name": "bingeitbro.com"
+    }
+  ],
+  "build": {
+    "command": "npm run cf:build"
+  },
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  }
+}

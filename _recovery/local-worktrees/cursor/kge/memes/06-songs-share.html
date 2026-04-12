@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.post {
+    width: 1080px; height: 1080px;
+    background: #0a0a0a;
+    font-family: 'Inter', sans-serif;
+    display: flex; flex-direction: column;
+    justify-content: center;
+    padding: 80px 90px;
+    position: relative;
+}
+.heading {
+    font-size: 52px; font-weight: 900; color: #fff;
+    margin-bottom: 54px; line-height: 1.25;
+}
+.heading span { color: #f97316; }
+.playlist {
+    display: flex; flex-direction: column; gap: 4px;
+    background: #111; border-radius: 20px; padding: 32px;
+    border: 1px solid rgba(255,255,255,.06);
+}
+.playlist-title {
+    font-size: 20px; color: rgba(255,255,255,.3);
+    text-transform: uppercase; letter-spacing: 2px;
+    font-weight: 700; margin-bottom: 20px;
+}
+.song {
+    display: flex; align-items: center; gap: 20px;
+    padding: 16px 0;
+    border-bottom: 1px solid rgba(255,255,255,.04);
+}
+.song:last-child { border: none; }
+.num {
+    font-size: 20px; color: rgba(255,255,255,.15);
+    font-weight: 700; width: 32px; text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+.song-info { flex: 1; }
+.song-name { font-size: 26px; font-weight: 700; color: rgba(255,255,255,.8); }
+.song-artist { font-size: 20px; color: rgba(255,255,255,.25); margin-top: 2px; }
+.song-vibe {
+    font-size: 18px; padding: 6px 14px;
+    background: rgba(255,255,255,.04);
+    border-radius: 100px; color: rgba(255,255,255,.2);
+}
+.more {
+    text-align: center; padding: 20px 0 4px;
+    font-size: 22px; color: rgba(255,255,255,.15);
+}
+.cta {
+    margin-top: 44px; text-align: center;
+    font-size: 26px; color: rgba(255,255,255,.3);
+}
+.cta strong { color: #f97316; }
+</style>
+</head><body>
+<div class="post">
+    <div class="heading">your playlist says more about you than your <span>bio</span> ever will</div>
+    <div class="playlist">
+        <div class="playlist-title">🎵 my public playlist</div>
+        <div class="song">
+            <div class="num">1</div>
+            <div class="song-info"><div class="song-name">Tum Hi Ho</div><div class="song-artist">Arijit Singh</div></div>
+            <div class="song-vibe">feels</div>
+        </div>
+        <div class="song">
+            <div class="num">2</div>
+            <div class="song-info"><div class="song-name">Blinding Lights</div><div class="song-artist">The Weeknd</div></div>
+            <div class="song-vibe">drives</div>
+        </div>
+        <div class="song">
+            <div class="num">3</div>
+            <div class="song-info"><div class="song-name">Nuvvostanante Nenoddantana</div><div class="song-artist">Devi Sri Prasad</div></div>
+            <div class="song-vibe">nostalgia</div>
+        </div>
+        <div class="song">
+            <div class="num">4</div>
+            <div class="song-info"><div class="song-name">Starboy</div><div class="song-artist">The Weeknd</div></div>
+            <div class="song-vibe">energy</div>
+        </div>
+        <div class="more">+ 23 more songs</div>
+    </div>
+    <div class="cta">share yours publicly → <strong>bingeitbro.com</strong></div>
+</div>
+</body></html>

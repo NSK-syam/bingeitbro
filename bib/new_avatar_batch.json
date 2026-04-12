@@ -1,0 +1,230 @@
+{
+  "nani": [
+    {
+      "id": "nani_1",
+      "label": "Hi Nanna",
+      "fileName": "hi_nanna.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/hhMLtq9m1aK0dpY9Wcq26XeDH2z.jpg",
+      "path": "/avatars/telugu_movies/hi_nanna.jpg"
+    },
+    {
+      "id": "nani_2",
+      "label": "HIT: The Third Case",
+      "fileName": "hit_the_third_case.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/wT9tGyFol4RBwkjESXUWeBdnLJn.jpg",
+      "path": "/avatars/telugu_movies/hit_the_third_case.jpg"
+    },
+    {
+      "id": "nani_3",
+      "label": "Eega",
+      "fileName": "eega.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/4Q5sQPJktfgXUhUS1kygGB4FUGZ.jpg",
+      "path": "/avatars/telugu_movies/eega.jpg"
+    },
+    {
+      "id": "nani_4",
+      "label": "Tuck Jagadish",
+      "fileName": "tuck_jagadish.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/h3N0BvNtplnvK1kyqP4dQREUCn5.jpg",
+      "path": "/avatars/telugu_movies/tuck_jagadish.jpg"
+    },
+    {
+      "id": "nani_5",
+      "label": "HIT: The 2nd Case",
+      "fileName": "hit_the_2nd_case.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/tidXGOilCSa5sch1KGiEXrWeYCf.jpg",
+      "path": "/avatars/telugu_movies/hit_the_2nd_case.jpg"
+    },
+    {
+      "id": "nani_6",
+      "label": "V",
+      "fileName": "v.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/iBVcwOVZNGNCNlOLFmcYJW83tTu.jpg",
+      "path": "/avatars/telugu_movies/v.jpg"
+    },
+    {
+      "id": "nani_7",
+      "label": "Nenu Local",
+      "fileName": "nenu_local.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/2CjWcUIvoYFvvlm8773CYSnEYvA.jpg",
+      "path": "/avatars/telugu_movies/nenu_local.jpg"
+    },
+    {
+      "id": "nani_8",
+      "label": "Dasara",
+      "fileName": "dasara.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/4OTVoCVXa5aHDZl8opKoIV9Ezr5.jpg",
+      "path": "/avatars/telugu_movies/dasara.jpg"
+    }
+  ],
+  "englishSeries": [
+    {
+      "id": "eng_series_1",
+      "label": "A Knight of the Seven Kingdoms",
+      "fileName": "a_knight_of_the_seven_kingdoms.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/k8yARbD9iYn2nRX2HvsopfKDN2r.jpg",
+      "path": "/avatars/english_web_series/a_knight_of_the_seven_kingdoms.jpg"
+    },
+    {
+      "id": "eng_series_2",
+      "label": "Supernatural",
+      "fileName": "supernatural.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/u40gJarLPlIkwouKlzGdobQOV9k.jpg",
+      "path": "/avatars/english_web_series/supernatural.jpg"
+    },
+    {
+      "id": "eng_series_3",
+      "label": "Grey's Anatomy",
+      "fileName": "grey_s_anatomy.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/hjJkrLXhWvGHpLeLBDFznpBTY1S.jpg",
+      "path": "/avatars/english_web_series/grey_s_anatomy.jpg"
+    },
+    {
+      "id": "eng_series_4",
+      "label": "The Simpsons",
+      "fileName": "the_simpsons.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/uWpG7GqfKGQqX4YMAo3nv5OrglV.jpg",
+      "path": "/avatars/english_web_series/the_simpsons.jpg"
+    },
+    {
+      "id": "eng_series_5",
+      "label": "The Rookie",
+      "fileName": "the_rookie.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/70kTz0OmjjZe7zHvIDrq2iKW7PJ.jpg",
+      "path": "/avatars/english_web_series/the_rookie.jpg"
+    },
+    {
+      "id": "eng_series_6",
+      "label": "Family Guy",
+      "fileName": "family_guy.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/3PFsEuAiyLkWsP4GG6dIV37Q6gu.jpg",
+      "path": "/avatars/english_web_series/family_guy.jpg"
+    },
+    {
+      "id": "eng_series_7",
+      "label": "Stranger Things",
+      "fileName": "stranger_things.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/uOOtwVbSr4QDjAGIifLDwpb2Pdl.jpg",
+      "path": "/avatars/english_web_series/stranger_things.jpg"
+    },
+    {
+      "id": "eng_series_8",
+      "label": "Law & Order: Special Victims Unit",
+      "fileName": "law_order_special_victims_unit.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/iofokHZoUB4Qhik4PflvJl8TT6a.jpg",
+      "path": "/avatars/english_web_series/law_order_special_victims_unit.jpg"
+    },
+    {
+      "id": "eng_series_9",
+      "label": "Game of Thrones",
+      "fileName": "game_of_thrones.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/1XS1oqL89opfnbLl8WnZY1O1uJx.jpg",
+      "path": "/avatars/english_web_series/game_of_thrones.jpg"
+    },
+    {
+      "id": "eng_series_10",
+      "label": "NCIS",
+      "fileName": "ncis.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/mBcu8d6x6zB1el3MPNl7cZQEQ31.jpg",
+      "path": "/avatars/english_web_series/ncis.jpg"
+    },
+    {
+      "id": "eng_series_11",
+      "label": "Law & Order",
+      "fileName": "law_order.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/haJ9eHytVO3H3JooMJG1DiWwDNm.jpg",
+      "path": "/avatars/english_web_series/law_order.jpg"
+    },
+    {
+      "id": "eng_series_12",
+      "label": "House",
+      "fileName": "house.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/3Cz7ySOQJmqiuTdrc6CY0r65yDI.jpg",
+      "path": "/avatars/english_web_series/house.jpg"
+    },
+    {
+      "id": "eng_series_13",
+      "label": "Raw",
+      "fileName": "raw.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/pv5WNnLUo7mpT8k901Lo8UovrqI.jpg",
+      "path": "/avatars/english_web_series/raw.jpg"
+    },
+    {
+      "id": "eng_series_14",
+      "label": "Watch What Happens Live with Andy Cohen",
+      "fileName": "watch_what_happens_live_with_andy_cohen.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/onSD9UXfJwrMXWhq7UY7hGF2S1h.jpg",
+      "path": "/avatars/english_web_series/watch_what_happens_live_with_andy_cohen.jpg"
+    },
+    {
+      "id": "eng_series_15",
+      "label": "Breaking Bad",
+      "fileName": "breaking_bad.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/ztkUQFLlC19CCMYHW9o1zWhJRNq.jpg",
+      "path": "/avatars/english_web_series/breaking_bad.jpg"
+    },
+    {
+      "id": "eng_series_16",
+      "label": "The Daily Show",
+      "fileName": "the_daily_show.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/ixcfyK7it6FjRM36Te4OdblAq4X.jpg",
+      "path": "/avatars/english_web_series/the_daily_show.jpg"
+    },
+    {
+      "id": "eng_series_17",
+      "label": "Smallville",
+      "fileName": "smallville.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/mHZSq8LA5Dt48JjaOZ5tcPXQRVN.jpg",
+      "path": "/avatars/english_web_series/smallville.jpg"
+    },
+    {
+      "id": "eng_series_18",
+      "label": "CSI: Crime Scene Investigation",
+      "fileName": "csi_crime_scene_investigation.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/i5hmoRjHNWady4AtAGICTUXknKH.jpg",
+      "path": "/avatars/english_web_series/csi_crime_scene_investigation.jpg"
+    },
+    {
+      "id": "eng_series_19",
+      "label": "Criminal Minds",
+      "fileName": "criminal_minds.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/gigxjNnACiXAfrwoMox5WJFgc0I.jpg",
+      "path": "/avatars/english_web_series/criminal_minds.jpg"
+    },
+    {
+      "id": "eng_series_20",
+      "label": "Friends",
+      "fileName": "friends.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/2koX1xLkpTQM4IZebYvKysFW1Nh.jpg",
+      "path": "/avatars/english_web_series/friends.jpg"
+    },
+    {
+      "id": "eng_series_21",
+      "label": "Bones",
+      "fileName": "bones.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/eyTu5c8LniVciRZIOSHTvvkkgJa.jpg",
+      "path": "/avatars/english_web_series/bones.jpg"
+    },
+    {
+      "id": "eng_series_22",
+      "label": "Modern Family",
+      "fileName": "modern_family.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/k5Qg5rgPoKdh3yTJJrLtyoyYGwC.jpg",
+      "path": "/avatars/english_web_series/modern_family.jpg"
+    },
+    {
+      "id": "eng_series_23",
+      "label": "56 Days",
+      "fileName": "56_days.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/sdJLbucggwGj8NdX0UN2zt1Vwmn.jpg",
+      "path": "/avatars/english_web_series/56_days.jpg"
+    },
+    {
+      "id": "eng_series_24",
+      "label": "Shameless",
+      "fileName": "shameless.jpg",
+      "imageUrl": "https://image.tmdb.org/t/p/w500/ifo31fMWLmyOVpdak9K0kY4jldQ.jpg",
+      "path": "/avatars/english_web_series/shameless.jpg"
+    }
+  ]
+}

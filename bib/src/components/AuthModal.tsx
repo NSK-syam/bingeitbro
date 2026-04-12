@@ -1,0 +1,684 @@
+'use client';
+
+import Link from 'next/link';
+import { useState, useEffect, useRef } from 'react';
+import { useAuth } from './AuthProvider';
+import { isLikelyInAppBrowser } from '@/lib/browser-detect';
+import { trackFunnelEvent } from '@/lib/funnel';
+import { hasNativeAuthBridge, isNativeAppShell, isNativeAppleSignInSupported } from '@/lib/native-webview';
+
+declare global {
+  interface Window {
+    turnstile?: {
+      render: (
+        container: string | HTMLElement,
+        options: {
+          sitekey: string;
+          theme?: 'light' | 'dark' | 'auto';
+          callback?: (token: string) => void;
+          'expired-callback'?: () => void;
+          'error-callback'?: () => void;
+        },
+      ) => string;
+      reset?: (widgetId: string) => void;
+    };
+  }
+}
+
+let turnstileScriptPromise: Promise<void> | null = null;
+
+function loadTurnstileScript(): Promise<void> {
+  if (typeof window === 'undefined') return Promise.resolve();
+  if (window.turnstile) return Promise.resolve();
+  if (turnstileScriptPromise) return turnstileScriptPromise;
+
+  turnstileScriptPromise = new Promise<void>((resolve, reject) => {
+    const existing = document.getElementById('cf-turnstile-script') as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Turnstile failed to load')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'cf-turnstile-script';
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error('Turnstile failed to load'));
+    document.head.appendChild(script);
+  });
+
+  return turnstileScriptPromise;
+}
+
+interface AuthModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  initialError?: string;
+  initialMode?: 'login' | 'signup' | 'reset';
+}
+
+export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login' }: AuthModalProps) {
+  const [mode, setMode] = useState<'login' | 'signup' | 'reset'>(initialMode);
+  const [showEmailSignup, setShowEmailSignup] = useState(initialMode !== 'signup');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [name, setName] = useState('');
+  const [username, setUsername] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [success, setSuccess] = useState('');
+  const [usernameStatus, setUsernameStatus] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
+  const [showPassword, setShowPassword] = useState(false);
+  const [birthDay, setBirthDay] = useState('');
+  const [birthMonth, setBirthMonth] = useState('');
+  const [birthYear, setBirthYear] = useState('');
+  const [inAppBrowser, setInAppBrowser] = useState(false);
+  const [nativeAuthBridge, setNativeAuthBridge] = useState(false);
+  const [nativeAppShell, setNativeAppShell] = useState(false);
+  const [captchaToken, setCaptchaToken] = useState('');
+  const [captchaLoading, setCaptchaLoading] = useState(false);
+  const [captchaError, setCaptchaError] = useState('');
+  const turnstileWidgetIdRef = useRef<string | null>(null);
+  const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
+
+  const { signIn, signUp, signInWithGoogle, signInWithApple, checkUsernameAvailable } = useAuth();
+
+  useEffect(() => {
+    if (isOpen && initialError) setError(initialError);
+  }, [isOpen, initialError]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setMode(initialMode);
+      setShowEmailSignup(initialMode !== 'signup');
+      trackFunnelEvent('auth_modal_view', { mode: initialMode });
+    }
+  }, [isOpen, initialMode]);
+
+  useEffect(() => {
+    if (!isOpen || mode !== 'signup' || !turnstileSiteKey || typeof window === 'undefined') {
+      setCaptchaToken('');
+      setCaptchaError('');
+      turnstileWidgetIdRef.current = null;
+      return;
+    }
+    const mount = async () => {
+      setCaptchaLoading(true);
+      setCaptchaError('');
+      try {
+        await loadTurnstileScript();
+        if (!isOpen || mode !== 'signup') return;
+        const container = document.getElementById('signup-turnstile');
+        if (!container || !window.turnstile) return;
+        if (!turnstileWidgetIdRef.current) {
+          turnstileWidgetIdRef.current = window.turnstile.render(container, {
+            sitekey: turnstileSiteKey,
+            theme: 'dark',
+            callback: (token) => {
+              setCaptchaToken(token);
+              setCaptchaError('');
+            },
+            'expired-callback': () => setCaptchaToken(''),
+            'error-callback': () => {
+              setCaptchaToken('');
+              setCaptchaError('Verification failed. Please retry.');
+            },
+          });
+        } else if (window.turnstile.reset && turnstileWidgetIdRef.current) {
+          window.turnstile.reset(turnstileWidgetIdRef.current);
+        }
+      } catch {
+        setCaptchaError('Unable to load verification challenge. Refresh and try again.');
+      } finally {
+        setCaptchaLoading(false);
+      }
+    };
+    void mount();
+  }, [isOpen, mode, turnstileSiteKey]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    setInAppBrowser(isLikelyInAppBrowser(window.navigator.userAgent || ''));
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncNativeState = () => {
+      setNativeAuthBridge(hasNativeAuthBridge());
+      setNativeAppShell(isNativeAppShell());
+    };
+
+    syncNativeState();
+    const intervalId = window.setInterval(syncNativeState, 250);
+    const stopPollingId = window.setTimeout(() => window.clearInterval(intervalId), 4000);
+    window.addEventListener('bib-native-shell', syncNativeState);
+
+    return () => {
+      window.clearInterval(intervalId);
+      window.clearTimeout(stopPollingId);
+      window.removeEventListener('bib-native-shell', syncNativeState);
+    };
+  }, []);
+
+  const blockGoogleInBrowser = inAppBrowser && !nativeAuthBridge && !nativeAppShell;
+  const showAppleSignIn = isNativeAppleSignInSupported();
+
+  // Debounced username check
+  useEffect(() => {
+    if (username.length < 3) {
+      setUsernameStatus('idle');
+      return;
+    }
+
+    setUsernameStatus('checking');
+    const timer = setTimeout(async () => {
+      const available = await checkUsernameAvailable(username);
+      setUsernameStatus(available ? 'available' : 'taken');
+    }, 500);
+
+    return () => clearTimeout(timer);
+  }, [username, checkUsernameAvailable]);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+    trackFunnelEvent('email_auth_submit', { mode });
+
+    try {
+      if (mode === 'login') {
+        const { error } = await signIn(email, password);
+        if (error) {
+          setError(error.message);
+          trackFunnelEvent('email_auth_error', { mode, message: error.message.slice(0, 120) });
+        } else {
+          trackFunnelEvent('email_auth_success', { mode });
+          onClose();
+        }
+      } else {
+        if (username.length < 3) {
+          setError('Username must be at least 3 characters');
+          setLoading(false);
+          return;
+        }
+        if (username.length > 24) {
+          setError('Username must be 24 characters or fewer');
+          setLoading(false);
+          return;
+        }
+        if (usernameStatus === 'taken') {
+          setError('Username is already taken');
+          setLoading(false);
+          return;
+        }
+        if (!name.trim()) {
+          setError('Please enter your name');
+          setLoading(false);
+          return;
+        }
+        if (password.length < 8) {
+          setError('Password must be at least 8 characters');
+          setLoading(false);
+          return;
+        }
+
+        let birthdate: string | null = null;
+        const hasBirthdayInput = Boolean(birthYear || birthMonth || birthDay);
+        if (hasBirthdayInput) {
+          const y = Number(birthYear);
+          const m = Number(birthMonth);
+          const d = Number(birthDay);
+          if (!y || !m || !d) {
+            setError('Complete all birthday fields or leave them blank');
+            setLoading(false);
+            return;
+          }
+          const dt = new Date(Date.UTC(y, m - 1, d));
+          if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+            setError('Please select a valid birthday');
+            setLoading(false);
+            return;
+          }
+          birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+
+        if (turnstileSiteKey && !captchaToken) {
+          setError('Please complete the verification challenge.');
+          setLoading(false);
+          return;
+        }
+
+        const { error } = await signUp(email, password, name, username, birthdate, captchaToken);
+        if (error) {
+          setError(error.message);
+          trackFunnelEvent('email_auth_error', { mode, message: error.message.slice(0, 120) });
+        } else {
+          trackFunnelEvent('email_auth_success', { mode });
+          onClose();
+        }
+      }
+    } catch {
+      setError('Something went wrong');
+      trackFunnelEvent('email_auth_error', { mode, message: 'unexpected_error' });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGoogleSignIn = async () => {
+    setError('');
+    setLoading(true);
+    trackFunnelEvent('oauth_start', { source: 'auth_modal', mode });
+    const { error } = await signInWithGoogle();
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      trackFunnelEvent('oauth_error', { source: 'auth_modal', mode, message: error.message.slice(0, 120) });
+    } else {
+      setLoading(false);
+      trackFunnelEvent('oauth_redirect_started', { source: 'auth_modal', mode });
+    }
+  };
+
+  const handleAppleSignIn = async () => {
+    setError('');
+    setLoading(true);
+    trackFunnelEvent('oauth_start', { source: 'auth_modal', mode, provider: 'apple' });
+    const { error } = await signInWithApple();
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      trackFunnelEvent('oauth_error', { source: 'auth_modal', mode, provider: 'apple', message: error.message.slice(0, 120) });
+    } else {
+      setLoading(false);
+      trackFunnelEvent('oauth_redirect_started', { source: 'auth_modal', mode, provider: 'apple' });
+    }
+  };
+
+  const openInBrowser = () => {
+    if (typeof window === 'undefined') return;
+    const target = `${window.location.origin}${window.location.pathname}${window.location.search}`;
+    try {
+      window.open(target, '_blank', 'noopener,noreferrer');
+    } catch {
+      window.location.href = target;
+    }
+  };
+
+  const handlePasswordReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setSuccess('');
+    setLoading(true);
+
+    try {
+      const { createClient } = await import('@/lib/supabase');
+      const supabase = createClient();
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        setError(error.message);
+      } else {
+        setSuccess('Check your email (and spam folder) for a password reset link!');
+        setTimeout(() => {
+          setMode('login');
+          setShowEmailSignup(true);
+          setSuccess('');
+        }, 3000);
+      }
+    } catch {
+      setError('Something went wrong');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const showCredentialForm = mode === 'reset' || mode === 'login' || (mode === 'signup' && showEmailSignup);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose} />
+
+      {/* Modal */}
+      <div className="relative w-full max-w-md bg-[var(--bg-card)] rounded-2xl p-6 shadow-2xl border border-white/10 max-h-[90vh] overflow-y-auto">
+        {/* Close button */}
+        <button
+          onClick={onClose}
+          className="absolute top-4 right-4 w-8 h-8 flex items-center justify-center rounded-full bg-[var(--bg-secondary)] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+        >
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-[var(--text-primary)]">
+            {mode === 'login' ? 'Welcome back!' : mode === 'signup' ? 'Join BingeItBro' : 'Reset Password'}
+          </h2>
+          <p className="text-sm text-[var(--text-muted)] mt-1">
+            {mode === 'login' ? 'Sign in to share recommendations' : mode === 'signup' ? 'Create an account to share your picks' : 'Enter your email to receive a password reset link'}
+          </p>
+        </div>
+
+        {mode !== 'reset' && (
+          <>
+            {blockGoogleInBrowser && (
+              <div className="mb-3 rounded-xl border border-amber-400/30 bg-amber-500/10 p-3 text-sm text-amber-200">
+                Google sign-in is blocked inside in-app browsers. Open this page in Safari/Chrome and continue.
+                <button
+                  type="button"
+                  onClick={openInBrowser}
+                  className="mt-2 w-full rounded-lg bg-amber-400/20 px-3 py-2 font-medium text-amber-100 hover:bg-amber-400/30"
+                >
+                  Open in Browser
+                </button>
+              </div>
+            )}
+
+            {showAppleSignIn && (
+              <button
+                onClick={handleAppleSignIn}
+                disabled={loading}
+                className="mb-3 w-full py-3 px-4 bg-black text-white font-medium rounded-xl hover:bg-zinc-900 transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Continue with Apple
+              </button>
+            )}
+
+            {/* Google Sign In */}
+            <button
+              onClick={handleGoogleSignIn}
+              disabled={loading || blockGoogleInBrowser}
+              className="w-full py-3 px-4 bg-white text-gray-700 font-medium rounded-xl hover:bg-gray-50 transition-colors flex items-center justify-center gap-3 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <svg className="w-5 h-5" viewBox="0 0 24 24">
+                <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" />
+                <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+              </svg>
+              {blockGoogleInBrowser ? 'Google unavailable in this browser' : 'Continue with Google'}
+            </button>
+
+            <div className="relative my-6">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-white/10" />
+              </div>
+              <div className="relative flex justify-center text-sm">
+                <span className="px-4 text-[var(--text-muted)] bg-[var(--bg-card)]">or</span>
+              </div>
+            </div>
+
+            {mode === 'signup' && !showEmailSignup && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowEmailSignup(true);
+                  setError('');
+                  setSuccess('');
+                  trackFunnelEvent('email_signup_unlocked', { source: 'auth_modal' });
+                }}
+                className="w-full mb-4 py-3 px-4 rounded-xl border border-white/15 text-[var(--text-primary)] hover:border-white/35 transition-colors"
+              >
+                Use email and password instead
+              </button>
+            )}
+          </>
+        )}
+        {(error || success) && (
+          <div className="space-y-3 mb-4">
+            {error && (
+              <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-xl text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+
+            {success && (
+              <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-xl text-green-400 text-sm space-y-2">
+                <div>{success}</div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {showCredentialForm && (
+        <form onSubmit={mode === 'reset' ? handlePasswordReset : handleSubmit} className="space-y-4">
+          {mode === 'signup' && (
+            <>
+              <div>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Your Name</label>
+                <input
+                  type="text"
+                  id="name"
+                  name="name"
+                  autoComplete="name"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  placeholder="What should we call you?"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Username</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    id="username"
+                    name="username"
+                    autoComplete="username"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, ''))}
+                    placeholder="your_unique_username"
+                    className={`w-full px-4 py-3 bg-[var(--bg-secondary)] border rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:ring-1 ${usernameStatus === 'available' ? 'border-green-500 focus:border-green-500 focus:ring-green-500/50' :
+                      usernameStatus === 'taken' ? 'border-red-500 focus:border-red-500 focus:ring-red-500/50' :
+                        'border-white/5 focus:border-[var(--accent)]/50 focus:ring-[var(--accent)]/50'
+                      }`}
+                    required
+                    minLength={3}
+                  />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    {usernameStatus === 'checking' && (
+                      <div className="w-4 h-4 border-2 border-[var(--text-muted)] border-t-transparent rounded-full animate-spin" />
+                    )}
+                    {usernameStatus === 'available' && (
+                      <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    )}
+                    {usernameStatus === 'taken' && (
+                      <svg className="w-5 h-5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    )}
+                  </div>
+                </div>
+                {usernameStatus === 'taken' && (
+                  <p className="text-xs text-red-400 mt-1">This username is already taken</p>
+                )}
+                {usernameStatus === 'available' && (
+                  <p className="text-xs text-green-400 mt-1">Username is available!</p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Birthday <span className="text-[var(--text-muted)]/70">(optional)</span></label>
+                <div className="grid grid-cols-3 gap-2">
+                  <select
+                    value={birthDay}
+                    onChange={(e) => setBirthDay(e.target.value)}
+                    className="w-full px-3 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+                  >
+                    <option value="">Day</option>
+                    {Array.from({ length: 31 }, (_, i) => String(i + 1)).map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={birthMonth}
+                    onChange={(e) => setBirthMonth(e.target.value)}
+                    className="w-full px-3 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+                  >
+                    <option value="">Month</option>
+                    {[
+                      'January','February','March','April','May','June','July','August','September','October','November','December'
+                    ].map((label, idx) => (
+                      <option key={label} value={String(idx + 1)}>{label}</option>
+                    ))}
+                  </select>
+                  <select
+                    value={birthYear}
+                    onChange={(e) => setBirthYear(e.target.value)}
+                    className="w-full px-3 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+                  >
+                    <option value="">Year</option>
+                    {Array.from({ length: new Date().getFullYear() - 1900 + 1 }, (_, i) => String(new Date().getFullYear() - i)).map((v) => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {turnstileSiteKey && (
+                <div>
+                  <label className="block text-sm text-[var(--text-muted)] mb-2">Verification</label>
+                  <div className="rounded-xl border border-white/10 bg-[var(--bg-secondary)] p-3">
+                    <div id="signup-turnstile" className="min-h-[65px]" />
+                    {captchaLoading && (
+                      <p className="text-xs text-[var(--text-muted)] mt-2">Loading verification…</p>
+                    )}
+                    {captchaError && (
+                      <p className="text-xs text-red-400 mt-2">{captchaError}</p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          <div>
+            <label className="block text-sm text-[var(--text-muted)] mb-1">Email</label>
+            <input
+              type="email"
+              id="email"
+              name="email"
+              autoComplete="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+              required
+            />
+          </div>
+
+          {mode !== 'reset' && (
+            <div>
+              <label className="block text-sm text-[var(--text-muted)] mb-1">Password</label>
+              <div className="relative">
+                <input
+                  type={showPassword ? "text" : "password"}
+                  id="password"
+                  name="password"
+                  autoComplete={mode === 'login' ? 'current-password' : 'new-password'}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-4 py-3 bg-[var(--bg-secondary)] border border-white/5 rounded-xl text-[var(--text-primary)] placeholder:text-[var(--text-muted)] focus:outline-none focus:border-[var(--accent)]/50 focus:ring-1 focus:ring-[var(--accent)]/50"
+                  required
+                  minLength={6}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? "Hide password" : "Show password"}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors"
+                >
+                  {showPassword ? (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" />
+                    </svg>
+                  ) : (
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
+                    </svg>
+                  )}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Forgot Password Link */}
+          {mode === 'login' && (
+            <div className="text-right -mt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('reset');
+                  setError('');
+                  setSuccess('');
+                }}
+                className="text-sm text-[var(--accent)] hover:text-[var(--accent-hover)] transition-colors"
+              >
+                Forgot password?
+              </button>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading || (mode === 'signup' && usernameStatus === 'taken')}
+            className="w-full py-3 bg-[var(--accent)] text-[var(--bg-primary)] font-medium rounded-xl hover:bg-[var(--accent-hover)] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {loading ? 'Please wait...' : mode === 'login' ? 'Sign In' : mode === 'signup' ? 'Create Account' : 'Send Reset Link'}
+          </button>
+          {mode === 'signup' && (
+            <p className="text-xs leading-relaxed text-[var(--text-muted)]">
+              By creating an account, you agree to our{' '}
+              <Link href="/terms" className="text-[var(--accent)] hover:underline">
+                Terms of Service
+              </Link>{' '}
+              and{' '}
+              <Link href="/privacy" className="text-[var(--accent)] hover:underline">
+                Privacy Policy
+              </Link>
+              .
+            </p>
+          )}
+        </form>
+        )}
+
+        <div className="mt-6 text-center">
+          <button
+            onClick={() => {
+              if (mode === 'reset') {
+                setMode('login');
+                setShowEmailSignup(true);
+              } else {
+                const nextMode = mode === 'login' ? 'signup' : 'login';
+                setMode(nextMode);
+                setShowEmailSignup(nextMode !== 'signup');
+              }
+              setError('');
+              setSuccess('');
+            }}
+            className="text-sm text-[var(--text-muted)] hover:text-[var(--accent)]"
+          >
+            {mode === 'login' ? "Don't have an account? Sign up" : mode === 'signup' ? 'Already have an account? Sign in' : 'Back to sign in'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}

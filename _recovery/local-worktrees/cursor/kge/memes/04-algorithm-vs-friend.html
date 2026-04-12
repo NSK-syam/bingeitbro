@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.post {
+    width: 1080px; height: 1080px;
+    background: #0a0a0a;
+    font-family: 'Inter', sans-serif;
+    display: flex; flex-direction: column;
+    justify-content: center;
+    padding: 70px 80px;
+    gap: 40px;
+    position: relative;
+}
+.vs-label {
+    text-align: center; font-size: 22px; font-weight: 700;
+    color: rgba(255,255,255,.15); text-transform: uppercase; letter-spacing: 4px;
+}
+.card {
+    padding: 44px;
+    border-radius: 24px;
+    position: relative;
+}
+.bad {
+    background: #111;
+    border: 1px solid rgba(255,255,255,.06);
+}
+.good {
+    background: linear-gradient(135deg, rgba(249,115,22,.12), rgba(236,72,153,.08));
+    border: 1px solid rgba(249,115,22,.2);
+}
+.card-label {
+    font-size: 18px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 2px; margin-bottom: 18px;
+}
+.bad .card-label { color: rgba(255,255,255,.25); }
+.good .card-label { color: #f97316; }
+.card-title {
+    font-size: 36px; font-weight: 700; line-height: 1.35;
+}
+.bad .card-title { color: rgba(255,255,255,.5); }
+.good .card-title { color: #fff; }
+.card-sub {
+    font-size: 24px; margin-top: 14px; line-height: 1.5;
+}
+.bad .card-sub { color: rgba(255,255,255,.2); }
+.good .card-sub { color: rgba(255,255,255,.45); }
+.x { position: absolute; top: 30px; right: 36px; font-size: 36px; }
+.bottom {
+    position: absolute; bottom: 44px; left: 0; right: 0;
+    text-align: center; font-size: 22px; color: rgba(255,255,255,.18);
+}
+</style>
+</head><body>
+<div class="post">
+    <div class="card bad">
+        <div class="x">👎</div>
+        <div class="card-label">Algorithm</div>
+        <div class="card-title">"Because you watched a cooking show for 10 seconds, here's 200 cooking shows"</div>
+        <div class="card-sub">thanks I hate it</div>
+    </div>
+    <div class="vs-label">— vs —</div>
+    <div class="card good">
+        <div class="x">🔥</div>
+        <div class="card-label">Your friend</div>
+        <div class="card-title">"Bro. Watch this. Trust me. Don't read anything about it. Just watch."</div>
+        <div class="card-sub">and it was the best movie I've ever seen</div>
+    </div>
+    <div class="bottom">🍿 bingeitbro.com</div>
+</div>
+</body></html>

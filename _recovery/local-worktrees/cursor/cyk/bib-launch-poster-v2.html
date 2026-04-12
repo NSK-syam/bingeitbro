@@ -1,0 +1,472 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BingeItBro Launch Poster</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Instrument+Serif:ital@0;1&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            background: #080808;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Space Grotesk', sans-serif;
+            /* To preview in browser at smaller size, uncomment: zoom: 0.62; */
+        }
+
+        /* ---- Twitter card: 1600 x 900 (16:9) ---- */
+        .poster {
+            width: 1600px;
+            height: 900px;
+            position: relative;
+            overflow: hidden;
+            background: #09090B;
+        }
+
+        /* ---- Cinematic gradient wash ---- */
+        .wash {
+            position: absolute;
+            inset: 0;
+            background:
+                radial-gradient(ellipse 70% 60% at 15% 85%, rgba(255,90,31,.22) 0%, transparent 70%),
+                radial-gradient(ellipse 50% 50% at 85% 15%, rgba(168,85,247,.18) 0%, transparent 60%),
+                radial-gradient(ellipse 80% 40% at 50% 120%, rgba(236,72,153,.12) 0%, transparent 50%);
+        }
+
+        /* ---- Noise grain ---- */
+        .grain {
+            position: absolute;
+            inset: 0;
+            opacity: .35;
+            mix-blend-mode: overlay;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 512 512' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.5'/%3E%3C/svg%3E");
+            pointer-events: none;
+        }
+
+        /* ---- Top accent bar ---- */
+        .accent-bar {
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 5px;
+            background: linear-gradient(90deg, #FF5A1F 0%, #EC4899 40%, #A855F7 70%, #3B82F6 100%);
+        }
+
+        /* ---- Layout ---- */
+        .layout {
+            position: relative;
+            z-index: 10;
+            height: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0;
+        }
+
+        /* ---- LEFT HALF ---- */
+        .left {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 56px 60px 52px 64px;
+        }
+
+        .top-row {
+            display: flex;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .logo {
+            font-size: 22px;
+            font-weight: 700;
+            color: #FAFAFA;
+            letter-spacing: -.3px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .logo span { font-size: 26px; }
+
+        .pill {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.8px;
+            color: #fff;
+            background: linear-gradient(135deg, #FF5A1F, #EC4899);
+            padding: 6px 16px;
+            border-radius: 100px;
+        }
+
+        /* Hero text */
+        .hero {
+            max-width: 620px;
+        }
+
+        .hero h1 {
+            font-family: 'Instrument Serif', serif;
+            font-weight: 400;
+            font-size: 76px;
+            line-height: 1.08;
+            color: #FAFAFA;
+            letter-spacing: -1.5px;
+        }
+
+        .hero h1 em {
+            font-style: italic;
+            background: linear-gradient(135deg, #FF5A1F 20%, #EC4899 60%, #A855F7 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .hero p {
+            margin-top: 24px;
+            font-size: 19px;
+            line-height: 1.6;
+            color: rgba(250,250,250,.5);
+            max-width: 460px;
+            font-weight: 400;
+        }
+
+        /* CTA */
+        .cta-row {
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+        }
+
+        .url {
+            font-size: 36px;
+            font-weight: 700;
+            color: #FAFAFA;
+            letter-spacing: -1px;
+            position: relative;
+        }
+
+        .url::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, #FF5A1F, #A855F7);
+            border-radius: 2px;
+        }
+
+        .stats-row {
+            display: flex;
+            gap: 40px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-val {
+            font-size: 32px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #FBBF24, #FF5A1F);
+            -webkit-background-clip: text;
+            background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stat-lbl {
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: rgba(250,250,250,.35);
+            margin-top: 2px;
+        }
+
+        /* ---- RIGHT HALF: Feature cards ---- */
+        .right {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 56px 64px 52px 40px;
+            gap: 18px;
+        }
+
+        .card {
+            display: flex;
+            align-items: flex-start;
+            gap: 20px;
+            padding: 22px 26px;
+            border-radius: 18px;
+            background: rgba(255,255,255,.04);
+            border: 1px solid rgba(255,255,255,.07);
+            transition: all .3s ease;
+        }
+
+        .card:hover {
+            background: rgba(255,255,255,.08);
+            border-color: rgba(255,90,31,.3);
+            transform: translateX(-6px);
+        }
+
+        .card-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            flex-shrink: 0;
+        }
+
+        .card-icon.orange  { background: rgba(255,90,31,.15); }
+        .card-icon.pink    { background: rgba(236,72,153,.15); }
+        .card-icon.purple  { background: rgba(168,85,247,.15); }
+        .card-icon.blue    { background: rgba(59,130,246,.15); }
+        .card-icon.yellow  { background: rgba(251,191,36,.15); }
+
+        .card-body h3 {
+            font-size: 17px;
+            font-weight: 700;
+            color: #FAFAFA;
+            margin-bottom: 4px;
+        }
+
+        .card-body p {
+            font-size: 13.5px;
+            line-height: 1.5;
+            color: rgba(250,250,250,.45);
+            font-weight: 400;
+        }
+
+        /* ---- Divider glow line between halves ---- */
+        .divider {
+            position: absolute;
+            top: 80px;
+            bottom: 80px;
+            left: 50%;
+            width: 1px;
+            background: linear-gradient(
+                to bottom,
+                transparent 0%,
+                rgba(255,90,31,.25) 20%,
+                rgba(236,72,153,.3) 50%,
+                rgba(168,85,247,.25) 80%,
+                transparent 100%
+            );
+            z-index: 20;
+        }
+
+        /* ---- Corner badge ---- */
+        .badge-free {
+            position: absolute;
+            bottom: 52px;
+            right: 64px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: rgba(250,250,250,.3);
+            z-index: 20;
+        }
+
+        .badge-free strong {
+            color: #FBBF24;
+            font-weight: 700;
+        }
+
+        /* ========================================
+           RESPONSIVE — Tablet & Mobile
+           ======================================== */
+
+        @media (max-width: 1024px) {
+            body { padding: 16px; }
+
+            .poster {
+                width: 100%;
+                height: auto;
+                min-height: 100dvh;
+                border-radius: 24px;
+            }
+
+            .layout {
+                grid-template-columns: 1fr;
+                height: auto;
+            }
+
+            .left {
+                padding: 44px 36px 32px;
+                gap: 36px;
+            }
+
+            .hero h1 {
+                font-size: 52px;
+                letter-spacing: -1px;
+            }
+
+            .hero p {
+                font-size: 17px;
+                margin-top: 18px;
+                max-width: 100%;
+            }
+
+            .cta-row {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 24px;
+            }
+
+            .url { font-size: 28px; }
+
+            .stats-row { gap: 32px; }
+            .stat-val { font-size: 26px; }
+
+            .divider { display: none; }
+
+            .right {
+                padding: 8px 36px 44px;
+                gap: 14px;
+            }
+
+            .card { padding: 18px 20px; border-radius: 16px; gap: 16px; }
+            .card-icon { width: 44px; height: 44px; font-size: 22px; border-radius: 12px; }
+            .card-body h3 { font-size: 16px; }
+            .card-body p { font-size: 13px; }
+
+            .badge-free {
+                position: relative;
+                bottom: auto;
+                right: auto;
+                text-align: center;
+                padding: 0 36px 40px;
+            }
+        }
+
+        /* ---- Phone (< 480px) ---- */
+        @media (max-width: 480px) {
+            body { padding: 0; }
+
+            .poster { border-radius: 0; }
+
+            .left { padding: 36px 24px 28px; gap: 28px; }
+
+            .top-row { gap: 12px; }
+            .logo { font-size: 18px; }
+            .logo span { font-size: 22px; }
+            .pill { font-size: 10px; padding: 5px 12px; letter-spacing: 1.4px; }
+
+            .hero h1 {
+                font-size: 38px;
+                letter-spacing: -.8px;
+            }
+
+            .hero p {
+                font-size: 15px;
+                margin-top: 14px;
+                line-height: 1.55;
+            }
+
+            .url { font-size: 24px; }
+            .stat-val { font-size: 22px; }
+            .stat-lbl { font-size: 10px; }
+
+            .right { padding: 4px 24px 36px; gap: 12px; }
+
+            .card { padding: 16px 16px; gap: 14px; border-radius: 14px; }
+            .card-icon { width: 40px; height: 40px; font-size: 20px; border-radius: 11px; }
+            .card-body h3 { font-size: 15px; }
+            .card-body p { font-size: 12.5px; }
+
+            .badge-free { padding: 0 24px 32px; font-size: 11px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="poster">
+        <div class="accent-bar"></div>
+        <div class="wash"></div>
+        <div class="grain"></div>
+        <div class="divider"></div>
+
+        <div class="layout">
+            <!-- LEFT -->
+            <div class="left">
+                <div class="top-row">
+                    <div class="logo"><span>🍿</span> Binge It Bro</div>
+                    <div class="pill">Now Live</div>
+                </div>
+
+                <div class="hero">
+                    <h1>Your next<br>favorite film is in<br>your friend's <em>DMs.</em></h1>
+                    <p>Stop scrolling algorithms for 30 minutes. Get recommendations from people who actually know your taste.</p>
+                </div>
+
+                <div class="cta-row">
+                    <div class="url">bingeitbro.com</div>
+                    <div class="stats-row">
+                        <div class="stat">
+                            <div class="stat-val">20+</div>
+                            <div class="stat-lbl">Platforms</div>
+                        </div>
+                        <div class="stat">
+                            <div class="stat-val">10+</div>
+                            <div class="stat-lbl">Languages</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- RIGHT -->
+            <div class="right">
+                <div class="card">
+                    <div class="card-icon orange">👥</div>
+                    <div class="card-body">
+                        <h3>Friend Recommendations</h3>
+                        <p>Personalized picks with notes, ratings, and mood tags from people who get your taste.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-icon pink">🎵</div>
+                    <div class="card-body">
+                        <h3>Share Your Song Playlist</h3>
+                        <p>Make your curated playlists public. Let the world discover what you're vibing to.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-icon purple">📧</div>
+                    <div class="card-body">
+                        <h3>Email Notifications</h3>
+                        <p>Get notified the moment a friend drops a recommendation. No more lost DMs.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-icon blue">📅</div>
+                    <div class="card-body">
+                        <h3>Schedule Your Watchlist</h3>
+                        <p>Plan movies for when you're actually free. "Watch later" finally means something.</p>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-icon yellow">📺</div>
+                    <div class="card-body">
+                        <h3>Where to Watch</h3>
+                        <p>Direct links to Netflix, Prime, Disney+, Hotstar, and 20+ OTT platforms.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- On desktop: positioned absolutely. On mobile: flows in document -->
+        <div class="badge-free"><strong>Free</strong> &mdash; Forever</div>
+    </div>
+</body>
+</html>

@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.post {
+    width: 1080px; height: 1080px;
+    background: #0a0a0a;
+    font-family: 'Inter', sans-serif;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    padding: 80px;
+    position: relative;
+}
+.search-box {
+    width: 100%; max-width: 820px;
+    background: #1a1a1a;
+    border-radius: 28px;
+    padding: 24px 36px;
+    display: flex; align-items: center; gap: 16px;
+    margin-bottom: 44px;
+    border: 1px solid rgba(255,255,255,.08);
+}
+.search-icon { font-size: 24px; color: rgba(255,255,255,.25); }
+.search-text { font-size: 26px; color: rgba(255,255,255,.6); }
+.results {
+    width: 100%; max-width: 820px;
+    display: flex; flex-direction: column; gap: 12px;
+}
+.result {
+    padding: 22px 28px;
+    border-radius: 14px;
+    background: rgba(255,255,255,.03);
+    font-size: 24px; color: rgba(255,255,255,.4);
+    display: flex; align-items: center; gap: 14px;
+    border: 1px solid rgba(255,255,255,.04);
+}
+.result .q { color: rgba(255,255,255,.5); }
+.result:last-child {
+    background: rgba(249,115,22,.08);
+    border: 1px solid rgba(249,115,22,.2);
+}
+.result:last-child .q { color: #f97316; font-weight: 700; }
+.bottom-text {
+    margin-top: 52px; text-align: center;
+    font-size: 30px; font-weight: 700; color: rgba(255,255,255,.6);
+    line-height: 1.5;
+}
+.bottom-text strong { color: #fff; }
+.bottom {
+    position: absolute; bottom: 44px;
+    font-size: 20px; color: rgba(255,255,255,.15);
+}
+</style>
+</head><body>
+<div class="post">
+    <div class="search-box">
+        <div class="search-icon">🔍</div>
+        <div class="search-text">good movies to watch tonight</div>
+    </div>
+    <div class="results">
+        <div class="result">🔍 <span class="q">best movies 2025</span></div>
+        <div class="result">🔍 <span class="q">what to watch on netflix right now</span></div>
+        <div class="result">🔍 <span class="q">movies like interstellar but better</span></div>
+        <div class="result">🔍 <span class="q">underrated movies nobody talks about</span></div>
+        <div class="result">🔍 <span class="q">just ask your friends on bingeitbro.com</span></div>
+    </div>
+    <div class="bottom-text">stop googling.<br><strong>start asking friends.</strong></div>
+    <div class="bottom">🍿 bingeitbro.com</div>
+</div>
+</body></html>

@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>BIB Carousel - Capture Mode</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    font-family: 'Inter', system-ui, sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px;
+    gap: 20px;
+  }
+  .controls {
+    display: flex;
+    gap: 12px;
+    margin-bottom: 10px;
+  }
+  .controls button {
+    padding: 12px 24px;
+    background: #f59e0b;
+    color: #000;
+    border: none;
+    border-radius: 8px;
+    font-weight: 700;
+    font-size: 16px;
+    cursor: pointer;
+  }
+  .controls button:hover { background: #fbbf24; }
+  .info { color: #666; font-size: 14px; }
+
+  canvas { display: none; }
+
+  .slide {
+    width: 1080px;
+    height: 1080px;
+    position: relative;
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  /* SLIDE 1 */
+  .slide-1 { background: #0a0a0c; }
+  .slide-1 .bg-glow {
+    position: absolute;
+    width: 600px; height: 600px;
+    border-radius: 50%;
+    filter: blur(150px);
+    opacity: 0.3;
+  }
+  .slide-1 .glow-1 { background: #f59e0b; top: -100px; right: -100px; }
+  .slide-1 .glow-2 { background: #f97316; bottom: -150px; left: -100px; opacity: 0.15; }
+  .slide-1 .content {
+    position: relative; z-index: 2;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    height: 100%; padding: 80px; text-align: center;
+  }
+  .slide-1 .eyebrow {
+    color: #f59e0b; font-size: 18px; font-weight: 700;
+    letter-spacing: 4px; text-transform: uppercase; margin-bottom: 40px;
+  }
+  .slide-1 .hook {
+    color: #fafafa; font-size: 64px; font-weight: 900;
+    line-height: 1.1; margin-bottom: 48px; max-width: 800px;
+  }
+  .slide-1 .hook .highlight {
+    background: linear-gradient(135deg, #f59e0b, #f97316);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .slide-1 .divider {
+    width: 60px; height: 4px;
+    background: linear-gradient(90deg, #f59e0b, #f97316);
+    border-radius: 2px; margin-bottom: 48px;
+  }
+  .slide-1 .subtitle {
+    color: #a1a1aa; font-size: 28px; font-weight: 400; line-height: 1.5; max-width: 700px;
+  }
+  .slide-1 .logo-area {
+    position: absolute; bottom: 60px;
+    display: flex; align-items: center; gap: 14px;
+  }
+  .slide-1 .logo-text {
+    font-size: 32px; font-weight: 900;
+    background: linear-gradient(135deg, #f59e0b, #f97316);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .slide-1 .logo-sub { color: #71717a; font-size: 16px; font-weight: 500; }
+  .slide-1 .film-strip {
+    position: absolute; top: 0; left: 40px;
+    width: 32px; height: 100%;
+    display: flex; flex-direction: column; gap: 8px;
+    padding-top: 20px; opacity: 0.08;
+  }
+  .slide-1 .film-strip div { width: 32px; height: 24px; background: #f59e0b; border-radius: 3px; }
+  .slide-1 .film-strip-r { left: auto; right: 40px; }
+
+  /* SLIDE 2 */
+  .slide-2 { background: #0a0a0c; }
+  .slide-2 .bg-glow {
+    position: absolute;
+    width: 500px; height: 500px; border-radius: 50%;
+    filter: blur(140px); background: #f59e0b; opacity: 0.12;
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+  }
+  .slide-2 .content {
+    position: relative; z-index: 2;
+    display: flex; flex-direction: column; justify-content: center;
+    height: 100%; padding: 80px 100px;
+  }
+  .slide-2 .section-label {
+    color: #f59e0b; font-size: 16px; font-weight: 700;
+    letter-spacing: 4px; text-transform: uppercase; margin-bottom: 48px;
+  }
+  .slide-2 .feature {
+    display: flex; align-items: flex-start; gap: 28px; margin-bottom: 44px;
+  }
+  .slide-2 .feature-icon {
+    width: 64px; height: 64px; border-radius: 16px;
+    background: rgba(245, 158, 11, 0.1);
+    border: 1px solid rgba(245, 158, 11, 0.2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 28px; flex-shrink: 0;
+  }
+  .slide-2 .feature-text h3 {
+    color: #fafafa; font-size: 30px; font-weight: 800; margin-bottom: 8px;
+  }
+  .slide-2 .feature-text p {
+    color: #71717a; font-size: 20px; font-weight: 400; line-height: 1.4;
+  }
+  .slide-2 .logo-bottom {
+    position: absolute; bottom: 50px; right: 80px;
+    font-size: 24px; font-weight: 900;
+    background: linear-gradient(135deg, #f59e0b, #f97316);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+  .slide-2 .pagination {
+    position: absolute; bottom: 55px; left: 100px;
+    display: flex; gap: 8px;
+  }
+  .slide-2 .pagination .dot {
+    width: 10px; height: 10px; border-radius: 50%; background: #333;
+  }
+  .slide-2 .pagination .dot.active {
+    background: #f59e0b; width: 28px; border-radius: 5px;
+  }
+
+  /* SLIDE 3 */
+  .slide-3 { background: #0a0a0c; }
+  .slide-3 .bg-glow-1 {
+    position: absolute; width: 500px; height: 500px; border-radius: 50%;
+    filter: blur(120px); background: #f59e0b; opacity: 0.15;
+    bottom: -100px; right: -50px;
+  }
+  .slide-3 .bg-glow-2 {
+    position: absolute; width: 400px; height: 400px; border-radius: 50%;
+    filter: blur(120px); background: #f97316; opacity: 0.08;
+    top: -50px; left: -50px;
+  }
+  .slide-3 .content {
+    position: relative; z-index: 2;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    height: 100%; padding: 80px; text-align: center;
+  }
+  .slide-3 .section-label {
+    color: #f59e0b; font-size: 16px; font-weight: 700;
+    letter-spacing: 4px; text-transform: uppercase; margin-bottom: 56px;
+  }
+  .slide-3 .steps {
+    display: flex; flex-direction: column; gap: 36px;
+    margin-bottom: 64px; width: 100%; max-width: 650px;
+  }
+  .slide-3 .step {
+    display: flex; align-items: center; gap: 24px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 20px; padding: 28px 36px;
+  }
+  .slide-3 .step-num {
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, #f59e0b, #f97316);
+    display: flex; align-items: center; justify-content: center;
+    color: #0a0a0c; font-size: 24px; font-weight: 900; flex-shrink: 0;
+  }
+  .slide-3 .step-text { color: #fafafa; font-size: 26px; font-weight: 600; }
+  .slide-3 .cta-btn {
+    background: linear-gradient(135deg, #f59e0b, #f97316);
+    color: #0a0a0c; font-size: 28px; font-weight: 800;
+    padding: 24px 64px; border-radius: 16px; border: none; letter-spacing: 1px;
+    margin-bottom: 20px;
+  }
+  .slide-3 .url { color: #71717a; font-size: 22px; font-weight: 500; }
+  .slide-3 .logo-bottom {
+    position: absolute; bottom: 50px;
+    font-size: 28px; font-weight: 900;
+    background: linear-gradient(135deg, #f59e0b, #f97316);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  }
+</style>
+</head>
+<body>
+
+<div class="controls">
+  <button onclick="downloadSlide('slide1', 'BIB-Slide-1-Hook.png')">Download Slide 1</button>
+  <button onclick="downloadSlide('slide2', 'BIB-Slide-2-Features.png')">Download Slide 2</button>
+  <button onclick="downloadSlide('slide3', 'BIB-Slide-3-CTA.png')">Download Slide 3</button>
+  <button onclick="downloadAll()">Download All 3</button>
+</div>
+<p class="info">Each slide is 1080x1080px — Instagram-ready</p>
+
+<!-- SLIDE 1 -->
+<div class="slide slide-1" id="slide1">
+  <div class="film-strip">
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+  </div>
+  <div class="film-strip film-strip-r">
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+    <div></div><div></div><div></div><div></div><div></div><div></div>
+  </div>
+  <div class="bg-glow glow-1"></div>
+  <div class="bg-glow glow-2"></div>
+  <div class="content">
+    <div class="eyebrow">INTRODUCING</div>
+    <h1 class="hook">Stop scrolling.<br><span class="highlight">Ask a friend.</span></h1>
+    <div class="divider"></div>
+    <p class="subtitle">BIB is the social way to find<br>your next binge — powered by<br>friends, not algorithms.</p>
+    <div class="logo-area">
+      <span class="logo-text">BiB</span>
+      <span class="logo-sub">Binge it bro</span>
+    </div>
+  </div>
+</div>
+
+<!-- SLIDE 2 -->
+<div class="slide slide-2" id="slide2">
+  <div class="bg-glow"></div>
+  <div class="content">
+    <div class="section-label">WHY BIB?</div>
+    <div class="feature">
+      <div class="feature-icon">👥</div>
+      <div class="feature-text">
+        <h3>Friend-Powered Picks</h3>
+        <p>Real recs from people you trust</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">📺</div>
+      <div class="feature-text">
+        <h3>20+ OTT Platforms</h3>
+        <p>Netflix, Prime, Hotstar & more</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🎭</div>
+      <div class="feature-text">
+        <h3>Mood Tags & Notes</h3>
+        <p>Know exactly why they loved it</p>
+      </div>
+    </div>
+    <div class="feature">
+      <div class="feature-icon">🌐</div>
+      <div class="feature-text">
+        <h3>10 Languages Supported</h3>
+        <p>English + 9 Indian languages</p>
+      </div>
+    </div>
+  </div>
+  <div class="pagination">
+    <div class="dot"></div>
+    <div class="dot active"></div>
+    <div class="dot"></div>
+  </div>
+  <div class="logo-bottom">BiB</div>
+</div>
+
+<!-- SLIDE 3 -->
+<div class="slide slide-3" id="slide3">
+  <div class="bg-glow-1"></div>
+  <div class="bg-glow-2"></div>
+  <div class="content">
+    <div class="section-label">GET STARTED IN 30 SECONDS</div>
+    <div class="steps">
+      <div class="step">
+        <div class="step-num">1</div>
+        <div class="step-text">Sign up with Google</div>
+      </div>
+      <div class="step">
+        <div class="step-num">2</div>
+        <div class="step-text">Add your friends</div>
+      </div>
+      <div class="step">
+        <div class="step-num">3</div>
+        <div class="step-text">Share what you're watching</div>
+      </div>
+    </div>
+    <div class="cta-btn">Try BIB Free →</div>
+    <div class="url">bingeitbro.com</div>
+    <div class="logo-bottom">BiB</div>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script>
+async function downloadSlide(id, filename) {
+  const el = document.getElementById(id);
+  const canvas = await html2canvas(el, {
+    width: 1080,
+    height: 1080,
+    scale: 1,
+    useCORS: true,
+    backgroundColor: '#0a0a0c'
+  });
+  const link = document.createElement('a');
+  link.download = filename;
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}
+
+async function downloadAll() {
+  await downloadSlide('slide1', 'BIB-Slide-1-Hook.png');
+  setTimeout(async () => {
+    await downloadSlide('slide2', 'BIB-Slide-2-Features.png');
+    setTimeout(async () => {
+      await downloadSlide('slide3', 'BIB-Slide-3-CTA.png');
+    }, 500);
+  }, 500);
+}
+</script>
+</body>
+</html>

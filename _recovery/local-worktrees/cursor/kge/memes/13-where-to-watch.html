@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.post {
+    width: 1080px; height: 1080px;
+    background: #0a0a0a;
+    font-family: 'Inter', sans-serif;
+    display: flex; flex-direction: column;
+    justify-content: center;
+    padding: 70px 80px;
+    position: relative;
+}
+.title {
+    font-size: 34px; font-weight: 900; color: #fff;
+    margin-bottom: 40px; text-align: center;
+}
+.chat { display: flex; flex-direction: column; gap: 18px; margin-bottom: 40px; }
+.bubble {
+    padding: 22px 28px;
+    border-radius: 20px;
+    font-size: 28px; line-height: 1.4;
+    max-width: 80%;
+}
+.them {
+    background: #1c1c1e; color: rgba(255,255,255,.8);
+    align-self: flex-start;
+    border-bottom-left-radius: 6px;
+}
+.me {
+    background: #2563eb; color: #fff;
+    align-self: flex-end;
+    border-bottom-right-radius: 6px;
+}
+.them-dim { color: rgba(255,255,255,.35); }
+.divider {
+    height: 1px; background: rgba(255,255,255,.06);
+    margin: 8px 0;
+}
+.answer {
+    text-align: center; padding: 32px;
+    background: rgba(249,115,22,.06);
+    border: 1px solid rgba(249,115,22,.12);
+    border-radius: 20px;
+}
+.answer-title {
+    font-size: 22px; color: rgba(255,255,255,.3);
+    text-transform: uppercase; letter-spacing: 2px;
+    font-weight: 700; margin-bottom: 18px;
+}
+.platforms {
+    font-size: 38px; letter-spacing: 8px; margin-bottom: 14px;
+}
+.answer-sub {
+    font-size: 22px; color: rgba(255,255,255,.4);
+}
+.answer-sub strong { color: #f97316; font-weight: 700; }
+.bottom {
+    position: absolute; bottom: 44px; left: 0; right: 0;
+    text-align: center; font-size: 20px; color: rgba(255,255,255,.15);
+}
+</style>
+</head><body>
+<div class="post">
+    <div class="title">every. single. time.</div>
+    <div class="chat">
+        <div class="bubble them">"yo this movie is so good"</div>
+        <div class="bubble me">"where can I watch it?"</div>
+        <div class="bubble them">"uhhh I think Netflix? or maybe Prime?"</div>
+        <div class="bubble them"><span class="them-dim">actually wait let me check</span></div>
+        <div class="bubble them"><span class="them-dim">hold on</span></div>
+        <div class="bubble them"><span class="them-dim">idk man just google it</span></div>
+    </div>
+    <div class="divider"></div>
+    <div class="answer">
+        <div class="answer-title">or just use binge it bro</div>
+        <div class="platforms">📺 🎬 🍿</div>
+        <div class="answer-sub">direct links to <strong>20+ OTT platforms</strong><br>Netflix · Prime · Disney+ · Hotstar · and more</div>
+    </div>
+    <div class="bottom">bingeitbro.com — never google "where to watch" again</div>
+</div>
+</body></html>

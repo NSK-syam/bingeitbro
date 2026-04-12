@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html><head>
+<meta charset="UTF-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #000; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+.post {
+    width: 1080px; height: 1080px;
+    background: #0a0a0a;
+    font-family: 'Inter', sans-serif;
+    display: flex; flex-direction: column;
+    justify-content: center;
+    padding: 70px 80px;
+    position: relative;
+}
+.title {
+    font-size: 32px; font-weight: 900; color: #fff;
+    text-align: center; margin-bottom: 48px;
+    text-transform: uppercase; letter-spacing: 2px;
+}
+.stages { display: flex; flex-direction: column; gap: 16px; }
+.stage {
+    display: flex; align-items: center; gap: 24px;
+    padding: 24px 28px;
+    border-radius: 16px;
+    background: rgba(255,255,255,.03);
+}
+.stage-num {
+    font-size: 16px; font-weight: 900; color: rgba(255,255,255,.12);
+    width: 28px; text-align: center; flex-shrink: 0;
+}
+.stage-emoji { font-size: 32px; flex-shrink: 0; }
+.stage-text { font-size: 24px; color: rgba(255,255,255,.7); line-height: 1.4; }
+.stage-text strong { color: #fff; font-weight: 700; }
+.stage:last-child {
+    background: rgba(249,115,22,.08);
+    border: 1px solid rgba(249,115,22,.15);
+}
+.stage:last-child .stage-text { color: #f97316; font-weight: 700; }
+.bottom {
+    position: absolute; bottom: 44px; left: 0; right: 0;
+    text-align: center; font-size: 20px; color: rgba(255,255,255,.15);
+}
+</style>
+</head><body>
+<div class="post">
+    <div class="title">5 stages of a Friday night</div>
+    <div class="stages">
+        <div class="stage">
+            <div class="stage-num">1</div>
+            <div class="stage-emoji">😤</div>
+            <div class="stage-text">"I'm definitely watching something tonight"</div>
+        </div>
+        <div class="stage">
+            <div class="stage-num">2</div>
+            <div class="stage-emoji">🤔</div>
+            <div class="stage-text">opens Netflix. scrolls. opens Prime. scrolls. opens Disney+. scrolls.</div>
+        </div>
+        <div class="stage">
+            <div class="stage-num">3</div>
+            <div class="stage-emoji">😩</div>
+            <div class="stage-text">"there's literally <strong>nothing</strong> to watch"</div>
+        </div>
+        <div class="stage">
+            <div class="stage-num">4</div>
+            <div class="stage-emoji">📱</div>
+            <div class="stage-text">texts friend: <strong>"recommend me something"</strong></div>
+        </div>
+        <div class="stage">
+            <div class="stage-num">5</div>
+            <div class="stage-emoji">🍿</div>
+            <div class="stage-text">watches the best movie of the year → bingeitbro.com</div>
+        </div>
+    </div>
+    <div class="bottom">skip to step 5 next time</div>
+</div>
+</body></html>
