@@ -4,9 +4,26 @@ import { useEffect } from 'react';
 import { isNativeApp } from '@/lib/native-app';
 import { createClient } from '@/lib/supabase';
 
-// Codes already handled in this page load. appUrlOpen and getLaunchUrl can both
-// deliver the same URL, and React strict mode runs effects twice.
-const handledAuthCodes = new Set<string>();
+// Auth callback URLs already handled. appUrlOpen and getLaunchUrl can both
+// deliver the same URL, React strict mode runs effects twice, and getLaunchUrl
+// keeps returning the cold-start URL after every full page load, so remember
+// handled URLs in sessionStorage too (codes are single-use).
+const HANDLED_AUTH_URLS_KEY = 'bib_native_handled_auth_urls';
+const handledAuthUrls = new Set<string>();
+
+function claimAuthUrl(rawUrl: string): boolean {
+  if (handledAuthUrls.has(rawUrl)) return false;
+  handledAuthUrls.add(rawUrl);
+  try {
+    const stored: unknown = JSON.parse(window.sessionStorage.getItem(HANDLED_AUTH_URLS_KEY) || '[]');
+    const list = Array.isArray(stored) ? stored.filter((item): item is string => typeof item === 'string') : [];
+    if (list.includes(rawUrl)) return false;
+    window.sessionStorage.setItem(HANDLED_AUTH_URLS_KEY, JSON.stringify([...list, rawUrl].slice(-10)));
+  } catch {
+    // Storage unavailable: fall back to the in-memory set.
+  }
+  return true;
+}
 
 // URL.protocol of NATIVE_AUTH_CALLBACK_URL (com.bingeitbro.app://auth/callback).
 const NATIVE_AUTH_SCHEME = 'com.bingeitbro.app:';
@@ -29,6 +46,8 @@ async function closeSystemBrowser() {
 }
 
 async function handleAuthCallbackUrl(url: URL) {
+  if (!claimAuthUrl(url.href)) return;
+
   // Supabase may put errors in the query or (implicit-style) in the hash.
   const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
   const error = url.searchParams.get('error') || hashParams.get('error');
@@ -40,8 +59,7 @@ async function handleAuthCallbackUrl(url: URL) {
   }
 
   const code = url.searchParams.get('code');
-  if (!code || handledAuthCodes.has(code)) return;
-  handledAuthCodes.add(code);
+  if (!code) return;
 
   await closeSystemBrowser();
 
