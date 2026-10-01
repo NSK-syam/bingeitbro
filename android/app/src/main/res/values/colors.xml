@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Brand dark background, used for splash and window background to avoid a white flash. -->
+    <color name="bib_background">#0A0A0C</color>
+</resources>

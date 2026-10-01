@@ -7,6 +7,8 @@ const config: CapacitorConfig = {
   appId: 'com.bingeitbro.app',
   appName: 'BingeItBro',
   webDir: 'capacitor-www',
+  // WebView background while the remote site loads (avoids a white flash after the splash).
+  backgroundColor: '#0A0A0C',
   server: {
     url: 'https://bingeitbro.com',
     cleartext: false,

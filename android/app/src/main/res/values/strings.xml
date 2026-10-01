@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BingeItBro</string>
+    <string name="title_activity_main">BingeItBro</string>
+    <string name="package_name">com.bingeitbro.app</string>
+    <string name="custom_url_scheme">com.bingeitbro.app</string>
+</resources>
