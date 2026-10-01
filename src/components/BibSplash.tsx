@@ -11,6 +11,7 @@ export function BibSplash({ enabled = true }: BibSplashProps) {
 
   useEffect(() => {
     if (!enabled) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVisible(false);
       return;
     }

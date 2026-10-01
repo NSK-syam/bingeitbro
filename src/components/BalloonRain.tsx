@@ -42,11 +42,11 @@ export function BalloonRain({ isOn }: { isOn: boolean }) {
     });
   }, []);
 
-  if (!isOn) return null;
-
   // Remount balloons after pop so the rain continues all day.
   const [gens, setGens] = useState<number[]>(() => balloons.map(() => 0));
   const [popping, setPopping] = useState<Record<number, boolean>>({});
+
+  if (!isOn) return null;
 
   const pop = (index: number) => {
     setPopping((prev) => ({ ...prev, [index]: true }));
@@ -82,7 +82,9 @@ export function BalloonRain({ isOn }: { isOn: boolean }) {
             animationDelay: b.delay,
             animationDuration: b.duration,
             transform: `translate3d(0,-120px,0) scale(${b.scale})`,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ['--hue' as any]: b.hue,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             ['--sway' as any]: `${b.sway}px`,
           }}
         />

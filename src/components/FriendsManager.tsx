@@ -233,7 +233,7 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
       const sanitizedQuery = searchQuery.replace(/[%_(),]/g, ' ').trim();
 
       try {
-        let slowTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
+        const slowTimer: ReturnType<typeof setTimeout> | null = setTimeout(() => {
           if (!cancelled) setErrorMessage('Searching… please wait.');
         }, 7000);
 
@@ -300,6 +300,7 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
         },
         getAccessToken(),
       );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error('FriendsManager: Add friend error:', err);
       setErrorMessage('Unable to add friend. Please try again.');
@@ -329,6 +330,7 @@ export function FriendsManager({ isOpen, onClose, onFriendsChange }: FriendsMana
         },
         getAccessToken(),
       );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       console.error('FriendsManager: Remove friend error:', err);
       setErrorMessage('Unable to remove friend. Please try again.');

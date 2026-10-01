@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS build script */
 // Generates Capacitor asset sources (assets/) from public/bib-icon.svg.
 // Usage (repo root): node scripts/mobile/generate-asset-sources.cjs && node scripts/mobile/generate-native-assets.cjs
 // (generate-native-assets.cjs is a stand-in for `@capacitor/assets generate`, whose bundled sharp needs blocked install scripts.)

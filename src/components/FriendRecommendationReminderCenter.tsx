@@ -31,6 +31,7 @@ export function FriendRecommendationReminderCenter() {
   const permissionRequestedRef = useRef(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setToasts([]);
     seenIdsRef.current = new Set();
     permissionRequestedRef.current = false;

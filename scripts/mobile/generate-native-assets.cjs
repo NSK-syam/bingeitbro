@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-require-imports -- CommonJS build script */
 // Fallback for @capacitor/assets: writes native icons/splash from assets/ using project sharp.
 const fs = require('fs');
 const path = require('path');

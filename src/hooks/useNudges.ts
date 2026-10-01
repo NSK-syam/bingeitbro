@@ -107,6 +107,7 @@ export function useNudges() {
           .order('created_at', { ascending: false });
 
         if (!legacyReceived.error && legacyReceived.data) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           receivedData = legacyReceived.data.map((row: any) => ({
             ...row,
             from_user_id: row.from_user_id ?? row.sender_id,
@@ -126,6 +127,7 @@ export function useNudges() {
       }
 
       // Fetch sent nudge IDs (new schema)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       let sentResult: any = await supabase
         .from('nudges')
         .select('recommendation_id, tmdb_id')
@@ -150,6 +152,7 @@ export function useNudges() {
 
       if (sentResult.data) {
         const set = new Set<string>();
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         sentResult.data.forEach((n: any) => {
           if (n.recommendation_id) set.add(`rec:${n.recommendation_id}`);
           if (n.tmdb_id) set.add(`tmdb:${n.tmdb_id}`);
@@ -262,6 +265,7 @@ export function useNudges() {
         msg.includes('duplicate') ||
         msg.includes('unique') ||
         msg.includes('already exists') ||
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (typeof (error as any).code === 'string' && (error as any).code === '23505');
       if (isDuplicate) {
         error = null;
@@ -294,7 +298,7 @@ export function useNudges() {
     if (!user || !isSupabaseConfigured()) return;
 
     const supabase = createClient();
-    let result = await supabase
+    const result = await supabase
       .from('nudges')
       .update({ is_read: true })
       .eq('to_user_id', user.id)

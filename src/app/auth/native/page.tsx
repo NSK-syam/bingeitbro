@@ -23,6 +23,7 @@ function NativeAuthBridgeContent() {
     if (typeof window === 'undefined') return;
 
     if (!isSupabaseConfigured()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStatus('error');
       setErrorMessage('Supabase is not configured.');
       return;

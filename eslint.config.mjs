@@ -20,6 +20,10 @@ const eslintConfig = defineConfig([
     // Generated deploy/build artifacts and local scripts:
     ".open-next/**",
     "wrangler.jsonc.tmp-*",
+    // Claude Code agent worktrees:
+    ".claude/**",
+    // One-off local Node scripts at the repo root (CommonJS):
+    "*.js",
     // Capacitor native projects (contain generated bridge JS):
     "ios/**",
     "android/**",
