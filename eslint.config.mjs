@@ -20,6 +20,9 @@ const eslintConfig = defineConfig([
     // Generated deploy/build artifacts and local scripts:
     ".open-next/**",
     "wrangler.jsonc.tmp-*",
+    // Capacitor native projects (contain generated bridge JS):
+    "ios/**",
+    "android/**",
   ]),
 ]);
 
