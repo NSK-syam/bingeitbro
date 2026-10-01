@@ -28,8 +28,6 @@ function claimAuthUrl(rawUrl: string): boolean {
 // URL.protocol of NATIVE_AUTH_CALLBACK_URL (com.bingeitbro.app://auth/callback).
 const NATIVE_AUTH_SCHEME = 'com.bingeitbro.app:';
 
-const SITE_HOSTS = new Set(['bingeitbro.com', 'www.bingeitbro.com']);
-
 function goToCallbackError(error: string, description?: string | null) {
   const params = new URLSearchParams({ error });
   if (description) params.set('error_description', description);
@@ -41,7 +39,7 @@ async function closeSystemBrowser() {
     const { Browser } = await import('@capacitor/browser');
     await Browser.close();
   } catch {
-    // Not open, or unsupported on this platform (Android).
+    // Best effort: the browser may already be closed.
   }
 }
 
@@ -82,31 +80,17 @@ async function handleAuthCallbackUrl(url: URL) {
 function handleAppUrl(rawUrl: string | undefined | null) {
   if (!rawUrl) return;
 
-  if (rawUrl.startsWith(NATIVE_AUTH_SCHEME)) {
-    let parsed: URL;
-    try {
-      parsed = new URL(rawUrl);
-    } catch {
-      return;
-    }
-    // Strict match on com.bingeitbro.app://auth/callback only.
-    if (parsed.protocol !== NATIVE_AUTH_SCHEME || parsed.hostname !== 'auth' || parsed.pathname !== '/callback') {
-      return;
-    }
-    void handleAuthCallbackUrl(parsed);
+  let parsed: URL;
+  try {
+    parsed = new URL(rawUrl);
+  } catch {
     return;
   }
-
-  // Universal / app links to the website: navigate in-app (same site only).
-  try {
-    const parsed = new URL(rawUrl);
-    if (parsed.protocol !== 'https:' || !SITE_HOSTS.has(parsed.hostname)) return;
-    const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
-    const current = `${window.location.pathname}${window.location.search}${window.location.hash}`;
-    if (path !== current) window.location.assign(path);
-  } catch {
-    // Ignore malformed URLs.
+  // Strict match on com.bingeitbro.app://auth/callback only.
+  if (parsed.protocol !== NATIVE_AUTH_SCHEME || parsed.hostname !== 'auth' || parsed.pathname !== '/callback') {
+    return;
   }
+  void handleAuthCallbackUrl(parsed);
 }
 
 /** Native (Capacitor) shell integration. Renders nothing and does nothing on the web. */
@@ -128,21 +112,7 @@ export function NativeAppBridge() {
       ]);
       if (disposed) return;
 
-      try {
-        await StatusBar.setStyle({ style: Style.Dark });
-        if (Capacitor.getPlatform() === 'android') {
-          await StatusBar.setBackgroundColor({ color: '#0A0A0C' });
-        }
-      } catch {
-        // Ignore status bar failures.
-      }
-
-      try {
-        await SplashScreen.hide();
-      } catch {
-        // Ignore splash failures.
-      }
-
+      // Listen for deep links first so a warm OAuth return isn't missed.
       const listeners = await Promise.all([
         App.addListener('appUrlOpen', ({ url }) => handleAppUrl(url)),
         App.addListener('backButton', ({ canGoBack }) => {
@@ -157,6 +127,21 @@ export function NativeAppBridge() {
       if (disposed) {
         removers.forEach((remove) => remove());
         return;
+      }
+
+      try {
+        await StatusBar.setStyle({ style: Style.Dark });
+        if (Capacitor.getPlatform() === 'android') {
+          await StatusBar.setBackgroundColor({ color: '#0A0A0C' });
+        }
+      } catch {
+        // Ignore status bar failures.
+      }
+
+      try {
+        await SplashScreen.hide();
+      } catch {
+        // Ignore splash failures.
       }
 
       try {

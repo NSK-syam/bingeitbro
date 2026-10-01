@@ -17,9 +17,13 @@ web deploy updates the app automatically. The Next.js / Cloudflare build is unch
 
 ## Prerequisites
 
-- Node 20+ and `npm ci` in the repo root
-- iOS: macOS with Xcode 16+ (Capacitor 8 uses Swift Package Manager, no CocoaPods needed)
-- Android: Android Studio (Ladybug or newer), which bundles the JDK, plus an Android SDK
+Capacitor 8 requirements ([upgrade guide](https://capacitorjs.com/docs/updating/8-0)):
+
+- Node 22+ (required by `@capacitor/cli`) and `npm ci` in the repo root
+- iOS: macOS with Xcode 26.0+. The app targets iOS 15+ and uses Swift Package Manager, so
+  CocoaPods is not needed.
+- Android: Android Studio Otter (2025.2.1) or newer, Android SDK Platform 36 (compile/target SDK
+  36, min SDK 24), and JDK 21 for command-line Gradle builds (Android Studio bundles one)
 
 ## Run on iOS
 
@@ -62,8 +66,13 @@ the web redirect flow:
    iOS, Chrome Custom Tabs on Android).
 4. After Google, Supabase redirects to `com.bingeitbro.app://auth/callback?code=…`. The OS hands
    that URL to the app (`Info.plist` URL type on iOS, intent filter on Android).
-5. `NativeAppBridge` receives it through `App.addListener('appUrlOpen')`, closes the browser,
-   and calls `supabase.auth.exchangeCodeForSession(code)` in the WebView.
+5. `NativeAppBridge` receives it through `App.addListener('appUrlOpen')` (or `App.getLaunchUrl()`
+   if the OS had killed the app), closes the browser, and calls
+   `supabase.auth.exchangeCodeForSession(code)` in the WebView.
+
+Each callback URL is handled once. Auth codes are single-use, and handled URLs are remembered in
+`sessionStorage`. If the exchange fails (for example, on a network error), the app shows the
+existing `/auth/callback` error screen and the user taps "Continue with Google" again.
 
 The web flow (`redirectTo: https://bingeitbro.com/auth/callback`) is unchanged.
 
