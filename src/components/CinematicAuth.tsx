@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { hasNativeAuthBridge } from '@/lib/native-webview';
+import { isNativeApp } from '@/lib/native-app';
 import { trackFunnelEvent } from '@/lib/funnel';
 
 declare global {
@@ -138,7 +139,8 @@ export function CinematicAuth() {
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        setInAppBrowser(isLikelyInAppBrowser(window.navigator.userAgent || ''));
+        // The Capacitor app opens Google sign-in in the system browser, so don't block it there.
+        setInAppBrowser(!isNativeApp() && isLikelyInAppBrowser(window.navigator.userAgent || ''));
     }, []);
 
     const nativeAuthBridge = hasNativeAuthBridge();

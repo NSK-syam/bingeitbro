@@ -6,6 +6,7 @@ import { safeLocalStorageGet, safeLocalStorageKeys, safeLocalStorageRemove, safe
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { hasNativeAuthBridge, postNativeAuthMessage } from '@/lib/native-webview';
+import { isNativeApp, signInWithGoogleNative } from '@/lib/native-app';
 import { trackFunnelEvent } from '@/lib/funnel';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
@@ -295,6 +296,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (hasNativeAuthBridge()) {
       postNativeAuthMessage('BIB_AUTH_GOOGLE_SIGN_IN');
       return { error: null };
+    }
+    if (isNativeApp()) {
+      // Capacitor app: run OAuth in the system browser; NativeAppBridge
+      // exchanges the code when the app deep link comes back.
+      const nativeSupabase = createClient();
+      try {
+        await nativeSupabase.auth.signOut();
+      } catch {
+        // Ignore signout errors
+      }
+      return signInWithGoogleNative(nativeSupabase);
     }
     if (typeof window !== 'undefined' && isLikelyInAppBrowser(window.navigator.userAgent || '')) {
       return {

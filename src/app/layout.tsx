@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components";
 import { HelpBotWidget } from "@/components/HelpBotWidget";
+import { NativeAppBridge } from "@/components/NativeAppBridge";
 
 // Local-first font stack so the build stays offline-safe without defaulting to generic system UI
 const fontClass = "font-sans antialiased";
@@ -120,6 +121,7 @@ export default function RootLayout({
         <AuthProvider>
           {children}
           <HelpBotWidget />
+          <NativeAppBridge />
         </AuthProvider>
       </body>
     </html>
