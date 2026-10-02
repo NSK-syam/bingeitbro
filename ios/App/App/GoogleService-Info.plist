@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>API_KEY</key>
+	<string>AIzaSyAynyu8qYZ9-n2GPhTlY4HWzurDmqIpA48</string>
+	<key>GCM_SENDER_ID</key>
+	<string>832093182717</string>
+	<key>PLIST_VERSION</key>
+	<string>1</string>
+	<key>BUNDLE_ID</key>
+	<string>com.bingeitbro.app</string>
+	<key>PROJECT_ID</key>
+	<string>bingeitbro-d761b</string>
+	<key>STORAGE_BUCKET</key>
+	<string>bingeitbro-d761b.firebasestorage.app</string>
+	<key>IS_ADS_ENABLED</key>
+	<false></false>
+	<key>IS_ANALYTICS_ENABLED</key>
+	<false></false>
+	<key>IS_APPINVITE_ENABLED</key>
+	<true></true>
+	<key>IS_GCM_ENABLED</key>
+	<true></true>
+	<key>IS_SIGNIN_ENABLED</key>
+	<true></true>
+	<key>GOOGLE_APP_ID</key>
+	<string>1:832093182717:ios:fff2375bb22c9c8d1dfc94</string>
+</dict>
+</plist>

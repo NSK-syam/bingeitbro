@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		07196CF202AD8CA071ADD340 /* GoogleService-Info.plist in Resources */ = {isa = PBXBuildFile; fileRef = 4729A1DD5572F45A69F046E4 /* GoogleService-Info.plist */; };
 		1AF50337F4955C85CAE9F5FE /* BibWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E357BEA7456FFE8900616A14 /* BibWidget.swift */; };
 		2817A074A634AC9EA6FF336A /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BBB4753621962330D6A8860 /* MainViewController.swift */; };
 		2ECC89F472022A666D60E65C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BE2E8200384DE4A712907B8B /* PrivacyInfo.xcprivacy */; };
@@ -55,6 +56,7 @@
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
 		383CB71FB36E28ED66005BAF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3DE8B10467C2AF07BD868362 /* BibWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BibWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		4729A1DD5572F45A69F046E4 /* GoogleService-Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = "GoogleService-Info.plist"; sourceTree = "<group>"; };
 		4BBB4753621962330D6A8860 /* MainViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
 		504EC3041FED79650016851F /* App.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = App.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -128,6 +130,7 @@
 				4BBB4753621962330D6A8860 /* MainViewController.swift */,
 				383CB71FB36E28ED66005BAF /* PrivacyInfo.xcprivacy */,
 				C3DDD677B0F7C80572056B5F /* WidgetOwnerGate.swift */,
+				4729A1DD5572F45A69F046E4 /* GoogleService-Info.plist */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -251,6 +254,7 @@
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
 				8CAFA3C3A55CD98BBB40460F /* PrivacyInfo.xcprivacy in Resources */,
+				07196CF202AD8CA071ADD340 /* GoogleService-Info.plist in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

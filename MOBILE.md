@@ -161,12 +161,14 @@ optional birthday.
 1. **Supabase redirect URL:** add `com.bingeitbro.app://auth/callback` (see above).
 2. **Supabase Apple provider:** enable it and add `com.bingeitbro.app` to Client IDs
    ([apple-and-widget.md](docs/mobile/apple-and-widget.md)).
-3. **Firebase:** create the project and the iOS and Android apps, upload the APNs key, add
-   `GoogleService-Info.plist` to the Xcode App target and `google-services.json` to
-   `android/app/` ([push.md](docs/mobile/push.md)). Without these the app works, but push stays off.
+3. **Firebase** (project `bingeitbro-d761b`): the iOS and Android apps are registered, and
+   `GoogleService-Info.plist` (in the Xcode App target) and `android/app/google-services.json`
+   are committed. **Still to do:** in Firebase → Project settings → Cloud Messaging → Apple app
+   configuration, upload the APNs key `AuthKey_FXS3AHXNJU.p8` (Key ID `FXS3AHXNJU`, Team ID
+   `M9XD55FYL5`) ([push.md](docs/mobile/push.md)).
 4. **Database:** run `supabase-native-push-schema.sql` in the Supabase SQL editor.
-5. **Cloudflare secrets:** set `FIREBASE_SERVICE_ACCOUNT_JSON`, plus `APPLE_TEAM_ID`, `APPLE_KEY_ID`
-   and `APPLE_PRIVATE_KEY` (a Sign in with Apple key, used to revoke tokens when an Apple user
+5. **Cloudflare secrets:** set `FIREBASE_SERVICE_ACCOUNT_JSON`, plus `APPLE_TEAM_ID=M9XD55FYL5`,
+   `APPLE_KEY_ID=65BUSN43JT` and `APPLE_PRIVATE_KEY` (contents of `AuthKey_65BUSN43JT.p8`, the Sign in with Apple key, used to revoke tokens when an Apple user
    deletes their account; see [account-deletion.md](docs/mobile/account-deletion.md)). Make sure
    `SUPABASE_SERVICE_ROLE_KEY` is set. Without the Apple secrets, Apple users can't delete
    their account (they get a clear error).
