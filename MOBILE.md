@@ -112,10 +112,10 @@ Before App Store / Play review, check that the **OAuth consent screen** is publi
 | Feature | Where |
 | --- | --- |
 | Status bar: light text on `#0A0A0C` | `capacitor.config.ts` (`StatusBar`) + `NativeAppBridge` |
-| Splash screen: icon on `#0A0A0C`, hidden once the page mounts (auto-hides after 2.5s anyway) | `capacitor.config.ts` (`SplashScreen`), `assets/` |
+| Splash screen with spinner: icon on `#0A0A0C`, hidden once the page hydrates (auto-hides after 10s at most) | `capacitor.config.ts` (`SplashScreen`), `assets/` |
 | App icon from `public/bib-icon.svg` | sources in `assets/`, generated into `ios/` and `android/` |
 | Android back button: navigate back, exit at the root | `NativeAppBridge` |
-| No web push / service worker in the app | `src/lib/push.ts` (guarded by `isNativeApp()`) |
+| No web push / service worker in the app (native FCM push instead) | `src/lib/push.ts` (guarded by `isNativeApp()`) |
 
 ### Regenerating icons and splash
 
@@ -131,18 +131,69 @@ npx cap sync
 
 The iOS app icon is flattened onto `#0A0A0C` with no alpha channel, which the App Store requires.
 
-## Out of scope (phase 1)
+## Native features (added after the 1.0 rejection)
 
-- Native push notifications (APNs / FCM). Web push is disabled in the app.
+App Review rejected 1.0 under guideline 4.2 (minimum functionality) and 5.1.1(v) (date of birth
+was required). Both are addressed:
+
+| Feature | Platforms | Details |
+| --- | --- | --- |
+| Birthday is optional at signup | all | `AuthModal.tsx`, `CinematicAuth.tsx` |
+| App-first start: logged-out users see the sign-in screen, not the SEO landing page | app | `src/app/page.tsx` |
+| No AdSense inside the app (not allowed in app WebViews) | app | `src/app/layout.tsx`, `AdDisplayUnit.tsx` |
+| Scheduled watches become on-device notifications (work offline) | iOS, Android | [device-features.md](docs/mobile/device-features.md) |
+| Native share sheet (movie, show, profile, help bot) | iOS, Android | [device-features.md](docs/mobile/device-features.md) |
+| Haptics on key actions | iOS, Android | [device-features.md](docs/mobile/device-features.md) |
+| Offline mode: cached watchlist, schedule and friend picks | iOS, Android | [device-features.md](docs/mobile/device-features.md) |
+| Push notifications for friend picks and reminders (FCM) | iOS, Android | [push.md](docs/mobile/push.md) |
+| Sign in with Apple (native) | iOS | [apple-and-widget.md](docs/mobile/apple-and-widget.md) |
+| "Latest from friends" home screen and lock screen widget | iOS | [apple-and-widget.md](docs/mobile/apple-and-widget.md) |
+
+All of it is web code gated on `Capacitor.isNativePlatform()`, plus native code in `ios/` and
+`android/`. The website does not change, apart from a hidden AdSense loader change and an
+optional birthday.
+
+## Release checklist (in this order)
+
+1. **Supabase redirect URL:** add `com.bingeitbro.app://auth/callback` (see above).
+2. **Supabase Apple provider:** enable it and add `com.bingeitbro.app` to Client IDs
+   ([apple-and-widget.md](docs/mobile/apple-and-widget.md)).
+3. **Firebase:** create the project and the iOS and Android apps, upload the APNs key, add
+   `GoogleService-Info.plist` to the Xcode App target and `google-services.json` to
+   `android/app/` ([push.md](docs/mobile/push.md)). Without these the app works, but push stays off.
+4. **Database:** run `supabase-native-push-schema.sql` in the Supabase SQL editor.
+5. **Cloudflare secrets:** set `FIREBASE_SERVICE_ACCOUNT_JSON`, and make sure
+   `SUPABASE_SERVICE_ROLE_KEY` is set.
+6. **Deploy the web app** to bingeitbro.com. The app loads the live site, so nothing above works
+   in the app until this is deployed.
+7. **Xcode:** pick your team for both the **App** and **BibWidget** targets. Bump **Build** on both,
+   then Product → Archive → Distribute → App Store Connect.
+8. **Test with TestFlight on an iPhone and an iPad** before you resubmit (checklists in the docs above).
+9. **Reply to App Review** in App Store Connect, listing the native features (see below).
+
+## Reply to App Review (draft)
+
+> Thank you for the feedback. We have updated BingeItBro:
+>
+> **5.1.1(v):** Date of birth is now optional during signup.
+>
+> **4.2:** The app now provides native functionality that a browser cannot:
+> - Sign in with Apple (native AuthenticationServices).
+> - A home screen and lock screen widget (WidgetKit) showing the latest movie picks from your friends.
+> - Push notifications when a friend recommends a movie to you.
+> - Scheduled "movie night" reminders delivered as on-device local notifications, even offline.
+> - An offline mode showing your saved watchlist, schedule and recent friend picks.
+> - The native iOS share sheet for movies, shows and profiles, and haptic feedback.
+
+## Out of scope
+
 - In-app purchases.
-- Universal Links / Android App Links (`https://bingeitbro.com/...` opening the app). This needs
+- Universal Links / Android App Links (`https://bingeitbro.com/...` opening the app). These need
   `apple-app-site-association` and `assetlinks.json` hosted on the site.
+- Pushes for nudges and group-watch invites. These are written straight from the client to
+  Supabase, so they need a DB trigger or an API route first.
 
 ## Store submission notes
 
-- Apple guideline 4.2 (minimum functionality) can reject apps that are only a website in a
-  wrapper. Native sign-in, deep links, the splash screen and back handling help, but plan for
-  native push (phase 2) before submitting to the App Store.
-- Apple guideline 4.8 (Login Services): an iOS app that offers Google sign-in must also offer
-  an equivalent privacy-focused login option, which in practice usually means Sign in with
-  Apple. Expect App Review to ask for it. Check the current guideline wording before you submit.
+- Apple reviewed 1.0 on an **iPad Air 11-inch**. Test on an iPad (or the iPad simulator) too.
+- Apple guideline 4.8 (Login Services) is covered by Sign in with Apple.

@@ -99,9 +99,9 @@ There is no pull-to-refresh in the app, so it has no haptic.
 
 ## Mounting
 
-`src/components/native/NativeFeatures.tsx` must be rendered once **inside `<AuthProvider>`**
-(it calls `useAuth()`), for example next to `<NativeAppBridge />` in `src/app/layout.tsx`. It
-returns `null` on the web.
+`src/components/native/NativeFeatures.tsx` is rendered once inside `<AuthProvider>` in
+`src/app/layout.tsx`, next to `<NativeAppBridge />`, `<NativePush />` and `<NativeWidgetSync />`.
+It returns `null` on the web.
 
 ## How to test on a device
 

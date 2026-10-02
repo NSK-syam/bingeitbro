@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { isNativeApp } from '@/lib/native-app';
 import { createClient } from '@/lib/supabase';
+import { getWidgetOpenPath } from '@/lib/native/widget-deeplink';
 
 // Auth callback URLs already handled. appUrlOpen and getLaunchUrl can both
 // deliver the same URL, React strict mode runs effects twice, and getLaunchUrl
@@ -11,7 +12,7 @@ import { createClient } from '@/lib/supabase';
 const HANDLED_AUTH_URLS_KEY = 'bib_native_handled_auth_urls';
 const handledAuthUrls = new Set<string>();
 
-function claimAuthUrl(rawUrl: string): boolean {
+function claimAppUrl(rawUrl: string): boolean {
   if (handledAuthUrls.has(rawUrl)) return false;
   handledAuthUrls.add(rawUrl);
   try {
@@ -44,7 +45,7 @@ async function closeSystemBrowser() {
 }
 
 async function handleAuthCallbackUrl(url: URL) {
-  if (!claimAuthUrl(url.href)) return;
+  if (!claimAppUrl(url.href)) return;
 
   // Supabase may put errors in the query or (implicit-style) in the hash.
   const hashParams = new URLSearchParams(url.hash.replace(/^#/, ''));
@@ -77,8 +78,19 @@ async function handleAuthCallbackUrl(url: URL) {
   }
 }
 
-function handleAppUrl(rawUrl: string | undefined | null) {
+function handleAppUrl(rawUrl: string | undefined | null, fromLaunch = false) {
   if (!rawUrl) return;
+
+  // Home screen widget: com.bingeitbro.app://open?path=/movie/... (same-origin paths only).
+  const widgetPath = getWidgetOpenPath(rawUrl);
+  if (widgetPath) {
+    // getLaunchUrl() repeats the cold-start URL after every full page load; follow it once.
+    if (fromLaunch && !claimAppUrl(rawUrl)) return;
+    if (widgetPath !== `${window.location.pathname}${window.location.search}`) {
+      window.location.assign(widgetPath);
+    }
+    return;
+  }
 
   let parsed: URL;
   try {
@@ -146,7 +158,7 @@ export function NativeAppBridge() {
 
       try {
         const launch = await App.getLaunchUrl();
-        if (!disposed) handleAppUrl(launch?.url);
+        if (!disposed) handleAppUrl(launch?.url, true);
       } catch {
         // No launch URL.
       }

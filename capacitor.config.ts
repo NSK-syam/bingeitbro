@@ -16,10 +16,14 @@ const config: CapacitorConfig = {
   },
   plugins: {
     SplashScreen: {
-      launchShowDuration: 2500,
+      // Stay up until NativeAppBridge calls SplashScreen.hide() after the page hydrates
+      // (cold loads of the live site can take several seconds), capped at 10s.
+      launchShowDuration: 10000,
       launchAutoHide: true,
       backgroundColor: '#0A0A0C',
-      showSpinner: false,
+      showSpinner: true,
+      iosSpinnerStyle: 'large',
+      spinnerColor: '#F59E0B',
     },
     StatusBar: {
       style: 'DARK',

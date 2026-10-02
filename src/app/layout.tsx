@@ -5,6 +5,7 @@ import { HelpBotWidget } from "@/components/HelpBotWidget";
 import { NativeAppBridge } from "@/components/NativeAppBridge";
 import { NativeFeatures } from "@/components/native/NativeFeatures";
 import { NativePush } from "@/components/native/NativePush";
+import { NativeWidgetSync } from "@/components/native/NativeWidgetSync";
 
 // Local-first font stack so the build stays offline-safe without defaulting to generic system UI
 const fontClass = "font-sans antialiased";
@@ -130,6 +131,7 @@ export default function RootLayout({
           <NativeAppBridge />
           <NativeFeatures />
           <NativePush />
+          <NativeWidgetSync />
         </AuthProvider>
       </body>
     </html>
