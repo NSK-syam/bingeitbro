@@ -134,7 +134,8 @@ The iOS app icon is flattened onto `#0A0A0C` with no alpha channel, which the Ap
 ## Native features (added after the 1.0 rejection)
 
 App Review rejected 1.0 under guideline 4.2 (minimum functionality) and 5.1.1(v) (date of birth
-was required). Both are addressed:
+was required). The changes below are implemented in code, but each one needs the manual setup in
+the release checklist and testing on a device before you resubmit. Approval is still Apple's call.
 
 | Feature | Platforms | Details |
 | --- | --- | --- |
@@ -196,4 +197,5 @@ optional birthday.
 ## Store submission notes
 
 - Apple reviewed 1.0 on an **iPad Air 11-inch**. Test on an iPad (or the iPad simulator) too.
-- Apple guideline 4.8 (Login Services) is covered by Sign in with Apple.
+- Apple guideline 4.8 (Login Services): Sign in with Apple is implemented. It needs the Supabase
+  Apple provider configured and a test on a real device before you resubmit.
