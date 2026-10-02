@@ -2,8 +2,9 @@
 
 import { useEffect } from 'react';
 import { isNativeApp } from '@/lib/native-app';
+import { registerNativeLogoutCleanup } from '@/lib/native/logout-cleanup';
 import { isSupabaseConfigured, createClient } from '@/lib/supabase';
-import { createPushLifecycle, safePushPath, type PushLifecycle } from '@/lib/native-push';
+import { createPushLifecycle, safePushPath, type AsyncStore, type PushLifecycle } from '@/lib/native-push';
 
 /** Fired on window for foreground notifications; an in-app toast may listen for it. */
 export const NATIVE_PUSH_RECEIVED_EVENT = 'bib:native-push-received';
@@ -20,72 +21,78 @@ function readData(notification: unknown): Record<string, unknown> {
   return data && typeof data === 'object' ? (data as Record<string, unknown>) : {};
 }
 
-const browserStorage = {
-  get(key: string) {
+/** Capacitor Preferences: survives reloads and app restarts (unlike page memory). */
+const preferencesStore: AsyncStore = {
+  async get(key) {
+    const { Preferences } = await import('@capacitor/preferences');
+    const { value } = await Preferences.get({ key });
+    return value;
+  },
+  async set(key, value) {
+    const { Preferences } = await import('@capacitor/preferences');
+    if (value === null) await Preferences.remove({ key });
+    else await Preferences.set({ key, value });
+  },
+};
+
+// One lifecycle per page load (module singleton), so it outlives component
+// re-mounts and is reachable from the sign-out registry below.
+let lifecyclePromise: Promise<PushLifecycle | null> | null = null;
+
+function getPushLifecycle(): Promise<PushLifecycle | null> {
+  if (!isNativeApp()) return Promise.resolve(null);
+  lifecyclePromise ??= (async () => {
     try {
-      return window.localStorage.getItem(key);
+      const [messaging, { Capacitor }] = await Promise.all([
+        import('@capacitor-firebase/messaging'),
+        import('@capacitor/core'),
+      ]);
+      const platform = Capacitor.getPlatform();
+      if (platform !== 'ios' && platform !== 'android') return null;
+      return createPushLifecycle({
+        messaging: messaging.FirebaseMessaging,
+        platform,
+        fetch: (input, init) => fetch(input, init),
+        store: preferencesStore,
+        androidImportanceHigh: messaging.Importance.High,
+      });
     } catch {
       return null;
     }
-  },
-  set(key: string, value: string | null) {
-    try {
-      if (value === null) window.localStorage.removeItem(key);
-      else window.localStorage.setItem(key, value);
-    } catch {
-      // Storage unavailable.
-    }
-  },
-};
+  })();
+  return lifecyclePromise;
+}
+
+// Registered at module load (not in an effect): AuthProvider.signOut awaits this
+// with the still-valid session before revoking it and before navigating away.
+if (typeof window !== 'undefined') {
+  registerNativeLogoutCleanup('push', async (ctx) => {
+    if (!isNativeApp()) return;
+    const lifecycle = await getPushLifecycle();
+    await lifecycle?.logout(ctx);
+  });
+}
 
 /**
  * Native push integration (FCM via @capacitor-firebase/messaging).
  * Self-gated: renders nothing and does nothing on the web. All token work is
- * serialized per account in createPushLifecycle (src/lib/native-push.ts).
+ * serialized and persisted by createPushLifecycle (src/lib/native-push.ts).
  */
 export function NativePush() {
   useEffect(() => {
     if (!isNativeApp() || !isSupabaseConfigured()) return;
 
     let disposed = false;
-    let lifecycle: PushLifecycle | null = null;
-    // Latest auth state seen before the plugin finished loading.
-    let pendingSession: { userId: string | null; accessToken: string | null } | null = null;
     const removers: Array<() => void> = [];
 
-    // Subscribe to auth immediately so no event is missed while the plugin loads.
-    try {
-      const { data } = createClient().auth.onAuthStateChange((_event, session) => {
-        if (disposed) return;
-        const userId = session?.user?.id ?? null;
-        const accessToken = session?.access_token ?? null;
-        if (lifecycle) void lifecycle.onSession(userId, accessToken);
-        else pendingSession = { userId, accessToken };
-      });
-      removers.push(() => data.subscription.unsubscribe());
-    } catch {
-      // Auth unavailable: nothing to do.
-    }
-
     const setup = async () => {
-      const [messaging, { Capacitor }] = await Promise.all([
+      const lifecycle = await getPushLifecycle();
+      if (!lifecycle || disposed) return;
+      const [{ FirebaseMessaging }, { App }] = await Promise.all([
         import('@capacitor-firebase/messaging'),
-        import('@capacitor/core'),
+        import('@capacitor/app'),
       ]);
       if (disposed) return;
-      const platform = Capacitor.getPlatform();
-      if (platform !== 'ios' && platform !== 'android') return;
-      const { FirebaseMessaging, Importance } = messaging;
-
-      const created = createPushLifecycle({
-        messaging: FirebaseMessaging,
-        platform,
-        fetch: (input, init) => fetch(input, init),
-        storage: browserStorage,
-        androidImportanceHigh: Importance.High,
-      });
-      lifecycle = created;
-      removers.push(() => created.dispose());
 
       // Listeners first so a tap that cold-started the app is not missed
       // (the plugin retains these events until a listener is attached).
@@ -110,7 +117,10 @@ export function NativePush() {
         }),
         FirebaseMessaging.addListener('tokenReceived', (event) => {
           if (disposed || !event?.token) return;
-          void created.onTokenRefresh(event.token);
+          void lifecycle.onTokenRefresh(event.token);
+        }),
+        App.addListener('resume', () => {
+          if (!disposed) void lifecycle.onResume();
         }),
       ]).catch(() => []);
       listeners.forEach((listener) => removers.push(() => void listener.remove()));
@@ -119,10 +129,16 @@ export function NativePush() {
         return;
       }
 
-      if (pendingSession) {
-        const { userId, accessToken } = pendingSession;
-        pendingSession = null;
-        void created.onSession(userId, accessToken);
+      // Subscribe after the lifecycle exists; Supabase replays the current
+      // session as INITIAL_SESSION, which runs the startup cleanup first.
+      try {
+        const { data } = createClient().auth.onAuthStateChange((_event, session) => {
+          if (disposed) return;
+          void lifecycle.onSession(session?.user?.id ?? null, session?.access_token ?? null);
+        });
+        removers.push(() => data.subscription.unsubscribe());
+      } catch {
+        // Auth unavailable: nothing to do.
       }
     };
 
