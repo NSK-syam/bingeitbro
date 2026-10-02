@@ -208,21 +208,25 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
           return;
         }
 
+        // Birthday is optional (App Store guideline 5.1.1(v)); only validate when provided.
         const y = Number(birthYear);
         const m = Number(birthMonth);
         const d = Number(birthDay);
-        if (!y || !m || !d) {
-          setError('Please select your birthday (day, month, year)');
-          setLoading(false);
-          return;
+        let birthdate: string | null = null;
+        if (y || m || d) {
+          if (!y || !m || !d) {
+            setError('Please complete your birthday (day, month, year) or leave it blank');
+            setLoading(false);
+            return;
+          }
+          const dt = new Date(Date.UTC(y, m - 1, d));
+          if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+            setError('Please select a valid birthday');
+            setLoading(false);
+            return;
+          }
+          birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         }
-        const dt = new Date(Date.UTC(y, m - 1, d));
-        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
-          setError('Please select a valid birthday');
-          setLoading(false);
-          return;
-        }
-        const birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
         if (turnstileSiteKey && !captchaToken) {
           setError('Please complete the verification challenge.');
@@ -462,7 +466,7 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
               </div>
 
               <div>
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Birthday</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Birthday <span className="opacity-70">(optional)</span></label>
                 <div className="grid grid-cols-3 gap-2">
                   <select
                     value={birthDay}
