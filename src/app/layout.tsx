@@ -39,6 +39,8 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
+  // AdSense site verification (the AdSense script itself is injected by a loader below).
+  ...(adsensePublisherId ? { other: { "google-adsense-account": adsensePublisherId } } : {}),
   verification: {
     ...(googleVerification ? { google: googleVerification } : {}),
     ...(bingVerification ? { other: { "msvalidate.01": bingVerification } } : {}),
@@ -110,10 +112,12 @@ export default function RootLayout({
           />
         ) : null}
         {adsensePublisherId ? (
+          // Load AdSense on the website only: the Capacitor app injects window.Capacitor before
+          // page scripts run, and AdSense display ads aren't allowed inside app WebViews.
           <script
-            async
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsensePublisherId}`}
-            crossOrigin="anonymous"
+            dangerouslySetInnerHTML={{
+              __html: `(function(){try{if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform())return;}catch(e){}var s=document.createElement('script');s.async=true;s.crossOrigin='anonymous';s.src=${JSON.stringify(`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsensePublisherId}`)};document.head.appendChild(s);})();`,
+            }}
           />
         ) : null}
       </head>
