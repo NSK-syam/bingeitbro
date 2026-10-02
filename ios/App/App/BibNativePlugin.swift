@@ -26,6 +26,8 @@ public class BibNativePlugin: CAPPlugin, CAPBridgedPlugin {
     static let appGroupId = "group.com.bingeitbro.app"
     static let widgetDataKey = "widgetData"
     static let widgetOwnerKey = "widgetDataOwner"
+    static let widgetExpectedOwnerKey = "widgetExpectedOwner"
+    static let widgetGenerationKey = "widgetGeneration"
     static let posterDirName = "widget-posters"
     static let widgetKind = "BibWidget"
 
@@ -81,18 +83,8 @@ public class BibNativePlugin: CAPPlugin, CAPBridgedPlugin {
 
     // MARK: - Widget data
 
-    /// Serializes widget state changes (generation counter, defaults and poster files).
+    /// Serializes widget state (owner gate, defaults and poster files).
     private static let widgetQueue = DispatchQueue(label: "com.bingeitbro.app.widget-data")
-    /// Bumped by every setWidgetData and clearWidgetData. A write whose poster downloads
-    /// finish after a newer set/clear is discarded, so stale data (e.g. the previous
-    /// account's picks) can never be committed after a clear or a page reload.
-    private static var widgetGeneration: UInt64 = 0
-
-    /// Must be called on widgetQueue.
-    private static func bumpGeneration() -> UInt64 {
-        widgetGeneration &+= 1
-        return widgetGeneration
-    }
 
     private static var posterDirectory: URL? {
         FileManager.default
@@ -100,9 +92,36 @@ public class BibNativePlugin: CAPPlugin, CAPBridgedPlugin {
             .appendingPathComponent(posterDirName, isDirectory: true)
     }
 
-    /// Owner key stored next to the snapshot: SHA-256 of the user id (no raw ids in shared storage).
+    /// Owner key stored with the snapshot: SHA-256 of the user id (no raw ids in shared storage).
     private static func ownerKey(for userId: String) -> String {
         sha256Hex("bib-widget-owner:" + userId)
+    }
+
+    /// Loads the owner gate from App Group defaults (persisted so it survives WebView reloads
+    /// and app restarts). Must be called on widgetQueue.
+    private static func loadGate(_ defaults: UserDefaults?) -> WidgetOwnerGate {
+        let stored = defaults?.object(forKey: widgetGenerationKey) as? NSNumber
+        return WidgetOwnerGate(
+            generation: stored?.uint64Value ?? 0,
+            expectedOwner: defaults?.string(forKey: widgetExpectedOwnerKey)
+        )
+    }
+
+    /// Must be called on widgetQueue.
+    private static func saveGate(_ gate: WidgetOwnerGate, _ defaults: UserDefaults?) {
+        defaults?.set(NSNumber(value: gate.generation), forKey: widgetGenerationKey)
+        if let owner = gate.expectedOwner {
+            defaults?.set(owner, forKey: widgetExpectedOwnerKey)
+        } else {
+            defaults?.removeObject(forKey: widgetExpectedOwnerKey)
+        }
+    }
+
+    /// Must be called on widgetQueue.
+    private static func applySnapshotEffect(_ effect: WidgetOwnerGate.Effect, _ defaults: UserDefaults?) {
+        guard effect == .clearSnapshot else { return }
+        clearStoredWidgetData(defaults)
+        DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
     }
 
     /// Must be called on widgetQueue.
@@ -114,27 +133,29 @@ public class BibNativePlugin: CAPPlugin, CAPBridgedPlugin {
         }
     }
 
-    /// { ownerId } -> clears the widget snapshot if it belongs to a different user.
-    /// Called before fetching, so a failed fetch never leaves another account's data visible.
+    private static func snapshotState(_ defaults: UserDefaults?) -> (committedOwner: String?, hasSnapshot: Bool) {
+        (defaults?.string(forKey: widgetOwnerKey), defaults?.object(forKey: widgetDataKey) != nil)
+    }
+
+    /// { ownerId } -> reserves the widget for this user before fetching. Any owner transition
+    /// bumps the generation (even if nothing was committed yet), so an older pending write can
+    /// never commit; another (or unknown) owner's snapshot is cleared, the same owner's is kept.
     @objc func ensureWidgetOwner(_ call: CAPPluginCall) {
         guard let ownerId = call.getString("ownerId"), !ownerId.isEmpty else {
             call.reject("ownerId is required.", "INVALID_ARGUMENT")
             return
         }
-        let expected = Self.ownerKey(for: ownerId)
-        Self.widgetQueue.async {
+        let owner = Self.ownerKey(for: ownerId)
+        let cleared: Bool = Self.widgetQueue.sync {
             let defaults = UserDefaults(suiteName: Self.appGroupId)
-            let stored = defaults?.string(forKey: Self.widgetOwnerKey)
-            let hasData = defaults?.object(forKey: Self.widgetDataKey) != nil
-            var cleared = false
-            if stored != expected && (stored != nil || hasData) {
-                _ = Self.bumpGeneration()
-                Self.clearStoredWidgetData(defaults)
-                cleared = true
-                DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
-            }
-            call.resolve(["cleared": cleared])
+            var gate = Self.loadGate(defaults)
+            let state = Self.snapshotState(defaults)
+            let effect = gate.ensure(owner: owner, committedOwner: state.committedOwner, hasSnapshot: state.hasSnapshot)
+            Self.saveGate(gate, defaults)
+            Self.applySnapshotEffect(effect, defaults)
+            return effect == .clearSnapshot
         }
+        call.resolve(["cleared": cleared])
     }
 
     /// Payload: { ownerId, items: [{ title, year, sender, posterUrl, path }], unwatchedCount }
@@ -178,101 +199,110 @@ public class BibNativePlugin: CAPPlugin, CAPBridgedPlugin {
             return PendingItem(title: title, year: year, sender: sender, path: String(path.prefix(300)), posterUrl: posterUrl)
         }
 
-        Self.widgetQueue.async {
-            let generation = Self.bumpGeneration()
-            // A different account's snapshot must not stay visible while posters download.
-            if let stored = defaults.string(forKey: Self.widgetOwnerKey), stored != owner {
-                Self.clearStoredWidgetData(defaults)
-                DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
-            }
+        // Reserve the owner and take a write token synchronously, before any async work.
+        let token: WidgetOwnerGate.WriteToken = Self.widgetQueue.sync {
+            var gate = Self.loadGate(defaults)
+            let state = Self.snapshotState(defaults)
+            let (token, effect) = gate.beginWrite(owner: owner, committedOwner: state.committedOwner, hasSnapshot: state.hasSnapshot)
+            Self.saveGate(gate, defaults)
+            Self.applySnapshotEffect(effect, defaults)
+            return token
+        }
 
-            let posterDir = Self.posterDirectory
-            if let dir = posterDir {
-                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            }
+        let posterDir = Self.posterDirectory
+        if let dir = posterDir {
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        }
 
-            var posterFiles = [String?](repeating: nil, count: pending.count)
-            let group = DispatchGroup()
-            let lock = NSLock()
+        var posterFiles = [String?](repeating: nil, count: pending.count)
+        let group = DispatchGroup()
+        let lock = NSLock()
 
-            if let dir = posterDir {
-                for (index, item) in pending.enumerated() {
-                    guard let url = item.posterUrl else { continue }
-                    group.enter()
-                    var request = URLRequest(url: url)
-                    request.timeoutInterval = 15
-                    URLSession.shared.dataTask(with: request) { data, response, _ in
-                        defer { group.leave() }
-                        guard let data = data, !data.isEmpty, data.count < 2_000_000,
-                              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-                              UIImage(data: data) != nil else { return }
-                        // Generation in the name: files of a stale write are never referenced.
-                        let name = "poster-g\(generation)-\(index).jpg"
-                        do {
-                            try data.write(to: dir.appendingPathComponent(name), options: .atomic)
-                            lock.lock()
-                            posterFiles[index] = name
-                            lock.unlock()
-                        } catch {
-                            // Widget falls back to a placeholder.
-                        }
-                    }.resume()
-                }
-            }
-
-            group.notify(queue: Self.widgetQueue) {
-                guard generation == Self.widgetGeneration else {
-                    // Superseded by a newer set/clear: drop this write and its files.
-                    if let dir = posterDir {
-                        for file in posterFiles.compactMap({ $0 }) {
-                            try? FileManager.default.removeItem(at: dir.appendingPathComponent(file))
-                        }
+        if let dir = posterDir {
+            for (index, item) in pending.enumerated() {
+                guard let url = item.posterUrl else { continue }
+                group.enter()
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 15
+                URLSession.shared.dataTask(with: request) { data, response, _ in
+                    defer { group.leave() }
+                    guard let data = data, !data.isEmpty, data.count < 2_000_000,
+                          let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                          UIImage(data: data) != nil else { return }
+                    // Generation in the name: files of a stale write are never referenced.
+                    let name = "poster-g\(token.generation)-\(index).jpg"
+                    do {
+                        try data.write(to: dir.appendingPathComponent(name), options: .atomic)
+                        lock.lock()
+                        posterFiles[index] = name
+                        lock.unlock()
+                    } catch {
+                        // Widget falls back to a placeholder.
                     }
-                    call.resolve(["ok": false, "stale": true])
-                    return
-                }
-
-                let items: [[String: Any]] = pending.enumerated().map { index, item in
-                    var dict: [String: Any] = [
-                        "title": item.title,
-                        "sender": item.sender,
-                        "path": item.path,
-                    ]
-                    if let year = item.year { dict["year"] = year }
-                    if let file = posterFiles[index] { dict["posterFile"] = file }
-                    return dict
-                }
-                let snapshot: [String: Any] = [
-                    "items": items,
-                    "unwatchedCount": unwatchedCount,
-                    "updatedAt": Date().timeIntervalSince1970,
-                ]
-
-                guard let json = try? JSONSerialization.data(withJSONObject: snapshot) else {
-                    call.reject("Unable to encode widget data.", "ENCODE_FAILED")
-                    return
-                }
-                defaults.set(json, forKey: Self.widgetDataKey)
-                defaults.set(owner, forKey: Self.widgetOwnerKey)
-
-                // Remove posters no longer referenced.
-                if let dir = posterDir {
-                    Self.removePosters(in: dir, except: Set(posterFiles.compactMap { $0 }))
-                }
-
-                DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
-                call.resolve(["ok": true])
+                }.resume()
             }
         }
-    }
 
-    @objc func clearWidgetData(_ call: CAPPluginCall) {
-        Self.widgetQueue.async {
-            _ = Self.bumpGeneration()
-            Self.clearStoredWidgetData(UserDefaults(suiteName: Self.appGroupId))
+        group.notify(queue: Self.widgetQueue) {
+            // Re-read the persisted gate: a clear/ensure/set from any page load since this
+            // write began changes the generation and/or the expected owner.
+            let gate = Self.loadGate(defaults)
+            guard gate.canCommit(token) else {
+                if let dir = posterDir {
+                    for file in posterFiles.compactMap({ $0 }) {
+                        try? FileManager.default.removeItem(at: dir.appendingPathComponent(file))
+                    }
+                }
+                call.resolve(["ok": false, "stale": true])
+                return
+            }
+
+            let items: [[String: Any]] = pending.enumerated().map { index, item in
+                var dict: [String: Any] = [
+                    "title": item.title,
+                    "sender": item.sender,
+                    "path": item.path,
+                ]
+                if let year = item.year { dict["year"] = year }
+                if let file = posterFiles[index] { dict["posterFile"] = file }
+                return dict
+            }
+            let snapshot: [String: Any] = [
+                "items": items,
+                "unwatchedCount": unwatchedCount,
+                "updatedAt": Date().timeIntervalSince1970,
+            ]
+
+            guard let json = try? JSONSerialization.data(withJSONObject: snapshot) else {
+                call.reject("Unable to encode widget data.", "ENCODE_FAILED")
+                return
+            }
+            defaults.set(json, forKey: Self.widgetDataKey)
+            defaults.set(token.owner, forKey: Self.widgetOwnerKey)
+
+            if let dir = posterDir {
+                Self.removePosters(in: dir, except: Set(posterFiles.compactMap { $0 }))
+            }
+
             DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
             call.resolve(["ok": true])
         }
+    }
+
+    /// Sign-out / explicit clear. Synchronously (before resolving) marks the widget as
+    /// signed out and bumps the generation, so no pending write can commit afterwards,
+    /// then removes the snapshot and posters.
+    @objc func clearWidgetData(_ call: CAPPluginCall) {
+        Self.widgetQueue.sync {
+            let defaults = UserDefaults(suiteName: Self.appGroupId)
+            var gate = Self.loadGate(defaults)
+            gate.clear()
+            Self.saveGate(gate, defaults)
+            defaults?.synchronize()
+            Self.clearStoredWidgetData(defaults)
+        }
+        DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
+        call.resolve(["ok": true])
     }
 
     private static func removePosters(in dir: URL, except keep: Set<String>) {

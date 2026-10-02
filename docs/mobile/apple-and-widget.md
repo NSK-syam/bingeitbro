@@ -72,15 +72,39 @@ user runs an app build that includes `BibNativePlugin`. Older app builds do not 
 with each target. Both declare `NSPrivacyTracking = false` and no tracking domains.
 
 - App: UserDefaults access for `CA92.1` (own app, used by @capacitor/preferences) and `1C8F.1`
-  (App Group shared with the widget). Collected data: email address, name and user ID, linked
-  to the user, not used for tracking, for app functionality.
+  (App Group shared with the widget).
+- App collected data. None is used for tracking, and nothing is shared with data brokers or ad networks.
+
+  | Manifest type | What it is in BingeItBro | Linked | Purpose |
+  | --- | --- | --- | --- |
+  | EmailAddress | account email, notification emails | yes | App Functionality |
+  | Name | display name, Apple-provided name | yes | App Functionality |
+  | UserID | Supabase user id, username | yes | App Functionality |
+  | DeviceID | FCM/APNs push token (`native_push_tokens`) | yes | App Functionality |
+  | EmailsOrTextMessages | direct messages and group-watch chat | yes | App Functionality |
+  | OtherUserContent | recommendations and personal notes, playlists, ratings, watchlist/reminders | yes | App Functionality |
+  | OtherDataTypes | optional birthday (birthday greeting) | yes | App Functionality |
+  | ProductInteraction | datafa.st page analytics and `trackFunnelEvent` (anonymous session id, no user id) | no | Analytics |
+
+  Not declared, because it is not collected: photos or videos (avatars are emoji), precise or
+  coarse location (country is guessed from the device time zone and stored locally, and IP is
+  only used transiently for rate limiting), contacts, health, financial data, crash data
+  (Crashlytics is not linked), and advertising data (AdSense is web only and not loaded in the app).
 - Widget: UserDefaults access for `1C8F.1` only. It collects no data.
+
+**App Store Connect -> App Privacy must match this table:**
+
+- Data Used to Track You: none.
+- Data Linked to You: Contact Info (Email Address, Name), Identifiers (User ID, Device ID),
+  User Content (Emails or Text Messages, Other User Content) and Other Data, all for App Functionality.
+- Data Not Linked to You: Usage Data (Product Interaction) for Analytics.
+
+If datafa.st is ever configured to identify signed-in users, move Product Interaction to
+"Linked to You" in both places.
 
 The Capacitor core and the Firebase/Google SPM packages ship their own manifests. The
 Capacitor plugin sources (@capacitor/* and @capacitor-firebase/messaging) use no other
-required-reason APIs. Only Preferences uses UserDefaults. Keep App Store Connect's privacy
-labels consistent with these files. Push also uses a device token: declare it there if
-your answers require it.
+required-reason APIs. Only Preferences uses UserDefaults.
 
 ## How Sign in with Apple works
 
@@ -112,11 +136,44 @@ Settings -> Apple ID -> Sign-In & Security -> Sign in with Apple.
   `widgetData`, and calls `WidgetCenter.shared.reloadAllTimelines()`. The widget never uses the network.
 - Refresh: on sign-in, when the app becomes active, and every 15 minutes while it is visible.
   The data is cleared on sign-out and when the account changes.
-- Account isolation: the snapshot's owner is stored natively as a SHA-256 of the user id
-  (`widgetDataOwner` in the App Group). Before each fetch, `ensureWidgetOwner` clears another
-  account's snapshot, so a failed fetch never leaves it visible. Every `setWidgetData` and
-  `clearWidgetData` increments a generation number. A write whose poster downloads finish after a newer
-  set or clear is discarded along with its files.
+- Account isolation is enforced by `WidgetOwnerGate` (`ios/App/App/WidgetOwnerGate.swift`, a pure
+  struct). Its state lives in the App Group:
+  - `widgetExpectedOwner`: the reserved owner (SHA-256 of the user id) or the `__signed_out__` sentinel.
+  - `widgetGeneration`: the current generation.
+  - `widgetDataOwner`: the owner of the committed snapshot.
+- The rules:
+  - `ensureWidgetOwner` (called before every fetch) and `setWidgetData` reserve the owner
+    synchronously when they start. Every owner transition increments the generation, even if
+    nothing was committed yet.
+  - Each `setWidgetData` increments the generation again, so a newer write supersedes an older one.
+  - A write commits only if both its generation and its owner still match the persisted state.
+    Otherwise it is dropped along with its poster files.
+  - A snapshot belonging to a different or unknown owner is cleared. The same owner's snapshot is
+    kept across transient fetch errors.
+  - `clearWidgetData` synchronously sets the `__signed_out__` sentinel and increments the
+    generation, then removes the snapshot.
+  - The widget shows a snapshot only if `widgetDataOwner` equals the reserved owner. After
+    sign-out (sentinel) it never shows one.
+- Sign-out: `NativeWidgetSync.tsx` registers `registerNativeLogoutCleanup('widget', ...)` at module
+  load. `AuthProvider.signOut` awaits it before revoking the session. The first native step is the
+  synchronous sentinel and generation bump, so a cleanup cut short by the 5 s budget still blocks
+  every pending commit. On the next start with no user, `NativeWidgetSync` calls
+  `clearWidgetData` again. A sync that started before sign-out checks a logout epoch before
+  each native call and stops.
+- Tests: `scripts/mobile/test-widget-owner-gate.sh` compiles the gate with `swiftc` and runs the
+  scenarios. No simulator is needed.
+  - B4 repro: A's write is in flight, B reserves, B's fetch fails, so A's write must not commit.
+  - Logout during a write.
+  - Sign-out and back in as the same account.
+  - Superseded writes.
+  - Same-account snapshot kept.
+  - Foreign or unknown snapshot cleared.
+  - State restored after a restart.
+- Manual device check for B4:
+  1. Sign in as A with picks and wait for the widget to fill.
+  2. Sign out, which should empty the widget immediately.
+  3. Turn on Airplane Mode and sign in as B. Their fetch fails and the widget must stay empty.
+  4. Turn Airplane Mode off and pull to refresh. The widget shows B's picks only.
 - Tap: `com.bingeitbro.app://open?path=<url-encoded same-origin path>`, for example
   `com.bingeitbro.app://open?path=%2Fmovie%2Ftmdb-27205`. The empty state uses `path=%2F`.
   Handle it in the `appUrlOpen` / `getLaunchUrl` handler with

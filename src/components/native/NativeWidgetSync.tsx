@@ -4,6 +4,22 @@ import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase';
 import { clearWidgetData, ensureWidgetOwner, isBibNativeAvailable, setWidgetData, type WidgetItemInput } from '@/lib/native/bib-native';
+import { registerNativeLogoutCleanup } from '@/lib/native/logout-cleanup';
+
+/**
+ * Incremented by the sign-out cleanup. A sync that started before sign-out checks it before
+ * every native call, so it can never re-reserve or re-write the signed-out account's data.
+ */
+let widgetLogoutEpoch = 0;
+
+// Registered at module load (not in an effect) so it is in place before any sign-out.
+// clearWidgetData synchronously marks the widget signed out natively (sentinel expected owner
+// + generation bump) before removing the snapshot, so even if the 5s cleanup budget is cut
+// short no pending poster write can commit, and the widget hides the snapshot immediately.
+registerNativeLogoutCleanup('widget', async () => {
+  widgetLogoutEpoch += 1;
+  await clearWidgetData().catch(() => undefined);
+});
 
 const MAX_ITEMS = 3;
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
@@ -121,7 +137,10 @@ export function NativeWidgetSync() {
 
     const runSync = async (): Promise<void> => {
       if (disposed) return;
+      const epoch = widgetLogoutEpoch;
+      const stale = () => disposed || epoch !== widgetLogoutEpoch;
       if (!userId) {
+        // Also covers startup while signed out: any leftover snapshot is removed.
         await clearWidgetData().catch(() => undefined);
         return;
       }
@@ -132,10 +151,10 @@ export function NativeWidgetSync() {
       } catch {
         await clearWidgetData().catch(() => undefined);
       }
-      if (disposed) return;
+      if (stale()) return;
       try {
         const payload = await buildWidgetPayload(userId);
-        if (disposed) return;
+        if (stale()) return;
         await setWidgetData({ ownerId: userId, ...payload });
       } catch {
         // Keep this user's last snapshot on transient failures.

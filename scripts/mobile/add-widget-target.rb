@@ -21,7 +21,7 @@ WIDGET_BUNDLE_ID = 'com.bingeitbro.app.BibWidget'
 WIDGET_DEPLOYMENT_TARGET = '17.0'
 WIDGET_SOURCES = %w[BibWidget.swift BibWidgetBundle.swift].freeze
 WIDGET_OTHER_FILES = %w[Info.plist BibWidget.entitlements].freeze
-APP_LOCAL_SOURCES = %w[BibNativePlugin.swift MainViewController.swift].freeze
+APP_LOCAL_SOURCES = %w[BibNativePlugin.swift MainViewController.swift WidgetOwnerGate.swift].freeze
 
 project = Xcodeproj::Project.open(PROJECT_PATH)
 app_target = project.targets.find { |t| t.name == 'App' } or abort('App target not found')

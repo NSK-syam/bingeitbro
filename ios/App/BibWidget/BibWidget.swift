@@ -7,6 +7,9 @@ import UIKit
 private enum BibShared {
     static let appGroupId = "group.com.bingeitbro.app"
     static let widgetDataKey = "widgetData"
+    static let widgetOwnerKey = "widgetDataOwner"
+    static let widgetExpectedOwnerKey = "widgetExpectedOwner"
+    static let signedOutOwner = "__signed_out__"
     static let posterDirName = "widget-posters"
     static let widgetKind = "BibWidget"
 }
@@ -46,8 +49,14 @@ struct BibWidgetSnapshot: Decodable {
     )
 
     static func load() -> BibWidgetSnapshot {
-        guard let defaults = UserDefaults(suiteName: BibShared.appGroupId),
-              let data = defaults.data(forKey: BibShared.widgetDataKey),
+        guard let defaults = UserDefaults(suiteName: BibShared.appGroupId) else { return .empty }
+        // Never show a snapshot that isn't for the currently reserved account (e.g. the app
+        // marked the widget signed out, or another account is being synced).
+        if let expected = defaults.string(forKey: BibShared.widgetExpectedOwnerKey),
+           expected == BibShared.signedOutOwner || expected != defaults.string(forKey: BibShared.widgetOwnerKey) {
+            return .empty
+        }
+        guard let data = defaults.data(forKey: BibShared.widgetDataKey),
               let snapshot = try? JSONDecoder().decode(BibWidgetSnapshot.self, from: data) else {
             return .empty
         }

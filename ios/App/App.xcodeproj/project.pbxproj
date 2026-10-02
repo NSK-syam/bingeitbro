@@ -11,6 +11,7 @@
 		2817A074A634AC9EA6FF336A /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BBB4753621962330D6A8860 /* MainViewController.swift */; };
 		2ECC89F472022A666D60E65C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BE2E8200384DE4A712907B8B /* PrivacyInfo.xcprivacy */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
+		3974E0C5E669F99B308AEF92 /* WidgetOwnerGate.swift in Sources */ = {isa = PBXBuildFile; fileRef = C3DDD677B0F7C80572056B5F /* WidgetOwnerGate.swift */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
 		504EC3081FED79650016851F /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 504EC3071FED79650016851F /* AppDelegate.swift */; };
@@ -69,6 +70,7 @@
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		B77C21B1D3B91C46E56595C4 /* BibWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = BibWidget.entitlements; sourceTree = "<group>"; };
 		BE2E8200384DE4A712907B8B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		C3DDD677B0F7C80572056B5F /* WidgetOwnerGate.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = WidgetOwnerGate.swift; sourceTree = "<group>"; };
 		E357BEA7456FFE8900616A14 /* BibWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BibWidget.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -125,6 +127,7 @@
 				596F408D7983B0F16E69538C /* BibNativePlugin.swift */,
 				4BBB4753621962330D6A8860 /* MainViewController.swift */,
 				383CB71FB36E28ED66005BAF /* PrivacyInfo.xcprivacy */,
+				C3DDD677B0F7C80572056B5F /* WidgetOwnerGate.swift */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -262,6 +265,7 @@
 				9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */,
 				D5093CDA0D6DE71F9A6698E0 /* BibNativePlugin.swift in Sources */,
 				2817A074A634AC9EA6FF336A /* MainViewController.swift in Sources */,
+				3974E0C5E669F99B308AEF92 /* WidgetOwnerGate.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
