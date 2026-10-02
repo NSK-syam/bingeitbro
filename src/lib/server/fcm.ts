@@ -63,7 +63,9 @@ function readServiceAccount(): ServiceAccount | null {
   const projectIdEnv = (process.env.FIREBASE_PROJECT_ID ?? '').trim();
   const clientEmailEnv = (process.env.FIREBASE_CLIENT_EMAIL ?? '').trim();
   const privateKeyEnv = process.env.FIREBASE_PRIVATE_KEY ?? '';
-  const source = `${rawJson.length}:${projectIdEnv}:${clientEmailEnv}:${privateKeyEnv.length}`;
+  // Exact env contents (in-memory comparison only; never logged). The access
+  // token / signing key caches are keyed on a SHA-256 credential digest.
+  const source = JSON.stringify([rawJson, projectIdEnv, clientEmailEnv, privateKeyEnv]);
   if (cachedAccount !== undefined && cachedAccountSource === source) return cachedAccount;
   cachedAccountSource = source;
   cachedAccount = null;
@@ -144,13 +146,24 @@ function pemToPkcs8(pem: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = FETCH_TIMEOUT_MS): Promise<Response> {
+async function fetchWithTimeout(
+  url: string,
+  init: RequestInit,
+  timeoutMs = FETCH_TIMEOUT_MS,
+  signal?: AbortSignal,
+): Promise<Response> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const onAbort = () => controller.abort();
+  if (signal) {
+    if (signal.aborted) controller.abort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+  }
   try {
     return await fetch(url, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
+    signal?.removeEventListener('abort', onAbort);
   }
 }
 
@@ -172,24 +185,37 @@ export function sanitizePushPath(path: unknown): string {
 // OAuth2 access token (service account JWT, RS256 via Web Crypto)
 // ---------------------------------------------------------------------------
 
-let cachedSigningKey: { pem: string; key: CryptoKey } | null = null;
-let cachedAccessToken: { token: string; expiresAt: number; clientEmail: string } | null = null;
-let inflightAccessToken: Promise<string | null> | null = null;
+/** Caches are keyed on SHA-256(client_email + private_key): a rotated key or account never reuses them. */
+let cachedSigningKey: { identity: string; key: CryptoKey } | null = null;
+let cachedAccessToken: { identity: string; token: string; expiresAt: number } | null = null;
+let inflightAccessToken: { identity: string; promise: Promise<string | null> } | null = null;
+let cachedIdentity: { account: ServiceAccount; identity: string } | null = null;
 
-async function getSigningKey(pem: string): Promise<CryptoKey> {
-  if (cachedSigningKey && cachedSigningKey.pem === pem) return cachedSigningKey.key;
+async function credentialIdentity(account: ServiceAccount): Promise<string> {
+  if (cachedIdentity && cachedIdentity.account === account) return cachedIdentity.identity;
+  const digest = await crypto.subtle.digest(
+    'SHA-256',
+    new TextEncoder().encode(`${account.clientEmail}\n${account.privateKey}`),
+  );
+  const identity = base64UrlFromBytes(new Uint8Array(digest));
+  cachedIdentity = { account, identity };
+  return identity;
+}
+
+async function getSigningKey(account: ServiceAccount, identity: string): Promise<CryptoKey> {
+  if (cachedSigningKey && cachedSigningKey.identity === identity) return cachedSigningKey.key;
   const key = await crypto.subtle.importKey(
     'pkcs8',
-    pemToPkcs8(pem),
+    pemToPkcs8(account.privateKey),
     { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
     false,
     ['sign'],
   );
-  cachedSigningKey = { pem, key };
+  cachedSigningKey = { identity, key };
   return key;
 }
 
-async function fetchAccessToken(account: ServiceAccount): Promise<string | null> {
+async function fetchAccessToken(account: ServiceAccount, identity: string): Promise<string | null> {
   const now = Math.floor(Date.now() / 1000);
   const header = base64UrlFromString(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
   const claims = base64UrlFromString(
@@ -202,7 +228,7 @@ async function fetchAccessToken(account: ServiceAccount): Promise<string | null>
     }),
   );
   const unsigned = `${header}.${claims}`;
-  const key = await getSigningKey(account.privateKey);
+  const key = await getSigningKey(account, identity);
   const signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(unsigned));
   const assertion = `${unsigned}.${base64UrlFromBytes(new Uint8Array(signature))}`;
 
@@ -223,48 +249,54 @@ async function fetchAccessToken(account: ServiceAccount): Promise<string | null>
   if (!token) return null;
   const expiresIn = typeof data?.expires_in === 'number' ? data.expires_in : 3600;
   cachedAccessToken = {
+    identity,
     token,
     // Refresh a minute early.
     expiresAt: Date.now() + Math.max(60, expiresIn - 60) * 1000,
-    clientEmail: account.clientEmail,
   };
   return token;
 }
 
 async function getAccessToken(account: ServiceAccount): Promise<string | null> {
-  if (
-    cachedAccessToken &&
-    cachedAccessToken.clientEmail === account.clientEmail &&
-    cachedAccessToken.expiresAt > Date.now()
-  ) {
+  const identity = await credentialIdentity(account);
+  if (cachedAccessToken && cachedAccessToken.identity === identity && cachedAccessToken.expiresAt > Date.now()) {
     return cachedAccessToken.token;
   }
-  if (!inflightAccessToken) {
-    inflightAccessToken = fetchAccessToken(account)
-      .catch((err) => {
-        console.error('[fcm] OAuth token error', err instanceof Error ? err.name : 'unknown');
-        return null;
-      })
-      .finally(() => {
-        inflightAccessToken = null;
-      });
+  if (!inflightAccessToken || inflightAccessToken.identity !== identity) {
+    const entry = {
+      identity,
+      promise: fetchAccessToken(account, identity)
+        .catch((err) => {
+          console.error('[fcm] OAuth token error', err instanceof Error ? err.name : 'unknown');
+          return null;
+        })
+        .finally(() => {
+          if (inflightAccessToken === entry) inflightAccessToken = null;
+        }),
+    };
+    inflightAccessToken = entry;
   }
-  return inflightAccessToken;
+  return inflightAccessToken.promise;
 }
 
 // ---------------------------------------------------------------------------
 // Token storage (Supabase REST, service role)
 // ---------------------------------------------------------------------------
 
-async function loadTokens(admin: SupabaseAdmin, userIds: string[]): Promise<TokenRow[]> {
+async function loadTokens(admin: SupabaseAdmin, userIds: string[], signal: AbortSignal): Promise<TokenRow[]> {
   if (userIds.length === 0) return [];
   const url =
     `${admin.url}/rest/v1/native_push_tokens?select=user_id,token,platform` +
     `&user_id=in.(${userIds.join(',')})&order=updated_at.desc&limit=${MAX_TOKENS}`;
-  const response = await fetchWithTimeout(url, {
-    method: 'GET',
-    headers: { apikey: admin.anonKey, Authorization: `Bearer ${admin.serviceKey}` },
-  });
+  const response = await fetchWithTimeout(
+    url,
+    {
+      method: 'GET',
+      headers: { apikey: admin.anonKey, Authorization: `Bearer ${admin.serviceKey}` },
+    },
+    FETCH_TIMEOUT_MS,
+    signal,
+  );
   if (!response.ok) return [];
   const rows = (await response.json().catch(() => [])) as TokenRow[];
   return Array.isArray(rows)
@@ -327,7 +359,13 @@ function buildMessage(token: string, payload: PushPayload) {
   };
 }
 
-async function sendOne(account: ServiceAccount, accessToken: string, token: string, payload: PushPayload): Promise<SendResult> {
+async function sendOne(
+  account: ServiceAccount,
+  accessToken: string,
+  token: string,
+  payload: PushPayload,
+  signal: AbortSignal,
+): Promise<SendResult> {
   const response = await fetchWithTimeout(
     `https://fcm.googleapis.com/v1/projects/${encodeURIComponent(account.projectId)}/messages:send`,
     {
@@ -338,6 +376,8 @@ async function sendOne(account: ServiceAccount, accessToken: string, token: stri
       },
       body: JSON.stringify(buildMessage(token, payload)),
     },
+    FETCH_TIMEOUT_MS,
+    signal,
   );
   if (response.ok) return 'ok';
   if (response.status === 401) return 'unauthorized';
@@ -359,19 +399,26 @@ async function sendJobs(
   account: ServiceAccount,
   accessToken: string,
   jobs: Array<{ token: string; payload: PushPayload }>,
+  signal: AbortSignal,
 ): Promise<SendResult[]> {
   const results: SendResult[] = [];
   for (let i = 0; i < jobs.length; i += SEND_CONCURRENCY) {
     const batch = jobs.slice(i, i + SEND_CONCURRENCY);
+    if (signal.aborted) {
+      results.push(...batch.map((): SendResult => 'error'));
+      continue;
+    }
     const batchResults = await Promise.all(
-      batch.map((job) => sendOne(account, accessToken, job.token, job.payload).catch((): SendResult => 'error')),
+      batch.map((job) =>
+        sendOne(account, accessToken, job.token, job.payload, signal).catch((): SendResult => 'error'),
+      ),
     );
     results.push(...batchResults);
   }
   return results;
 }
 
-async function deliver(messages: UserPushMessage[]): Promise<void> {
+async function deliver(messages: UserPushMessage[], signal: AbortSignal): Promise<void> {
   const account = readServiceAccount();
   const admin = readSupabaseAdmin();
   if (!account || !admin) return;
@@ -387,11 +434,11 @@ async function deliver(messages: UserPushMessage[]): Promise<void> {
   }
   if (byUser.size === 0) return;
 
-  const tokens = await loadTokens(admin, [...byUser.keys()]);
-  if (tokens.length === 0) return;
+  const tokens = await loadTokens(admin, [...byUser.keys()], signal);
+  if (tokens.length === 0 || signal.aborted) return;
 
   let accessToken = await getAccessToken(account);
-  if (!accessToken) return;
+  if (!accessToken || signal.aborted) return;
 
   const jobs: Array<{ token: string; payload: PushPayload }> = [];
   for (const row of tokens) {
@@ -400,15 +447,15 @@ async function deliver(messages: UserPushMessage[]): Promise<void> {
     }
   }
 
-  const results = await sendJobs(account, accessToken, jobs);
+  const results = await sendJobs(account, accessToken, jobs, signal);
 
   // Access token rejected (e.g. key rotated): invalidate, re-auth and retry those once.
   const unauthorized = results.flatMap((result, index) => (result === 'unauthorized' ? [index] : []));
-  if (unauthorized.length > 0) {
+  if (unauthorized.length > 0 && !signal.aborted) {
     cachedAccessToken = null;
     accessToken = await getAccessToken(account);
-    if (accessToken) {
-      const retried = await sendJobs(account, accessToken, unauthorized.map((index) => jobs[index]));
+    if (accessToken && !signal.aborted) {
+      const retried = await sendJobs(account, accessToken, unauthorized.map((index) => jobs[index]), signal);
       unauthorized.forEach((jobIndex, i) => {
         results[jobIndex] = retried[i];
       });
@@ -419,7 +466,7 @@ async function deliver(messages: UserPushMessage[]): Promise<void> {
   results.forEach((result, index) => {
     if (result === 'unregistered') unregistered.add(jobs[index].token);
   });
-  if (unregistered.size > 0) {
+  if (unregistered.size > 0 && !signal.aborted) {
     await deleteTokens(admin, [...unregistered]);
   }
 }
@@ -439,12 +486,21 @@ function getWaitUntil(): ((promise: Promise<unknown>) => void) | null {
   }
 }
 
-function withBudget(promise: Promise<void>, budgetMs: number): Promise<void> {
+/**
+ * Race `run(signal)` against a time budget. Promise.race alone would only stop
+ * waiting, not the work, so when the budget expires the controller is aborted:
+ * in-flight fetches are cancelled and no further requests are started.
+ */
+function runWithBudget(run: (signal: AbortSignal) => Promise<void>, budgetMs: number): Promise<void> {
+  const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   return Promise.race([
-    promise,
+    run(controller.signal),
     new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, budgetMs);
+      timer = setTimeout(() => {
+        controller.abort();
+        resolve();
+      }, budgetMs);
     }),
   ]).finally(() => {
     if (timer) clearTimeout(timer);
@@ -470,23 +526,22 @@ export async function sendPushMessages(
     if (Array.isArray(messages) && messages.length === 0) return;
     if (!isFcmConfigured()) return;
 
-    const delivery = (async () => {
-      const resolved = typeof messages === 'function' ? await messages() : messages;
-      if (Array.isArray(resolved) && resolved.length > 0) await deliver(resolved);
-    })().catch((err) => {
-      console.error('[fcm] delivery error', err instanceof Error ? err.name : 'unknown');
-    });
+    const run = async (signal: AbortSignal) => {
+      try {
+        const resolved = typeof messages === 'function' ? await messages() : messages;
+        if (!signal.aborted && Array.isArray(resolved) && resolved.length > 0) await deliver(resolved, signal);
+      } catch (err) {
+        if (!signal.aborted) console.error('[fcm] delivery error', err instanceof Error ? err.name : 'unknown');
+      }
+    };
 
     const waitUntil = getWaitUntil();
     if (waitUntil) {
-      try {
-        waitUntil(withBudget(delivery, BACKGROUND_BUDGET_MS));
-        return;
-      } catch {
-        // Fall through to awaiting.
-      }
+      // Background: doesn't delay the response; still bounded (and aborted) by the budget.
+      waitUntil(runWithBudget(run, BACKGROUND_BUDGET_MS));
+      return;
     }
-    await withBudget(delivery, Math.max(250, options.budgetMs ?? DEFAULT_BUDGET_MS));
+    await runWithBudget(run, Math.max(250, options.budgetMs ?? DEFAULT_BUDGET_MS));
   } catch {
     // Never throw into the caller.
   }

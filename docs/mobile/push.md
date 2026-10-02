@@ -17,6 +17,11 @@ server sender does nothing when its env vars are missing.
    with the Supabase access token as Bearer auth.
 2. Token refreshes (`tokenReceived`) are re-registered. On sign-out the token is
    unlinked server-side (`DELETE /api/native-push/register`) and deleted at FCM.
+   All register, refresh, unlink and delete work runs on one serialized queue that
+   tracks which account it belongs to (`createPushLifecycle` in
+   `src/lib/native-push.ts`). A slow registration for account A therefore can't
+   end up owning the device after A signs out or B signs in. The race tests are in
+   `node scripts/mobile/test-native-push-lifecycle.mjs`.
 3. Tapping a notification navigates to `data.path`. Only same-site relative
    paths are allowed, for example `/?view=friends` or `/movie/tmdb-123`.
 4. The server (`src/lib/server/fcm.ts`) signs a service-account JWT with Web

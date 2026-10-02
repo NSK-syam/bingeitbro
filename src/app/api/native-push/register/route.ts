@@ -136,8 +136,10 @@ export async function POST(request: Request) {
       SUPABASE_FETCH_OPTIONS,
     );
     if (!upsertRes.ok) {
-      const text = await upsertRes.text().catch(() => '');
-      console.error('[native-push/register] upsert failed', upsertRes.status, text.slice(0, 200));
+      // Log only the PostgREST error code: the body can echo the token.
+      const errBody = (await upsertRes.json().catch(() => null)) as { code?: unknown } | null;
+      const code = typeof errBody?.code === 'string' ? errBody.code.slice(0, 16) : '';
+      console.error('[native-push/register] upsert failed', upsertRes.status, code);
       return NextResponse.json({ message: 'Could not register device.' }, { status: 500 });
     }
 
