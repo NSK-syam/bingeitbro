@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState, useEffect, useRef } from 'react';
 import { useAuth } from './AuthProvider';
+import { DeleteAccountModal } from './DeleteAccountModal';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
@@ -38,6 +39,7 @@ export function Header({
 }: HeaderProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
   const [suggestions, setSuggestions] = useState<SearchSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(-1);
@@ -412,9 +414,24 @@ export function Header({
                         </svg>
                         Sign out
                       </button>
+                      <div className="my-1 border-t border-white/10" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          setShowDeleteAccount(true);
+                        }}
+                        className="w-full px-4 py-2 text-left text-xs text-[var(--text-muted)] hover:text-red-400 hover:bg-red-500/10 transition-colors flex items-center gap-2 cursor-pointer"
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                        Delete account
+                      </button>
                     </div>
                   </>
                 )}
+                <DeleteAccountModal isOpen={showDeleteAccount} onClose={() => setShowDeleteAccount(false)} />
               </div>
             ) : (
               isConfigured && (

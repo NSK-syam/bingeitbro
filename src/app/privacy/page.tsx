@@ -107,7 +107,13 @@ export default function PrivacyPolicy() {
             <ul className="list-disc pl-6 space-y-1 mt-2">
               <li><strong>Access:</strong> Request a copy of the personal data we hold about you.</li>
               <li><strong>Correction:</strong> Update or correct your personal information through your profile settings.</li>
-              <li><strong>Deletion:</strong> Request deletion of your account and associated data by contacting us.</li>
+              <li>
+                <strong>Deletion:</strong> Delete your account and associated data yourself, at any time, on the website or
+                in the app: open your profile (or the account menu) and choose <strong>Delete account</strong>. This permanently
+                removes your profile, recommendations, watchlist, friends, messages, groups you own, reminders and device
+                notification tokens, and, if you used Sign in with Apple, revokes the app&apos;s access to your Apple ID.
+                You can also ask us to delete it by contacting us.
+              </li>
               <li><strong>Portability:</strong> Request your data in a portable format.</li>
               <li><strong>Withdraw Consent:</strong> You can stop using the Service at any time and request account deletion.</li>
             </ul>

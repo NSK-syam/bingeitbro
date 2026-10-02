@@ -10,7 +10,7 @@ import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { searchMovies, getMovieDetails, getWatchProviders, getImageUrl, getLanguageName, formatRuntime, tmdbWatchProvidersToOttLinks } from '@/lib/tmdb';
 import type { TMDBMovie } from '@/lib/tmdb';
 import { Recommendation, OTTLink } from '@/types';
-import { MovieCard, StarRating, AvatarPickerModal } from '@/components';
+import { MovieCard, StarRating, AvatarPickerModal, DeleteAccountModal } from '@/components';
 import { useWatched, useWatchlist } from '@/hooks';
 import { isNativeApp } from '@/lib/native-app';
 import { shareContent } from '@/lib/native/share';
@@ -122,6 +122,7 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
 
   const [avatarSaving, setAvatarSaving] = useState(false);
   const [isAvatarPickerOpen, setIsAvatarPickerOpen] = useState(false);
+  const [showDeleteAccount, setShowDeleteAccount] = useState(false);
 
   const handleAvatarSelect = async (path: string) => {
     if (!user || !displayUser || !isOwnProfile) return;
@@ -1880,7 +1881,38 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
         </div>
 
         {/* Recommendations grid removed per request */}
+
+        {isOwnProfile && (
+          <section
+            id="account-settings"
+            aria-labelledby="account-settings-title"
+            className="mt-10 rounded-2xl border border-red-500/30 bg-[var(--bg-card)] p-5"
+          >
+            <h2 id="account-settings-title" className="text-lg font-semibold text-[var(--text-primary)]">
+              Account settings
+            </h2>
+            <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+              <div>
+                <p className="text-sm font-medium text-red-400">Delete account</p>
+                <p className="text-xs text-[var(--text-muted)] mt-0.5">
+                  Permanently delete your account and all of your data. This cannot be undone.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowDeleteAccount(true)}
+                className="self-start sm:self-auto px-4 py-2 rounded-full text-sm font-medium border border-red-500/50 text-red-400 hover:bg-red-500/10 transition-colors"
+              >
+                Delete account
+              </button>
+            </div>
+          </section>
+        )}
       </main>
+
+      {isOwnProfile && (
+        <DeleteAccountModal isOpen={showDeleteAccount} onClose={() => setShowDeleteAccount(false)} />
+      )}
 
       {showWatchedModal && (
         <>
