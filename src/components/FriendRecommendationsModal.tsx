@@ -12,6 +12,7 @@ import {
     markFriendRecommendationWatched,
     getSentFriendRecommendations,
 } from '@/lib/supabase-rest';
+import { notificationSuccess } from '@/lib/native/haptics';
 import { WatchlistButton } from '@/components/WatchlistButton';
 import Link from 'next/link';
 
@@ -275,6 +276,7 @@ export function FriendRecommendationsModal({
     const markAsWatched = async (recId: string) => {
         try {
             await markFriendRecommendationWatched(recId);
+            notificationSuccess();
             setRecommendations(prev =>
                 prev.map(rec =>
                     rec.id === recId ? { ...rec, isRead: true, isWatched: true, watchedAt: new Date().toISOString() } : rec

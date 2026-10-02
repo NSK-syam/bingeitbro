@@ -9,6 +9,9 @@ import {
   type WatchReminder,
 } from '@/lib/supabase-rest';
 import { formatLocalDateTimeInput, getResolvedTimeZone, parseLocalDateTimeInput } from '@/lib/local-datetime';
+import { isNativeApp } from '@/lib/native-app';
+import { cancelNativeWatchReminder, scheduleNativeWatchReminder } from '@/lib/native/watch-reminders';
+import { notificationSuccess } from '@/lib/native/haptics';
 
 interface ScheduleWatchButtonProps {
   movieId: string;
@@ -157,7 +160,10 @@ export function ScheduleWatchButton({
       setReminder(saved);
       setIsOpen(false);
 
-      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
+      if (isNativeApp()) {
+        notificationSuccess();
+        await scheduleNativeWatchReminder(saved);
+      } else if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
         try {
           await Notification.requestPermission();
         } catch {
@@ -180,6 +186,7 @@ export function ScheduleWatchButton({
     setError(null);
     try {
       await deleteWatchReminder(movieId);
+      void cancelNativeWatchReminder(movieId);
       setReminder(null);
       setIsOpen(false);
     } catch (err) {

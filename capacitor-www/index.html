@@ -5,16 +5,143 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>BingeItBro</title>
   <style>
-    html, body { margin: 0; height: 100%; background: #0A0A0C; color: #f5f5f5; font-family: -apple-system, system-ui, sans-serif; }
-    main { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 0 24px; text-align: center; }
-    button { background: #F59E0B; color: #0A0A0C; border: 0; border-radius: 999px; padding: 10px 24px; font-weight: 600; font-size: 16px; }
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; background: #0A0A0C; color: #f5f5f5; font-family: -apple-system, system-ui, sans-serif; -webkit-tap-highlight-color: transparent; }
+    body { padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom); }
+    header { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 48px 24px 24px; text-align: center; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #F59E0B; box-shadow: 0 0 0 6px rgba(245, 158, 11, 0.18); }
+    h1 { margin: 6px 0 0; font-size: 24px; }
+    p { margin: 0; color: #b5b5bd; line-height: 1.45; }
+    button { background: #F59E0B; color: #0A0A0C; border: 0; border-radius: 999px; padding: 11px 26px; font-weight: 600; font-size: 16px; margin-top: 6px; }
+    button:active { transform: scale(0.97); }
+    #saved { padding: 0 16px 32px; max-width: 560px; margin: 0 auto; }
+    #saved[hidden] { display: none; }
+    .meta { font-size: 12px; color: #8a8a93; text-align: center; margin-bottom: 18px; }
+    h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.16em; color: #8a8a93; margin: 20px 4px 8px; font-weight: 600; }
+    ul { list-style: none; margin: 0; padding: 0; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 16px; overflow: hidden; background: rgba(255, 255, 255, 0.03); }
+    li { padding: 12px 16px; border-top: 1px solid rgba(255, 255, 255, 0.05); }
+    li:first-child { border-top: 0; }
+    .t { font-size: 15px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .s { font-size: 12px; color: #8a8a93; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   </style>
 </head>
 <body>
-  <main>
+  <header>
+    <span class="dot" aria-hidden="true"></span>
     <h1>You're offline</h1>
-    <p>BingeItBro needs an internet connection. Check your connection and try again.</p>
-    <button type="button" onclick="window.location.href='https://bingeitbro.com'">Retry</button>
-  </main>
+    <p>BingeItBro needs an internet connection to load. Check your connection and try again.</p>
+    <button type="button" id="retry">Retry</button>
+  </header>
+  <main id="saved" hidden aria-live="polite"></main>
+  <script>
+    (function () {
+      var SITE = 'https://bingeitbro.com';
+      // Keys written by src/lib/native/offline-cache.ts (Capacitor Preferences).
+      var SECTIONS = [
+        { key: 'bib_offline_scheduled', heading: 'Scheduled watches', meta: 'when' },
+        { key: 'bib_offline_watchlist', heading: 'Watchlist', meta: '' },
+        { key: 'bib_offline_friend_recs', heading: 'From your friends', meta: 'note' }
+      ];
+
+      document.getElementById('retry').addEventListener('click', function () {
+        window.location.href = SITE;
+      });
+
+      // This static page has no @capacitor/core bundle. Capacitor injects its
+      // native bridge (window.Capacitor) into local pages: use the registered
+      // plugin proxy when present, otherwise call the native method directly.
+      function getPreferences() {
+        try {
+          var cap = window.Capacitor;
+          if (!cap) return null;
+          if (cap.Plugins && cap.Plugins.Preferences && typeof cap.Plugins.Preferences.get === 'function') {
+            return cap.Plugins.Preferences;
+          }
+          if (typeof cap.nativePromise === 'function') {
+            return {
+              get: function (options) { return cap.nativePromise('Preferences', 'get', options); }
+            };
+          }
+        } catch (e) {
+          /* fall through */
+        }
+        return null;
+      }
+
+      function formatWhen(value) {
+        if (!value) return '';
+        var d = new Date(value);
+        if (isNaN(d.getTime())) return '';
+        try {
+          return d.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+        } catch (e) {
+          return d.toString();
+        }
+      }
+
+      function el(tag, className, text) {
+        var node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text) node.textContent = text; // textContent only: cached titles are user data.
+        return node;
+      }
+
+      function parse(value) {
+        if (!value) return null;
+        try {
+          var parsed = JSON.parse(value);
+          return parsed && Array.isArray(parsed.items) ? parsed : null;
+        } catch (e) {
+          return null;
+        }
+      }
+
+      function render(entries) {
+        var root = document.getElementById('saved');
+        var latest = '';
+        var any = false;
+        var frag = document.createDocumentFragment();
+
+        entries.forEach(function (entry, i) {
+          var section = SECTIONS[i];
+          if (!entry || !entry.items.length) return;
+          any = true;
+          if (entry.savedAt && entry.savedAt > latest) latest = entry.savedAt;
+          frag.appendChild(el('h2', '', section.heading + ' (' + entry.items.length + ')'));
+          var list = el('ul');
+          entry.items.slice(0, 100).forEach(function (item) {
+            if (!item || typeof item.title !== 'string') return;
+            var li = el('li');
+            li.appendChild(el('div', 't', item.title + (item.year ? ' (' + item.year + ')' : '')));
+            var sub = section.meta === 'when' ? formatWhen(item.at) : section.meta === 'note' ? (item.note || '') : '';
+            if (sub) li.appendChild(el('div', 's', sub));
+            list.appendChild(li);
+          });
+          frag.appendChild(list);
+        });
+
+        if (!any) return;
+        var meta = el('p', 'meta', 'Your saved list' + (latest ? ' · updated ' + formatWhen(latest) : '') + ' · read-only');
+        root.appendChild(meta);
+        root.appendChild(frag);
+        root.hidden = false;
+      }
+
+      // Auto-retry when the connection comes back.
+      window.addEventListener('online', function () {
+        window.location.href = SITE;
+      });
+
+      var prefs = getPreferences();
+      if (!prefs || typeof prefs.get !== 'function') return;
+      Promise.all(SECTIONS.map(function (section) {
+        return Promise.resolve()
+          .then(function () { return prefs.get({ key: section.key }); })
+          .then(function (res) { return parse(res && res.value); })
+          .catch(function () { return null; });
+      })).then(render).catch(function () { /* keep the plain offline screen */ });
+    })();
+  </script>
 </body>
 </html>

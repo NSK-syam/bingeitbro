@@ -12,6 +12,8 @@ import type { TMDBMovie } from '@/lib/tmdb';
 import { Recommendation, OTTLink } from '@/types';
 import { MovieCard, StarRating, AvatarPickerModal } from '@/components';
 import { useWatched, useWatchlist } from '@/hooks';
+import { isNativeApp } from '@/lib/native-app';
+import { shareContent } from '@/lib/native/share';
 
 interface ProfilePageClientProps {
   userId: string;
@@ -1509,6 +1511,15 @@ export default function ProfilePageClient({ userId }: ProfilePageClientProps) {
               <button
                 onClick={() => {
                   const profileHandle = displayUser.username || resolvedUserId;
+                  if (isNativeApp()) {
+                    // Native app: OS share sheet (WhatsApp is one of the targets) with a public https link.
+                    void shareContent({
+                      title: `${displayUser.name} on BingeItBro`,
+                      text: `Check out ${displayUser.name}'s movie recommendations on BiB (Binge it bro)!`,
+                      url: `/profile/${profileHandle}`,
+                    });
+                    return;
+                  }
                   const profileUrl = `${window.location.origin}/profile/${profileHandle}`;
                   const message = `Check out ${displayUser.name}'s movie recommendations on BiB (Binge it bro)! ${profileUrl}`;
                   const whatsappUrl = `https://wa.me/?text=${encodeURIComponent(message)}`;

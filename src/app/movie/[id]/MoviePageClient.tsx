@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { WatchedButton } from '@/components/WatchedButton';
 import { WatchlistButton } from '@/components/WatchlistButton';
 import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
+import { NativeShareButton } from '@/components/native/NativeShareButton';
 import { useWatched } from '@/hooks';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
@@ -554,6 +555,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
                     Send
                   </button>
                 </div>
+                <NativeShareButton title={title} containerClassName="col-span-2 flex justify-center" />
               </div>
             </div>
 

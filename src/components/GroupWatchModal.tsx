@@ -50,6 +50,7 @@ import {
   type WatchGroupPick,
   type WatchGroupSharedMovie,
 } from '@/lib/supabase-rest';
+import { notificationSuccess, selection } from '@/lib/native/haptics';
 
 type SearchMediaResult = {
   id: number;
@@ -809,6 +810,7 @@ export function GroupWatchModal({
       } else {
         await voteOnWatchGroupPick(pick.id, user.id, voteValue);
       }
+      selection();
       if (activeGroupId) {
         await loadActiveGroupData(activeGroupId);
       }
@@ -825,6 +827,7 @@ export function GroupWatchModal({
     setError('');
     try {
       await markWatchGroupPickWatched(pick.id, user.id);
+      notificationSuccess();
       if (activeGroupId) {
         await loadActiveGroupData(activeGroupId);
       }

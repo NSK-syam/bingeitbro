@@ -1,6 +1,7 @@
 'use client';
 
 import { useWatchlist } from '@/hooks';
+import { impactLight } from '@/lib/native/haptics';
 
 interface WatchlistButtonProps {
   movieId: string;
@@ -23,6 +24,7 @@ export function WatchlistButton({ movieId, title, poster, size = 'md', showLabel
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!inWatchlist) impactLight();
     toggleWatchlist(movieId, title, poster);
   };
 

@@ -35,6 +35,7 @@ import {
   type WatchGroupSharedMovie,
 } from '@/lib/supabase-rest';
 import { ENGLISH_THEMES, TELUGU_THEMES } from '@/lib/chat-themes';
+import { canShareContent, shareContent } from '@/lib/native/share';
 
 type ChatTab = 'direct' | 'groups';
 
@@ -886,15 +887,14 @@ export function HelpBotWidget() {
         setMessageActionMenu(null);
         return;
       }
-      if (action === 'forward' && typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
-        try {
-          await navigator.share({ text });
+      if (action === 'forward' && canShareContent()) {
+        // Native share sheet in the app, navigator.share on the web.
+        if ((await shareContent({ text })) === 'shared') {
           setChatActionToast('Forwarded');
           setMessageActionMenu(null);
           return;
-        } catch {
-          // Fallback to copy below.
         }
+        // Fallback to copy below.
       }
       try {
         await navigator.clipboard.writeText(text);

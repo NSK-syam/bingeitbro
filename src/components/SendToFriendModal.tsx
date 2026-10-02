@@ -12,6 +12,7 @@ import {
     type FriendForSelect,
     type WatchGroup,
 } from '@/lib/supabase-rest';
+import { notificationSuccess } from '@/lib/native/haptics';
 import { notifyFriendRecommendationEmails } from '@/lib/notifications';
 import { getResolvedTimeZone, parseLocalDateTimeInput } from '@/lib/local-datetime';
 
@@ -380,6 +381,7 @@ export function SendToFriendModal(props: SendToFriendModalProps) {
                 setStatusMessage(messageParts.join(' '));
             }
             setSuccess(true);
+            notificationSuccess();
             setTimeout(() => {
                 onClose();
                 setSelectedFriends(new Set());

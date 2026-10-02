@@ -14,6 +14,8 @@ import {
   getResolvedTimeZone,
   parseLocalDateTimeInput,
 } from '@/lib/local-datetime';
+import { cancelNativeWatchReminder, scheduleNativeWatchReminder } from '@/lib/native/watch-reminders';
+import { notificationSuccess } from '@/lib/native/haptics';
 
 type SearchMovie = {
   id: number;
@@ -249,13 +251,15 @@ export function ScheduleWatchModal({
     setError('');
     setSuccess('');
     try {
-      await upsertWatchReminder({
+      const saved = await upsertWatchReminder({
         movieId: `tmdb-${selected.id}`,
         movieTitle: selected.title,
         moviePoster: selectedPoster || null,
         movieYear: toYear(selected.release_date),
         remindAt: remindAtIso,
       });
+      notificationSuccess();
+      void scheduleNativeWatchReminder(saved);
       await loadScheduled();
       onScheduled?.();
       setSuccess(`Scheduled "${selected.title}". If reminder email goes to Spam, click "Report not spam" to keep BiB emails in Primary.`);
@@ -273,6 +277,7 @@ export function ScheduleWatchModal({
     setSuccess('');
     try {
       await deleteWatchReminder(movieId);
+      void cancelNativeWatchReminder(movieId);
       await loadScheduled();
       onScheduled?.();
       setSuccess('Removed scheduled reminder.');

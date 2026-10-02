@@ -7,6 +7,8 @@ import {
   pollDueFriendRecommendationReminders,
   type FriendRecommendationReminder,
 } from '@/lib/supabase-rest';
+import { isNativeApp } from '@/lib/native-app';
+import { showNativeFriendReminders } from '@/lib/native/watch-reminders';
 
 type ToastReminder = FriendRecommendationReminder & { toastId: string };
 
@@ -56,6 +58,10 @@ export function FriendRecommendationReminderCenter() {
 
     const showBrowserNotifications = async (reminders: FriendRecommendationReminder[]) => {
       if (typeof window === 'undefined' || reminders.length === 0) return;
+      if (isNativeApp()) {
+        await showNativeFriendReminders(reminders, getMoviePath);
+        return;
+      }
       if (!('Notification' in window)) return;
 
       let permission = Notification.permission;

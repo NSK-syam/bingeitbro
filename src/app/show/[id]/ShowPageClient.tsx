@@ -6,6 +6,7 @@ import { SendToFriendModal } from '@/components/SendToFriendModal';
 import { WatchlistButton } from '@/components/WatchlistButton';
 import { WatchedButton } from '@/components/WatchedButton';
 import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
+import { NativeShareButton } from '@/components/native/NativeShareButton';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
@@ -322,6 +323,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
                   Send
                 </button>
               </div>
+              <NativeShareButton title={title} containerClassName="col-span-2 flex justify-center" />
             </div>
           </div>
 
