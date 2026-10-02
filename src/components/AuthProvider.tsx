@@ -7,6 +7,7 @@ import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { hasNativeAuthBridge, postNativeAuthMessage } from '@/lib/native-webview';
 import { isNativeApp, signInWithGoogleNative } from '@/lib/native-app';
+import { runNativeLogoutCleanup } from '@/lib/native/logout-cleanup';
 import { BibNative, generateRawNonce, isAppleSignInCanceled, isBibNativeAvailable } from '@/lib/native/bib-native';
 import { trackFunnelEvent } from '@/lib/funnel';
 import { BirthdayPopup } from './BirthdayPopup';
@@ -491,6 +492,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     if (typeof window === 'undefined') return;
+
+    // Native app: finish device cleanup (reminders, caches, push token, widget) while the
+    // session is still valid and before callers navigate away. Bounded; never throws.
+    if (isNativeApp()) {
+      await runNativeLogoutCleanup({ userId: user?.id ?? null, accessToken: session?.access_token ?? null });
+    }
 
     if (isConfigured) {
       try {
