@@ -162,7 +162,7 @@ export function ScheduleWatchButton({
 
       if (isNativeApp()) {
         notificationSuccess();
-        await scheduleNativeWatchReminder(saved);
+        await scheduleNativeWatchReminder(saved, user.id);
       } else if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'default') {
         try {
           await Notification.requestPermission();

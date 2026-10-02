@@ -14,6 +14,7 @@ import {
   getResolvedTimeZone,
   parseLocalDateTimeInput,
 } from '@/lib/local-datetime';
+import { useAuth } from './AuthProvider';
 import { cancelNativeWatchReminder, scheduleNativeWatchReminder } from '@/lib/native/watch-reminders';
 import { notificationSuccess } from '@/lib/native/haptics';
 
@@ -77,6 +78,7 @@ export function ScheduleWatchModal({
   onClose: () => void;
   onScheduled?: () => void;
 }) {
+  const { user } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchMovie[]>([]);
   const [loading, setLoading] = useState(false);
@@ -259,7 +261,7 @@ export function ScheduleWatchModal({
         remindAt: remindAtIso,
       });
       notificationSuccess();
-      void scheduleNativeWatchReminder(saved);
+      if (user?.id) void scheduleNativeWatchReminder(saved, user.id);
       await loadScheduled();
       onScheduled?.();
       setSuccess(`Scheduled "${selected.title}". If reminder email goes to Spam, click "Report not spam" to keep BiB emails in Primary.`);

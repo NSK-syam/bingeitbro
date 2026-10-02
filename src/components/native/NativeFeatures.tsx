@@ -5,14 +5,8 @@ import { useAuth } from '@/components/AuthProvider';
 import { useIsNativeApp } from '@/lib/native/use-is-native-app';
 import { getRecentFriendRecommendations, getUpcomingWatchReminders } from '@/lib/supabase-rest';
 import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
-import { safeInAppPath, syncNativeWatchReminders } from '@/lib/native/watch-reminders';
-import {
-  clearAccountOfflineCache,
-  readOfflineCache,
-  writeOfflineCache,
-  type OfflineCacheEntry,
-  type OfflineItem,
-} from '@/lib/native/offline-cache';
+import { getNativeAccountSync, safeInAppPath } from '@/lib/native/watch-reminders';
+import type { OfflineItem, SavedLists } from '@/lib/native/offline-cache';
 
 /**
  * Native-only device features (Capacitor app). Mount once inside AuthProvider.
@@ -21,7 +15,9 @@ import {
  * - Opens the right title when a local watch-reminder notification is tapped.
  * - Re-syncs on-device watch reminders with the server on start / resume.
  * - Caches watchlist, scheduled watches and recent friend picks into
- *   Capacitor Preferences while online.
+ *   Capacitor Preferences while online (private lists scoped to the account).
+ * - On sign-out / account switch (online or offline) cancels reminders and
+ *   clears private caches; see lib/native/account-sync-core.ts.
  * - Shows an offline banner and a read-only "your saved list" view offline.
  */
 export function NativeFeatures() {
@@ -50,13 +46,32 @@ function watchlistToItems(state: unknown): OfflineItem[] {
     .sort((a, b) => String(b.at || '').localeCompare(String(a.at || '')));
 }
 
-function cacheWatchlistFromLocalStorage(userId: string | null) {
+/** The watchlist is device-local (localStorage), so its mirror is not account-scoped. */
+function cacheWatchlistFromLocalStorage() {
+  const sync = getNativeAccountSync();
+  if (!sync) return;
   try {
     const raw = window.localStorage.getItem(WATCHLIST_STORAGE_KEY);
-    void writeOfflineCache('watchlist', userId, watchlistToItems(raw ? JSON.parse(raw) : {}));
+    void sync.writeWatchlist(watchlistToItems(raw ? JSON.parse(raw) : {})).catch(() => {});
   } catch {
     // Ignore malformed storage.
   }
+}
+
+function toFriendRecItems(
+  rows: Awaited<ReturnType<typeof getRecentFriendRecommendations>>,
+): OfflineItem[] {
+  return rows.map((rec) => ({
+    id: rec.id,
+    title: rec.movie_title || 'A movie',
+    path: rec.tmdb_id
+      ? `/movie/tmdb-${encodeURIComponent(String(rec.tmdb_id))}`
+      : rec.recommendation_id
+        ? `/movie/${encodeURIComponent(rec.recommendation_id)}`
+        : undefined,
+    at: rec.created_at,
+    note: rec.sender?.name ? `From ${rec.sender.name}` : null,
+  }));
 }
 
 function NativeFeaturesInner() {
@@ -95,63 +110,33 @@ function NativeFeaturesInner() {
     };
   }, []);
 
-  // 2. Server -> device sync (reminders + offline caches).
+  // 2a. Account transitions: runs whenever auth settles, online or offline.
+  // Sign-out / switch cancels reminders and clears private caches (queued).
+  useEffect(() => {
+    if (loading) return;
+    void getNativeAccountSync()?.setAccount(userId).catch(() => {});
+  }, [loading, userId]);
+
+  // 2b. Server -> device sync (reminders + private caches). Results from a
+  // previous account / generation are discarded inside the controller.
   const syncFromServer = useCallback(
     async (force: boolean) => {
       if (loading) return;
       if (!force && Date.now() - lastSyncRef.current < RESYNC_MIN_INTERVAL_MS) return;
       lastSyncRef.current = Date.now();
 
-      cacheWatchlistFromLocalStorage(userId);
+      cacheWatchlistFromLocalStorage();
 
-      if (!userId) {
-        // Signed out: drop account data from the device.
-        await syncNativeWatchReminders([]);
-        await clearAccountOfflineCache();
-        return;
-      }
-
-      const [remindersResult, recsResult] = await Promise.allSettled([
-        getUpcomingWatchReminders(),
-        getRecentFriendRecommendations(userId, 20),
-      ]);
-
-      if (remindersResult.status === 'fulfilled') {
-        const now = Date.now();
-        const upcoming = remindersResult.value
-          .filter((r) => !r.canceledAt && new Date(r.remindAt).getTime() > now)
-          .sort((a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime());
-        await syncNativeWatchReminders(upcoming);
-        await writeOfflineCache(
-          'scheduled',
-          userId,
-          upcoming.map((r) => ({
-            id: r.id,
-            title: r.movieTitle,
-            poster: r.moviePoster,
-            year: r.movieYear,
-            path: getWatchReminderOpenPath(r.movieId),
-            at: r.remindAt,
-          })),
-        );
-      }
-
-      if (recsResult.status === 'fulfilled') {
-        await writeOfflineCache(
-          'friendRecs',
-          userId,
-          recsResult.value.map((rec) => ({
-            id: rec.id,
-            title: rec.movie_title || 'A movie',
-            path: rec.tmdb_id
-              ? `/movie/tmdb-${encodeURIComponent(String(rec.tmdb_id))}`
-              : rec.recommendation_id
-                ? `/movie/${encodeURIComponent(rec.recommendation_id)}`
-                : undefined,
-            at: rec.created_at,
-            note: rec.sender?.name ? `From ${rec.sender.name}` : null,
-          })),
-        );
+      const sync = getNativeAccountSync();
+      if (!sync || !userId) return;
+      const forUser = userId;
+      try {
+        await sync.sync(forUser, {
+          reminders: () => getUpcomingWatchReminders(),
+          friendRecs: async () => toFriendRecItems(await getRecentFriendRecommendations(forUser, 20)),
+        });
+      } catch {
+        // Next sync retries.
       }
     },
     [loading, userId],
@@ -166,11 +151,11 @@ function NativeFeaturesInner() {
   useEffect(() => {
     const onLocalSync = (event: Event) => {
       const detail = (event as CustomEvent<{ key?: string }>).detail;
-      if (detail?.key === WATCHLIST_STORAGE_KEY) cacheWatchlistFromLocalStorage(userId);
+      if (detail?.key === WATCHLIST_STORAGE_KEY) cacheWatchlistFromLocalStorage();
     };
     window.addEventListener(LOCAL_STORAGE_SYNC_EVENT, onLocalSync);
     return () => window.removeEventListener(LOCAL_STORAGE_SYNC_EVENT, onLocalSync);
-  }, [userId]);
+  }, []);
 
   // 3. App resume -> throttled re-sync.
   useEffect(() => {
@@ -264,16 +249,17 @@ function NativeFeaturesInner() {
           Back online
         </div>
       )}
-      {savedOpen && <OfflineSavedList online={online} onClose={() => setSavedOpen(false)} />}
+      {savedOpen && (
+        <OfflineSavedList
+          online={online}
+          // While auth is still resolving, fall back to the last signed-in owner stored on the device.
+          ownerHint={loading ? undefined : userId}
+          onClose={() => setSavedOpen(false)}
+        />
+      )}
     </>
   );
 }
-
-type SavedSections = {
-  scheduled: OfflineCacheEntry | null;
-  watchlist: OfflineCacheEntry | null;
-  friendRecs: OfflineCacheEntry | null;
-};
 
 function formatWhen(value?: string | null): string {
   if (!value) return '';
@@ -282,20 +268,35 @@ function formatWhen(value?: string | null): string {
   return date.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function OfflineSavedList({ online, onClose }: { online: boolean; onClose: () => void }) {
-  const [sections, setSections] = useState<SavedSections | null>(null);
+function OfflineSavedList({
+  online,
+  ownerHint,
+  onClose,
+}: {
+  online: boolean;
+  /** Signed-in user id, null when signed out, undefined while auth is loading. */
+  ownerHint: string | null | undefined;
+  onClose: () => void;
+}) {
+  const [sections, setSections] = useState<SavedLists | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([readOfflineCache('scheduled'), readOfflineCache('watchlist'), readOfflineCache('friendRecs')]).then(
-      ([scheduled, watchlist, friendRecs]) => {
-        if (!cancelled) setSections({ scheduled, watchlist, friendRecs });
-      },
-    );
+    const sync = getNativeAccountSync();
+    if (!sync) return;
+    // Private lists are returned only when their stored userId matches the owner.
+    void sync
+      .readSaved(ownerHint)
+      .then((saved) => {
+        if (!cancelled) setSections(saved);
+      })
+      .catch(() => {
+        if (!cancelled) setSections({ owner: null, watchlist: null, scheduled: null, friendRecs: null });
+      });
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [ownerHint]);
 
   const savedAt = [sections?.scheduled?.savedAt, sections?.watchlist?.savedAt, sections?.friendRecs?.savedAt]
     .filter((v): v is string => !!v)

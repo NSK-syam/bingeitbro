@@ -3,219 +3,120 @@
 import { isNativeApp } from '@/lib/native-app';
 import type { FriendRecommendationReminder, WatchReminder } from '@/lib/supabase-rest';
 import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
+import {
+  createNativeAccountSync,
+  readNotificationExtra,
+  type NativeAccountSync,
+  type NotificationsPort,
+  type StoragePort,
+} from '@/lib/native/account-sync-core';
 
 /**
- * On-device (Capacitor LocalNotifications) watch reminders for the native app.
- * The server keeps the source of truth (watch_reminders table + email); these
- * helpers mirror it into OS-scheduled notifications so reminders fire even
- * when the app is closed. Every function is a no-op on the web.
+ * Capacitor wiring for the account-scoped native sync (on-device watch
+ * reminders + offline caches). The logic, queueing and account checks live in
+ * account-sync-core.ts. Every export is a no-op on the web.
  */
 
-type LocalNotificationsModule = typeof import('@capacitor/local-notifications');
+export { FRIEND_REMINDER_KIND, WATCH_REMINDER_KIND, notificationIdFor } from '@/lib/native/account-sync-core';
 
-export const WATCH_REMINDER_KIND = 'bib-watch-reminder';
-export const FRIEND_REMINDER_KIND = 'bib-friend-reminder';
-
-export type NativeNotificationExtra = {
-  kind: typeof WATCH_REMINDER_KIND | typeof FRIEND_REMINDER_KIND;
-  reminderId: string;
-  movieId: string;
-  /** In-app path opened when the notification is tapped. */
-  path: string;
-  remindAt?: string;
+const notificationsPort: NotificationsPort = {
+  async getPending() {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    const { notifications } = await LocalNotifications.getPending();
+    return notifications.map((n) => ({ id: n.id, extra: n.extra }));
+  },
+  async cancel(ids) {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    await LocalNotifications.cancel({ notifications: ids.map((id) => ({ id })) });
+  },
+  async schedule(notifications) {
+    const { LocalNotifications } = await import('@capacitor/local-notifications');
+    await LocalNotifications.schedule({ notifications });
+  },
+  async ensurePermission(prompt) {
+    try {
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      const status = await LocalNotifications.checkPermissions();
+      if (status.display === 'granted') return true;
+      if (!prompt || status.display === 'denied') return false;
+      const requested = await LocalNotifications.requestPermissions();
+      return requested.display === 'granted';
+    } catch {
+      return false;
+    }
+  },
 };
 
-function loadPlugin(): Promise<LocalNotificationsModule> {
-  return import('@capacitor/local-notifications');
-}
+const storagePort: StoragePort = {
+  async get(key) {
+    const { Preferences } = await import('@capacitor/preferences');
+    const { value } = await Preferences.get({ key });
+    return value;
+  },
+  async set(key, value) {
+    const { Preferences } = await import('@capacitor/preferences');
+    await Preferences.set({ key, value });
+  },
+  async remove(key) {
+    const { Preferences } = await import('@capacitor/preferences');
+    await Preferences.remove({ key });
+  },
+};
 
-/**
- * Stable positive 31-bit id from a reminder id (Android requires a Java int).
- * FNV-1a; namespaced so watch and friend reminders never collide.
- */
-export function notificationIdFor(namespace: string, reminderId: string): number {
-  let hash = 0x811c9dc5;
-  const input = `${namespace}:${reminderId}`;
-  for (let i = 0; i < input.length; i += 1) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 0x01000193);
-  }
-  const id = hash & 0x7fffffff;
-  return id === 0 ? 1 : id;
-}
+let controller: NativeAccountSync | null = null;
 
-function isFutureReminder(reminder: WatchReminder, now: number): boolean {
-  if (reminder.canceledAt) return false;
-  const at = new Date(reminder.remindAt).getTime();
-  return Number.isFinite(at) && at > now + 5_000;
-}
-
-function toWatchNotification(reminder: WatchReminder) {
-  const extra: NativeNotificationExtra = {
-    kind: WATCH_REMINDER_KIND,
-    reminderId: reminder.id,
-    movieId: reminder.movieId,
-    path: getWatchReminderOpenPath(reminder.movieId),
-    remindAt: reminder.remindAt,
-  };
-  return {
-    id: notificationIdFor(WATCH_REMINDER_KIND, reminder.id),
-    title: 'Time to watch 🍿',
-    body: `${reminder.movieTitle}${reminder.movieYear ? ` (${reminder.movieYear})` : ''} is on your schedule.`,
-    schedule: { at: new Date(reminder.remindAt), allowWhileIdle: true },
-    // Inexact on Android: never bounce the user to the "Alarms & reminders" settings screen.
-    isExactNotification: false,
-    extra,
-  };
-}
-
-function readExtra(value: unknown): NativeNotificationExtra | null {
-  if (!value || typeof value !== 'object') return null;
-  const extra = value as Partial<NativeNotificationExtra>;
-  if (extra.kind !== WATCH_REMINDER_KIND && extra.kind !== FRIEND_REMINDER_KIND) return null;
-  if (typeof extra.path !== 'string') return null;
-  return extra as NativeNotificationExtra;
+/** The app-wide controller, or null on the web. */
+export function getNativeAccountSync(): NativeAccountSync | null {
+  if (!isNativeApp()) return null;
+  controller ??= createNativeAccountSync({
+    notifications: notificationsPort,
+    storage: storagePort,
+    pathForMovie: getWatchReminderOpenPath,
+  });
+  return controller;
 }
 
 /** Only allow in-app relative paths from notification payloads. */
 export function safeInAppPath(extra: unknown): string | null {
-  const parsed = readExtra(extra);
+  const parsed = readNotificationExtra(extra);
   if (!parsed) return null;
   const path = parsed.path;
   if (!path.startsWith('/') || path.startsWith('//')) return null;
   return path;
 }
 
-async function hasPermission(mod: LocalNotificationsModule, prompt: boolean): Promise<boolean> {
+/** After the user saves / reschedules a watch reminder. Ignored if `userId` is no longer the signed-in account. */
+export async function scheduleNativeWatchReminder(reminder: WatchReminder, userId: string): Promise<void> {
+  const sync = getNativeAccountSync();
+  if (!sync) return;
   try {
-    const status = await mod.LocalNotifications.checkPermissions();
-    if (status.display === 'granted') return true;
-    if (!prompt || status.display === 'denied') return false;
-    const requested = await mod.LocalNotifications.requestPermissions();
-    return requested.display === 'granted';
-  } catch {
-    return false;
-  }
-}
-
-async function cancelWhere(
-  mod: LocalNotificationsModule,
-  predicate: (extra: NativeNotificationExtra, id: number) => boolean,
-): Promise<void> {
-  const { notifications } = await mod.LocalNotifications.getPending();
-  const ids = notifications
-    .filter((n) => {
-      const extra = readExtra(n.extra);
-      return extra ? predicate(extra, n.id) : false;
-    })
-    .map((n) => ({ id: n.id }));
-  if (ids.length > 0) {
-    await mod.LocalNotifications.cancel({ notifications: ids });
-  }
-}
-
-/**
- * Called right after the user saves / reschedules a watch reminder. Asks for
- * notification permission (user-initiated, so a prompt is appropriate), then
- * replaces any pending notification for the same title.
- */
-export async function scheduleNativeWatchReminder(reminder: WatchReminder): Promise<void> {
-  if (!isNativeApp()) return;
-  try {
-    const mod = await loadPlugin();
-    await cancelWhere(mod, (extra) => extra.kind === WATCH_REMINDER_KIND && extra.movieId === reminder.movieId);
-    if (!isFutureReminder(reminder, Date.now())) return;
-    if (!(await hasPermission(mod, true))) return;
-    await mod.LocalNotifications.schedule({ notifications: [toWatchNotification(reminder)] });
+    await sync.scheduleReminder(reminder, userId);
   } catch {
     // Server-side reminder (email / in-app toast) still works.
   }
 }
 
-/** Called when the user removes a scheduled watch. */
+/** After the user removes a scheduled watch. */
 export async function cancelNativeWatchReminder(movieId: string): Promise<void> {
-  if (!isNativeApp()) return;
+  const sync = getNativeAccountSync();
+  if (!sync) return;
   try {
-    const mod = await loadPlugin();
-    await cancelWhere(mod, (extra) => extra.kind === WATCH_REMINDER_KIND && extra.movieId === movieId);
+    await sync.cancelReminder(movieId);
   } catch {
     // Ignore.
   }
 }
 
-/**
- * Reconcile OS-scheduled notifications with the server list (app start /
- * resume): schedule missing or moved reminders, cancel stale ones. Prompts
- * for permission only when there is something to schedule; pass an empty
- * list on sign-out to clear everything.
- */
-export async function syncNativeWatchReminders(reminders: WatchReminder[]): Promise<void> {
-  if (!isNativeApp()) return;
-  try {
-    const mod = await loadPlugin();
-    const now = Date.now();
-    const desired = new Map<number, WatchReminder>();
-    reminders
-      .filter((reminder) => isFutureReminder(reminder, now))
-      .forEach((reminder) => desired.set(notificationIdFor(WATCH_REMINDER_KIND, reminder.id), reminder));
-
-    const { notifications: pending } = await mod.LocalNotifications.getPending();
-    const alreadyScheduled = new Set<number>();
-    const stale: { id: number }[] = [];
-    pending.forEach((n) => {
-      const extra = readExtra(n.extra);
-      if (!extra || extra.kind !== WATCH_REMINDER_KIND) return;
-      const want = desired.get(n.id);
-      if (want && want.remindAt === extra.remindAt && want.movieId === extra.movieId) {
-        alreadyScheduled.add(n.id);
-      } else {
-        stale.push({ id: n.id });
-      }
-    });
-    if (stale.length > 0) {
-      await mod.LocalNotifications.cancel({ notifications: stale });
-    }
-
-    const toSchedule = [...desired.entries()]
-      .filter(([id]) => !alreadyScheduled.has(id))
-      .map(([, reminder]) => toWatchNotification(reminder));
-    if (toSchedule.length === 0) return;
-    // Only reached when the user has upcoming scheduled watches, so asking here is in context.
-    if (!(await hasPermission(mod, true))) return;
-    await mod.LocalNotifications.schedule({ notifications: toSchedule });
-  } catch {
-    // Ignore: next sync retries.
-  }
-}
-
-/**
- * Show a friend's due reminder as an immediate local notification (replaces
- * the web Notification API inside the app). Does not prompt for permission.
- */
+/** Due friend reminders as immediate local notifications (replaces the web Notification API in the app). */
 export async function showNativeFriendReminders(
   reminders: FriendRecommendationReminder[],
   getPath: (reminder: FriendRecommendationReminder) => string,
+  userId: string,
 ): Promise<void> {
-  if (!isNativeApp() || reminders.length === 0) return;
+  const sync = getNativeAccountSync();
+  if (!sync) return;
   try {
-    const mod = await loadPlugin();
-    if (!(await hasPermission(mod, false))) return;
-    await mod.LocalNotifications.schedule({
-      notifications: reminders.map((reminder) => {
-        const extra: NativeNotificationExtra = {
-          kind: FRIEND_REMINDER_KIND,
-          reminderId: reminder.id,
-          movieId: reminder.movieId,
-          path: getPath(reminder),
-        };
-        return {
-          id: notificationIdFor(FRIEND_REMINDER_KIND, reminder.id),
-          title: 'Friend reminder',
-          body: `${reminder.senderName} reminded you to watch ${reminder.movieTitle}`,
-          extra,
-        };
-      }),
-    });
+    await sync.showFriendReminders(reminders, (r) => getPath(r as FriendRecommendationReminder), userId);
   } catch {
     // The in-app toast is still shown.
   }

@@ -37,11 +37,15 @@
   <script>
     (function () {
       var SITE = 'https://bingeitbro.com';
-      // Keys written by src/lib/native/offline-cache.ts (Capacitor Preferences).
+      // Keys written by src/lib/native/account-sync-core.ts (Capacitor Preferences).
+      // Private sections are shown only for the signed-in owner recorded in
+      // OWNER_KEY (set at sign-in, removed at sign-out). The watchlist is
+      // device-local, like its localStorage source.
+      var OWNER_KEY = 'bib_offline_owner';
       var SECTIONS = [
-        { key: 'bib_offline_scheduled', heading: 'Scheduled watches', meta: 'when' },
-        { key: 'bib_offline_watchlist', heading: 'Watchlist', meta: '' },
-        { key: 'bib_offline_friend_recs', heading: 'From your friends', meta: 'note' }
+        { key: 'bib_offline_scheduled', heading: 'Scheduled watches', meta: 'when', private: true },
+        { key: 'bib_offline_watchlist', heading: 'Watchlist', meta: '', private: false },
+        { key: 'bib_offline_friend_recs', heading: 'From your friends', meta: 'note', private: true }
       ];
 
       document.getElementById('retry').addEventListener('click', function () {
@@ -97,7 +101,7 @@
         }
       }
 
-      function render(entries) {
+      function render(owner, entries) {
         var root = document.getElementById('saved');
         var latest = '';
         var any = false;
@@ -106,6 +110,7 @@
         entries.forEach(function (entry, i) {
           var section = SECTIONS[i];
           if (!entry || !entry.items.length) return;
+          if (section.private && (!owner || entry.userId !== owner)) return;
           any = true;
           if (entry.savedAt && entry.savedAt > latest) latest = entry.savedAt;
           frag.appendChild(el('h2', '', section.heading + ' (' + entry.items.length + ')'));
@@ -135,12 +140,17 @@
 
       var prefs = getPreferences();
       if (!prefs || typeof prefs.get !== 'function') return;
-      Promise.all(SECTIONS.map(function (section) {
+      function readKey(key) {
         return Promise.resolve()
-          .then(function () { return prefs.get({ key: section.key }); })
-          .then(function (res) { return parse(res && res.value); })
+          .then(function () { return prefs.get({ key: key }); })
+          .then(function (res) { return res && typeof res.value === 'string' ? res.value : null; })
           .catch(function () { return null; });
-      })).then(render).catch(function () { /* keep the plain offline screen */ });
+      }
+      Promise.all([readKey(OWNER_KEY)].concat(SECTIONS.map(function (section) {
+        return readKey(section.key).then(parse);
+      }))).then(function (values) {
+        render(values[0] || null, values.slice(1));
+      }).catch(function () { /* keep the plain offline screen */ });
     })();
   </script>
 </body>

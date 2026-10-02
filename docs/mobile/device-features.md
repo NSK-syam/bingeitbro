@@ -19,12 +19,12 @@ the resume event.
     `LocalNotifications.requestPermissions()`, cancels any pending notification for the same
     title, then schedules a notification for `remindAt`.
   - `cancelNativeWatchReminder(movieId)`: runs when a schedule is removed.
-  - `syncNativeWatchReminders(reminders)`: runs on app start and on resume (throttled to once a
-    minute). It fetches `getUpcomingWatchReminders()`, schedules future reminders that are missing
-    or have moved, and cancels stale ones. After sign-out it is called with an empty list, which
-    clears every reminder.
+  - `getNativeAccountSync().sync(userId, …)`: runs on app start and on resume (throttled to once
+    a minute). It fetches `getUpcomingWatchReminders()`, schedules future reminders that are
+    missing or have moved, and cancels stale ones. On sign-out or an account switch, every
+    reminder is cancelled (see section 5).
   - Notification ids are a stable 31-bit FNV-1a hash of the reminder id, so they fit in a Java
-    `int`. `extra` carries `{ kind, reminderId, movieId, path, remindAt }`.
+    `int`. `extra` carries `{ kind, reminderId, movieId, path, remindAt, userId }`.
   - On Android, reminders use `isExactNotification: false` with `allowWhileIdle: true`. The app
     never sends the user to the "Alarms & reminders" settings screen, but a reminder can arrive a
     few minutes late.
@@ -96,6 +96,42 @@ There is no pull-to-refresh in the app, so it has no haptic.
   - It renders the cached titles with `textContent` only. If the bridge or the data is missing,
     it shows just the offline message.
   - It retries automatically on the `online` event, and also with the **Retry** button.
+
+### 5. Account scoping and the native sync queue
+
+All of the logic lives in `src/lib/native/account-sync-core.ts`. It has no imports, and the
+plugins are injected into it. `watch-reminders.ts` wires in the Capacitor plugins and exposes a
+singleton, `getNativeAccountSync()`.
+
+- **One serial queue:** every native mutation goes through it. That covers scheduling,
+  cancelling, cache writes, and clearing reminders and caches on an account change. A clear can
+  never interleave with an older mutation that is still running.
+- **Account changes:** `NativeFeatures` calls `setAccount(userId)` whenever auth settles, online
+  or offline. Any change bumps a generation counter. It also cancels every notification this app
+  scheduled and removes `bib_offline_scheduled` and `bib_offline_friend_recs`. Finally it writes
+  `bib_offline_owner` with the new user id, or removes it on sign-out.
+- **First launch:** a stored owner that differs from the signed-in user also triggers the
+  clear. This covers a sign-out or account switch that happened in an earlier session.
+- **Stale results are dropped:** `sync()`, `scheduleReminder()` and `showFriendReminders()`
+  capture the generation and account before they start. They re-check it after every `await`,
+  both the network fetches and each plugin call, and discard stale results.
+- **Private lists are tagged with an owner:** scheduled watches and friend recommendations
+  store the owner's `userId`.
+  - The in-app saved list shows them only when that id matches the current user, or the stored
+    owner while auth is still loading.
+  - `capacitor-www/index.html` shows them only when they match `bib_offline_owner`. With no
+    owner it shows no private data.
+- **Watchlist stays device-wide:** it comes from localStorage and is device-local today, so it
+  is cached with `userId: null` and shown for any account.
+- **Tests:** `node scripts/mobile/test-native-account-sync.mjs` runs `node:test` with mocked
+  plugins. It needs Node 22.18+ or 23.6+ for native TypeScript type stripping. It covers:
+  - a sign-out during a slow fetch
+  - a sign-out while a queued mutation is in progress
+  - an offline A→B switch, and A's data left over after a restart
+  - same-account persistence
+  - owner filtering
+  - stale schedule and friend-reminder calls
+  - recovery from a failed mutation
 
 ## Mounting
 

@@ -41,6 +41,7 @@ export function FriendRecommendationReminderCenter() {
 
   useEffect(() => {
     if (!user?.id) return;
+    const userId = user.id;
     let cancelled = false;
 
     const pushToast = (reminders: FriendRecommendationReminder[]) => {
@@ -59,7 +60,7 @@ export function FriendRecommendationReminderCenter() {
     const showBrowserNotifications = async (reminders: FriendRecommendationReminder[]) => {
       if (typeof window === 'undefined' || reminders.length === 0) return;
       if (isNativeApp()) {
-        await showNativeFriendReminders(reminders, getMoviePath);
+        await showNativeFriendReminders(reminders, getMoviePath, userId);
         return;
       }
       if (!('Notification' in window)) return;
