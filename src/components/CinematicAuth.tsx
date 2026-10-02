@@ -7,6 +7,7 @@ import { useAuth } from './AuthProvider';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { hasNativeAuthBridge } from '@/lib/native-webview';
 import { isNativeApp } from '@/lib/native-app';
+import { AppleSignInButton } from './native/AppleSignInButton';
 import { trackFunnelEvent } from '@/lib/funnel';
 
 declare global {
@@ -57,7 +58,7 @@ function loadTurnstileScript(): Promise<void> {
 
 export function CinematicAuth() {
     const router = useRouter();
-    const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
+    const { signIn, signUp, signInWithGoogle, signInWithApple, checkUsernameAvailable } = useAuth();
 
     // Animation Phases: 'viewfinder' -> 'auth'
     const [phase, setPhase] = useState<'viewfinder' | 'auth'>('viewfinder');
@@ -231,6 +232,22 @@ export function CinematicAuth() {
         }
     };
 
+    const handleAppleSignIn = async () => {
+        setError('');
+        setLoading(true);
+        trackFunnelEvent('oauth_start', { source: 'cinematic_auth', mode, provider: 'apple' });
+        const { error, canceled } = await signInWithApple();
+        setLoading(false);
+        if (canceled) return;
+        if (error) {
+            setError(error.message);
+            trackFunnelEvent('oauth_error', { source: 'cinematic_auth', mode, provider: 'apple', message: error.message.slice(0, 120) });
+            return;
+        }
+        trackFunnelEvent('oauth_success', { mode, provider: 'apple' });
+        router.push('/');
+    };
+
     const handlePasswordReset = async (e: React.FormEvent) => {
         e.preventDefault();
         setError('');
@@ -369,6 +386,7 @@ export function CinematicAuth() {
                                                     <button onClick={openInBrowser} className="mt-2 w-full rounded-lg bg-amber-400/20 px-3 py-2 font-medium">Open in Browser</button>
                                                 </div>
                                             )}
+                                            <AppleSignInButton onClick={handleAppleSignIn} disabled={loading} className="mb-3" />
                                             <button
                                                 onClick={handleGoogleSignIn}
                                                 disabled={loading || blockGoogleInBrowser}

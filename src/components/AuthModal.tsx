@@ -6,6 +6,7 @@ import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { trackFunnelEvent } from '@/lib/funnel';
 import { hasNativeAuthBridge } from '@/lib/native-webview';
 import { isNativeApp } from '@/lib/native-app';
+import { AppleSignInButton } from './native/AppleSignInButton';
 
 declare global {
   interface Window {
@@ -82,7 +83,7 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
-  const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
+  const { signIn, signUp, signInWithGoogle, signInWithApple, checkUsernameAvailable } = useAuth();
 
   useEffect(() => {
     if (isOpen && initialError) setError(initialError);
@@ -265,6 +266,22 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
     }
   };
 
+  const handleAppleSignIn = async () => {
+    setError('');
+    setLoading(true);
+    trackFunnelEvent('oauth_start', { source: 'auth_modal', mode, provider: 'apple' });
+    const { error, canceled } = await signInWithApple();
+    setLoading(false);
+    if (canceled) return;
+    if (error) {
+      setError(error.message);
+      trackFunnelEvent('oauth_error', { source: 'auth_modal', mode, provider: 'apple', message: error.message.slice(0, 120) });
+      return;
+    }
+    trackFunnelEvent('oauth_success', { mode, provider: 'apple' });
+    onClose();
+  };
+
   const openInBrowser = () => {
     if (typeof window === 'undefined') return;
     const target = `${window.location.origin}${window.location.pathname}${window.location.search}`;
@@ -347,6 +364,9 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
                 </button>
               </div>
             )}
+
+            {/* Sign in with Apple (iOS app only; renders nothing elsewhere) */}
+            <AppleSignInButton onClick={handleAppleSignIn} disabled={loading} className="mb-3" />
 
             {/* Google Sign In */}
             <button

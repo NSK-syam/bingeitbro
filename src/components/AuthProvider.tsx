@@ -7,6 +7,7 @@ import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { hasNativeAuthBridge, postNativeAuthMessage } from '@/lib/native-webview';
 import { isNativeApp, signInWithGoogleNative } from '@/lib/native-app';
+import { BibNative, generateRawNonce, isAppleSignInCanceled, isBibNativeAvailable } from '@/lib/native/bib-native';
 import { trackFunnelEvent } from '@/lib/funnel';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
@@ -28,12 +29,29 @@ interface AuthContextType {
     captchaToken?: string,
   ) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
+  /**
+   * Native Sign in with Apple (iOS app only). Resolves { error: null, canceled: true }
+   * when the user dismisses the Apple sheet.
+   */
+  signInWithApple: () => Promise<{ error: Error | null; canceled?: boolean }>;
   checkUsernameAvailable: (username: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   isConfigured: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const APPLE_PRIVATE_RELAY_DOMAIN = 'privaterelay.appleid.com';
+
+function slugifyUsernameBase(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18);
+}
+
+/** Display name from Apple's one-time name fields (null if Apple sent none). */
+function appleFullName(givenName?: string, familyName?: string): string | null {
+  const full = [givenName, familyName].map((part) => (part || '').trim()).filter(Boolean).join(' ');
+  return full ? full.slice(0, 80) : null;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -42,6 +60,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isConfigured = isSupabaseConfigured();
   const initializedRef = useRef(false);
   const ensuredProfileRef = useRef<string | null>(null);
+  // Full name from Apple's first authorization, consumed by ensureUserProfile.
+  const pendingAppleNameRef = useRef<string | null>(null);
+  const appleSignInInFlightRef = useRef(false);
   const previousUserIdRef = useRef<string | null>(null);
   const [birthdayOpen, setBirthdayOpen] = useState(false);
   const [birthdayName, setBirthdayName] = useState('');
@@ -86,13 +107,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const baseUsername = email.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';
+        // Sign in with Apple: the name only arrives on the first authorization (stashed
+        // by signInWithApple), and "Hide My Email" yields a random relay address.
+        const pendingAppleName = pendingAppleNameRef.current;
+        const isAppleRelayEmail = email.endsWith(`@${APPLE_PRIVATE_RELAY_DOMAIN}`);
+        const metadataName = (metadata?.full_name || metadata?.name || pendingAppleName || '') as string;
+        const emailLocal = email.split('@')[0] || '';
+
+        // Non-Apple-relay emails keep the original username scheme; relay addresses are
+        // random strings, so derive from Apple's name instead (kept within [a-z0-9_]{3,24}).
+        const baseUsername = isAppleRelayEmail
+          ? (() => {
+              const fromName = slugifyUsernameBase(metadataName.trim().replace(/\s+/g, '_'));
+              return fromName.length >= 3 ? fromName : 'user';
+            })()
+          : emailLocal.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';
         const generatedUsername = `${baseUsername}_${Math.random().toString(36).slice(2, 6)}`;
 
         const baseInsert = {
           id: authUser.id,
           email,
-          name: metadata?.full_name || metadata?.name || email.split('@')[0] || 'New user',
+          name: metadataName || (isAppleRelayEmail ? 'New user' : emailLocal) || 'New user',
           avatar: getRandomMovieAvatar(),
         };
 
@@ -342,6 +377,77 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
+  const signInWithApple = async (): Promise<{ error: Error | null; canceled?: boolean }> => {
+    if (!isConfigured) return { error: new Error('Supabase not configured') };
+    if (!isBibNativeAvailable()) {
+      return { error: new Error('Sign in with Apple is only available in the iOS app.') };
+    }
+    if (appleSignInInFlightRef.current) {
+      return { error: new Error('Sign in with Apple is already in progress.') };
+    }
+    appleSignInInFlightRef.current = true;
+
+    try {
+      // Raw nonce goes to Supabase; the plugin sends SHA-256(rawNonce) to Apple.
+      const rawNonce = generateRawNonce();
+      let result;
+      try {
+        result = await BibNative.signInWithApple({ nonce: rawNonce });
+      } catch (err) {
+        if (isAppleSignInCanceled(err)) return { error: null, canceled: true };
+        return { error: err instanceof Error ? err : new Error('Sign in with Apple failed.') };
+      }
+      if (!result?.identityToken) return { error: new Error('Apple did not return an identity token.') };
+
+      const fullName = appleFullName(result.givenName, result.familyName);
+      pendingAppleNameRef.current = fullName;
+
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: result.identityToken,
+        nonce: rawNonce,
+      });
+      if (error) {
+        pendingAppleNameRef.current = null;
+        return { error };
+      }
+
+      const signedInUser = data?.user ?? null;
+      if (fullName && signedInUser) {
+        // Apple sends the name only once: keep it in auth metadata and fill the
+        // profile name only if it is empty or still the auto-generated placeholder.
+        try {
+          if (!signedInUser.user_metadata?.full_name) {
+            await supabase.auth.updateUser({
+              data: { full_name: fullName, given_name: result.givenName ?? null, family_name: result.familyName ?? null },
+            });
+          }
+        } catch {
+          // Non-fatal.
+        }
+        try {
+          const { data: profile } = await supabase
+            .from('users')
+            .select('name,email')
+            .eq('id', signedInUser.id)
+            .maybeSingle();
+          const currentName = String((profile as { name?: string | null } | null)?.name ?? '').trim();
+          const profileEmail = String((profile as { email?: string | null } | null)?.email ?? signedInUser.email ?? '').toLowerCase();
+          const placeholderNames = new Set(['', 'new user', profileEmail.split('@')[0] || '']);
+          if (profile && placeholderNames.has(currentName.toLowerCase())) {
+            await supabase.from('users').update({ name: fullName }).eq('id', signedInUser.id);
+          }
+        } catch {
+          // Non-fatal: the profile may be created a moment later by ensureUserProfile with this name.
+        }
+      }
+      return { error: null };
+    } finally {
+      appleSignInInFlightRef.current = false;
+    }
+  };
+
   const signOut = async () => {
     if (typeof window === 'undefined') return;
 
@@ -379,6 +485,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // 4. Clear React state after remote sign-out + local storage cleanup.
+    pendingAppleNameRef.current = null;
     setUser(null);
     setSession(null);
   };
@@ -391,6 +498,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signUp,
       signInWithGoogle,
+      signInWithApple,
       checkUsernameAvailable,
       signOut,
       isConfigured
