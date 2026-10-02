@@ -3,6 +3,7 @@ import "./globals.css";
 import { AuthProvider } from "@/components";
 import { HelpBotWidget } from "@/components/HelpBotWidget";
 import { NativeAppBridge } from "@/components/NativeAppBridge";
+import { NativeFeatures } from "@/components/native/NativeFeatures";
 
 // Local-first font stack so the build stays offline-safe without defaulting to generic system UI
 const fontClass = "font-sans antialiased";
@@ -126,6 +127,7 @@ export default function RootLayout({
           {children}
           <HelpBotWidget />
           <NativeAppBridge />
+          <NativeFeatures />
         </AuthProvider>
       </body>
     </html>

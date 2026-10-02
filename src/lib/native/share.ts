@@ -23,7 +23,15 @@ export function toPublicUrl(pathOrUrl: string): string {
   if (!raw) return PUBLIC_SITE_ORIGIN;
   try {
     const parsed = new URL(raw, PUBLIC_SITE_ORIGIN);
-    if (parsed.protocol === 'http:' || parsed.protocol === 'https:' || parsed.protocol === 'capacitor:') {
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : '';
+    // Only rewrite links that point at the app itself; external links (YouTube, OTT sites) stay as-is.
+    const isAppOrigin =
+      parsed.protocol === 'capacitor:' ||
+      parsed.origin === currentOrigin ||
+      parsed.hostname === 'localhost' ||
+      parsed.hostname === 'bingeitbro.com' ||
+      parsed.hostname === 'www.bingeitbro.com';
+    if (isAppOrigin) {
       return `${PUBLIC_SITE_ORIGIN}${parsed.pathname}${parsed.search}${parsed.hash}`;
     }
     return parsed.toString();
