@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
+import { fetchUserNamesForPush, sendPushMessages, type UserPushMessage } from '@/lib/server/fcm';
 
 /**
  * Insert friend recommendations directly via Supabase REST.
@@ -39,6 +40,23 @@ type InsertRow = Omit<RecRow, 'tmdb_id' | 'remind_at'> & {
   tmdb_id: string | null;
   remind_at?: string;
 };
+
+/** One push per recipient: "<sender> sent you <movie>" (or "N picks"), opening the friend recs inbox. */
+async function buildFriendRecommendationPushes(senderId: string, rows: RecRow[]): Promise<UserPushMessage[]> {
+  if (rows.length === 0) return [];
+  const names = await fetchUserNamesForPush([senderId]);
+  const senderName = names.get(senderId) || 'A friend';
+  const byRecipient = new Map<string, RecRow[]>();
+  for (const row of rows) {
+    byRecipient.set(row.recipient_id, [...(byRecipient.get(row.recipient_id) ?? []), row]);
+  }
+  return [...byRecipient.entries()].map(([recipientId, recs]) => ({
+    userId: recipientId,
+    title: recs.length === 1 ? `${senderName} sent you ${recs[0].movie_title}` : `${senderName} sent you ${recs.length} picks`,
+    body: recs.length === 1 ? recs[0].personal_message || 'Tap to see your recommendation.' : recs.map((rec) => rec.movie_title).join(', '),
+    data: { type: 'friend_recommendation', path: '/?view=friends' },
+  }));
+}
 
 export async function POST(request: Request) {
   try {
@@ -160,6 +178,7 @@ export async function POST(request: Request) {
     let lastMessage = '';
     let sent = 0;
     const sentRecipientIds: string[] = [];
+    const sentRows: RecRow[] = [];
     const duplicateRecipientIds: string[] = [];
 
     const tryInsert = async (row: RecRow): Promise<{ ok: boolean; code: string; message: string }> => {
@@ -228,7 +247,11 @@ export async function POST(request: Request) {
       }
       sent += 1;
       sentRecipientIds.push(row.recipient_id);
+      sentRows.push(row);
     }
+
+    // Native app push (best effort; no-op unless FCM is configured; never throws).
+    await sendPushMessages(() => buildFriendRecommendationPushes(user.id as string, sentRows));
 
     return NextResponse.json(
       {

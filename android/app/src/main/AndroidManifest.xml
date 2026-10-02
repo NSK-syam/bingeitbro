@@ -32,6 +32,19 @@
 
         </activity>
 
+        <!-- Firebase Cloud Messaging defaults (@capacitor-firebase/messaging). The channel is
+             created at runtime by the web app (src/lib/native-push.ts); FCM falls back to its
+             own default channel until then. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_notification" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/bib_notification_accent" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="bib_default" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
@@ -46,4 +59,6 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Android 13+ runtime notification permission (requested via FirebaseMessaging.requestPermissions). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 </manifest>

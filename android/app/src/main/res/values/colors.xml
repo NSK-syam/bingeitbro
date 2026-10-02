@@ -2,4 +2,6 @@
 <resources>
     <!-- Brand dark background, used for splash and window background to avoid a white flash. -->
     <color name="bib_background">#0A0A0C</color>
+    <!-- Push notification accent (small icon tint). -->
+    <color name="bib_notification_accent">#F59E0B</color>
 </resources>

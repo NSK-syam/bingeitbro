@@ -26,6 +26,12 @@ const config: CapacitorConfig = {
       backgroundColor: '#0A0A0C',
       overlaysWebView: false,
     },
+    // iOS foreground presentation: only update the badge (no banner/sound while
+    // the app is open, matching Android where FCM doesn't display foreground
+    // notifications). The web app gets a 'bib:native-push-received' event instead.
+    FirebaseMessaging: {
+      presentationOptions: ['badge'],
+    },
   },
 };
 
