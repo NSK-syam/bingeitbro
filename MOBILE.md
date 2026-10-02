@@ -140,6 +140,8 @@ the release checklist and testing on a device before you resubmit. Approval is s
 | Feature | Platforms | Details |
 | --- | --- | --- |
 | Birthday is optional at signup | all | `AuthModal.tsx`, `CinematicAuth.tsx` |
+| In-app account deletion (user menu → Delete account, or your profile → Account settings), with Sign in with Apple token revocation | all | [account-deletion.md](docs/mobile/account-deletion.md) |
+| Privacy manifests (`PrivacyInfo.xcprivacy`) for the app and the widget | iOS | `ios/App/App`, `ios/App/BibWidget` |
 | App-first start: logged-out users see the sign-in screen, not the SEO landing page | app | `src/app/page.tsx` |
 | No AdSense inside the app (not allowed in app WebViews) | app | `src/app/layout.tsx`, `AdDisplayUnit.tsx` |
 | Scheduled watches become on-device notifications (work offline) | iOS, Android | [device-features.md](docs/mobile/device-features.md) |
@@ -163,8 +165,11 @@ optional birthday.
    `GoogleService-Info.plist` to the Xcode App target and `google-services.json` to
    `android/app/` ([push.md](docs/mobile/push.md)). Without these the app works, but push stays off.
 4. **Database:** run `supabase-native-push-schema.sql` in the Supabase SQL editor.
-5. **Cloudflare secrets:** set `FIREBASE_SERVICE_ACCOUNT_JSON`, and make sure
-   `SUPABASE_SERVICE_ROLE_KEY` is set.
+5. **Cloudflare secrets:** set `FIREBASE_SERVICE_ACCOUNT_JSON`, plus `APPLE_TEAM_ID`, `APPLE_KEY_ID`
+   and `APPLE_PRIVATE_KEY` (a Sign in with Apple key, used to revoke tokens when an Apple user
+   deletes their account; see [account-deletion.md](docs/mobile/account-deletion.md)). Make sure
+   `SUPABASE_SERVICE_ROLE_KEY` is set. Without the Apple secrets, Apple users can't delete
+   their account (they get a clear error).
 6. **Deploy the web app** to bingeitbro.com. The app loads the live site, so nothing above works
    in the app until this is deployed.
 7. **Xcode:** pick your team for both the **App** and **BibWidget** targets. Bump **Build** on both,
@@ -176,7 +181,8 @@ optional birthday.
 
 > Thank you for the feedback. We have updated BingeItBro:
 >
-> **5.1.1(v):** Date of birth is now optional during signup.
+> **5.1.1(v):** Date of birth is now optional during signup. Users can delete their account inside
+> the app: tap the profile menu → **Delete account** (also under Profile → Account settings).
 >
 > **4.2:** The app now provides native functionality that a browser cannot:
 > - Sign in with Apple (native AuthenticationServices).
