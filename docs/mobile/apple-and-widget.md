@@ -66,6 +66,22 @@ bingeitbro.com. They only appear and run after the web changes are deployed **an
 user runs an app build that includes `BibNativePlugin`. Older app builds do not register
 `BibNative`, so the button stays hidden (`Capacitor.isPluginAvailable('BibNative')`).
 
+### 5. Privacy manifests
+
+`ios/App/App/PrivacyInfo.xcprivacy` and `ios/App/BibWidget/PrivacyInfo.xcprivacy` are bundled
+with each target. Both declare `NSPrivacyTracking = false` and no tracking domains.
+
+- App: UserDefaults access for `CA92.1` (own app, used by @capacitor/preferences) and `1C8F.1`
+  (App Group shared with the widget). Collected data: email address, name and user ID, linked
+  to the user, not used for tracking, for app functionality.
+- Widget: UserDefaults access for `1C8F.1` only. It collects no data.
+
+The Capacitor core and the Firebase/Google SPM packages ship their own manifests. The
+Capacitor plugin sources (@capacitor/* and @capacitor-firebase/messaging) use no other
+required-reason APIs. Only Preferences uses UserDefaults. Keep App Store Connect's privacy
+labels consistent with these files. Push also uses a device token: declare it there if
+your answers require it.
+
 ## How Sign in with Apple works
 
 1. `AppleSignInButton` renders only when `Capacitor.getPlatform() === 'ios'` and the plugin is
@@ -96,6 +112,11 @@ Settings -> Apple ID -> Sign-In & Security -> Sign in with Apple.
   `widgetData`, and calls `WidgetCenter.shared.reloadAllTimelines()`. The widget never uses the network.
 - Refresh: on sign-in, when the app becomes active, and every 15 minutes while it is visible.
   The data is cleared on sign-out and when the account changes.
+- Account isolation: the snapshot's owner is stored natively as a SHA-256 of the user id
+  (`widgetDataOwner` in the App Group). Before each fetch, `ensureWidgetOwner` clears another
+  account's snapshot, so a failed fetch never leaves it visible. Every `setWidgetData` and
+  `clearWidgetData` increments a generation number. A write whose poster downloads finish after a newer
+  set or clear is discarded along with its files.
 - Tap: `com.bingeitbro.app://open?path=<url-encoded same-origin path>`, for example
   `com.bingeitbro.app://open?path=%2Fmovie%2Ftmdb-27205`. The empty state uses `path=%2F`.
   Handle it in the `appUrlOpen` / `getLaunchUrl` handler with

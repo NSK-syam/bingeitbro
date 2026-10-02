@@ -18,12 +18,14 @@ public class BibNativePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "signInWithApple", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setWidgetData", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "clearWidgetData", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "ensureWidgetOwner", returnType: CAPPluginReturnPromise),
     ]
 
     // MARK: - Shared widget constants (must match BibWidget.swift)
 
     static let appGroupId = "group.com.bingeitbro.app"
     static let widgetDataKey = "widgetData"
+    static let widgetOwnerKey = "widgetDataOwner"
     static let posterDirName = "widget-posters"
     static let widgetKind = "BibWidget"
 
@@ -79,7 +81,63 @@ public class BibNativePlugin: CAPPlugin, CAPBridgedPlugin {
 
     // MARK: - Widget data
 
-    /// Payload: { items: [{ title, year, sender, posterUrl, path }], unwatchedCount }
+    /// Serializes widget state changes (generation counter, defaults and poster files).
+    private static let widgetQueue = DispatchQueue(label: "com.bingeitbro.app.widget-data")
+    /// Bumped by every setWidgetData and clearWidgetData. A write whose poster downloads
+    /// finish after a newer set/clear is discarded, so stale data (e.g. the previous
+    /// account's picks) can never be committed after a clear or a page reload.
+    private static var widgetGeneration: UInt64 = 0
+
+    /// Must be called on widgetQueue.
+    private static func bumpGeneration() -> UInt64 {
+        widgetGeneration &+= 1
+        return widgetGeneration
+    }
+
+    private static var posterDirectory: URL? {
+        FileManager.default
+            .containerURL(forSecurityApplicationGroupIdentifier: appGroupId)?
+            .appendingPathComponent(posterDirName, isDirectory: true)
+    }
+
+    /// Owner key stored next to the snapshot: SHA-256 of the user id (no raw ids in shared storage).
+    private static func ownerKey(for userId: String) -> String {
+        sha256Hex("bib-widget-owner:" + userId)
+    }
+
+    /// Must be called on widgetQueue.
+    private static func clearStoredWidgetData(_ defaults: UserDefaults?) {
+        defaults?.removeObject(forKey: widgetDataKey)
+        defaults?.removeObject(forKey: widgetOwnerKey)
+        if let dir = posterDirectory {
+            removePosters(in: dir, except: [])
+        }
+    }
+
+    /// { ownerId } -> clears the widget snapshot if it belongs to a different user.
+    /// Called before fetching, so a failed fetch never leaves another account's data visible.
+    @objc func ensureWidgetOwner(_ call: CAPPluginCall) {
+        guard let ownerId = call.getString("ownerId"), !ownerId.isEmpty else {
+            call.reject("ownerId is required.", "INVALID_ARGUMENT")
+            return
+        }
+        let expected = Self.ownerKey(for: ownerId)
+        Self.widgetQueue.async {
+            let defaults = UserDefaults(suiteName: Self.appGroupId)
+            let stored = defaults?.string(forKey: Self.widgetOwnerKey)
+            let hasData = defaults?.object(forKey: Self.widgetDataKey) != nil
+            var cleared = false
+            if stored != expected && (stored != nil || hasData) {
+                _ = Self.bumpGeneration()
+                Self.clearStoredWidgetData(defaults)
+                cleared = true
+                DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
+            }
+            call.resolve(["cleared": cleared])
+        }
+    }
+
+    /// Payload: { ownerId, items: [{ title, year, sender, posterUrl, path }], unwatchedCount }
     /// Stores a minimal snapshot (no tokens or ids) in App Group defaults, downloads
     /// small posters into the App Group container, then reloads widget timelines.
     @objc func setWidgetData(_ call: CAPPluginCall) {
@@ -87,6 +145,11 @@ public class BibNativePlugin: CAPPlugin, CAPBridgedPlugin {
             call.reject("App Group is not available.", "UNAVAILABLE")
             return
         }
+        guard let ownerId = call.getString("ownerId"), !ownerId.isEmpty else {
+            call.reject("ownerId is required.", "INVALID_ARGUMENT")
+            return
+        }
+        let owner = Self.ownerKey(for: ownerId)
 
         let rawItems = (call.getArray("items") ?? []).compactMap { $0 as? JSObject }.prefix(3)
         let unwatchedCount = max(0, call.getInt("unwatchedCount") ?? 0)
@@ -115,86 +178,101 @@ public class BibNativePlugin: CAPPlugin, CAPBridgedPlugin {
             return PendingItem(title: title, year: year, sender: sender, path: String(path.prefix(300)), posterUrl: posterUrl)
         }
 
-        let container = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupId)
-        let posterDir = container?.appendingPathComponent(Self.posterDirName, isDirectory: true)
-        if let dir = posterDir {
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        }
-
-        var posterFiles = [String?](repeating: nil, count: pending.count)
-        let group = DispatchGroup()
-        let lock = NSLock()
-        let stamp = Int(Date().timeIntervalSince1970)
-
-        if let dir = posterDir {
-            for (index, item) in pending.enumerated() {
-                guard let url = item.posterUrl else { continue }
-                group.enter()
-                var request = URLRequest(url: url)
-                request.timeoutInterval = 15
-                URLSession.shared.dataTask(with: request) { data, response, _ in
-                    defer { group.leave() }
-                    guard let data = data, !data.isEmpty, data.count < 2_000_000,
-                          let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
-                          UIImage(data: data) != nil else { return }
-                    let name = "poster-\(stamp)-\(index).jpg"
-                    do {
-                        try data.write(to: dir.appendingPathComponent(name), options: .atomic)
-                        lock.lock()
-                        posterFiles[index] = name
-                        lock.unlock()
-                    } catch {
-                        // Widget falls back to a placeholder.
-                    }
-                }.resume()
+        Self.widgetQueue.async {
+            let generation = Self.bumpGeneration()
+            // A different account's snapshot must not stay visible while posters download.
+            if let stored = defaults.string(forKey: Self.widgetOwnerKey), stored != owner {
+                Self.clearStoredWidgetData(defaults)
+                DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
             }
-        }
 
-        group.notify(queue: .global(qos: .utility)) {
-            let items: [[String: Any]] = pending.enumerated().map { index, item in
-                var dict: [String: Any] = [
-                    "title": item.title,
-                    "sender": item.sender,
-                    "path": item.path,
-                ]
-                if let year = item.year { dict["year"] = year }
-                if let file = posterFiles[index] { dict["posterFile"] = file }
-                return dict
-            }
-            let snapshot: [String: Any] = [
-                "items": items,
-                "unwatchedCount": unwatchedCount,
-                "updatedAt": Date().timeIntervalSince1970,
-            ]
-
-            guard let json = try? JSONSerialization.data(withJSONObject: snapshot) else {
-                call.reject("Unable to encode widget data.", "ENCODE_FAILED")
-                return
-            }
-            defaults.set(json, forKey: Self.widgetDataKey)
-
-            // Remove posters no longer referenced.
+            let posterDir = Self.posterDirectory
             if let dir = posterDir {
-                let keep = Set(posterFiles.compactMap { $0 })
-                Self.removePosters(in: dir, except: keep)
+                try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             }
 
-            WidgetCenter.shared.reloadAllTimelines()
-            call.resolve(["ok": true])
+            var posterFiles = [String?](repeating: nil, count: pending.count)
+            let group = DispatchGroup()
+            let lock = NSLock()
+
+            if let dir = posterDir {
+                for (index, item) in pending.enumerated() {
+                    guard let url = item.posterUrl else { continue }
+                    group.enter()
+                    var request = URLRequest(url: url)
+                    request.timeoutInterval = 15
+                    URLSession.shared.dataTask(with: request) { data, response, _ in
+                        defer { group.leave() }
+                        guard let data = data, !data.isEmpty, data.count < 2_000_000,
+                              let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode),
+                              UIImage(data: data) != nil else { return }
+                        // Generation in the name: files of a stale write are never referenced.
+                        let name = "poster-g\(generation)-\(index).jpg"
+                        do {
+                            try data.write(to: dir.appendingPathComponent(name), options: .atomic)
+                            lock.lock()
+                            posterFiles[index] = name
+                            lock.unlock()
+                        } catch {
+                            // Widget falls back to a placeholder.
+                        }
+                    }.resume()
+                }
+            }
+
+            group.notify(queue: Self.widgetQueue) {
+                guard generation == Self.widgetGeneration else {
+                    // Superseded by a newer set/clear: drop this write and its files.
+                    if let dir = posterDir {
+                        for file in posterFiles.compactMap({ $0 }) {
+                            try? FileManager.default.removeItem(at: dir.appendingPathComponent(file))
+                        }
+                    }
+                    call.resolve(["ok": false, "stale": true])
+                    return
+                }
+
+                let items: [[String: Any]] = pending.enumerated().map { index, item in
+                    var dict: [String: Any] = [
+                        "title": item.title,
+                        "sender": item.sender,
+                        "path": item.path,
+                    ]
+                    if let year = item.year { dict["year"] = year }
+                    if let file = posterFiles[index] { dict["posterFile"] = file }
+                    return dict
+                }
+                let snapshot: [String: Any] = [
+                    "items": items,
+                    "unwatchedCount": unwatchedCount,
+                    "updatedAt": Date().timeIntervalSince1970,
+                ]
+
+                guard let json = try? JSONSerialization.data(withJSONObject: snapshot) else {
+                    call.reject("Unable to encode widget data.", "ENCODE_FAILED")
+                    return
+                }
+                defaults.set(json, forKey: Self.widgetDataKey)
+                defaults.set(owner, forKey: Self.widgetOwnerKey)
+
+                // Remove posters no longer referenced.
+                if let dir = posterDir {
+                    Self.removePosters(in: dir, except: Set(posterFiles.compactMap { $0 }))
+                }
+
+                DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
+                call.resolve(["ok": true])
+            }
         }
     }
 
     @objc func clearWidgetData(_ call: CAPPluginCall) {
-        if let defaults = UserDefaults(suiteName: Self.appGroupId) {
-            defaults.removeObject(forKey: Self.widgetDataKey)
+        Self.widgetQueue.async {
+            _ = Self.bumpGeneration()
+            Self.clearStoredWidgetData(UserDefaults(suiteName: Self.appGroupId))
+            DispatchQueue.main.async { WidgetCenter.shared.reloadAllTimelines() }
+            call.resolve(["ok": true])
         }
-        if let dir = FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: Self.appGroupId)?
-            .appendingPathComponent(Self.posterDirName, isDirectory: true) {
-            Self.removePosters(in: dir, except: [])
-        }
-        WidgetCenter.shared.reloadAllTimelines()
-        call.resolve(["ok": true])
     }
 
     private static func removePosters(in dir: URL, except keep: Set<String>) {

@@ -27,6 +27,8 @@ export interface WidgetItemInput {
 }
 
 export interface WidgetDataInput {
+  /** Signed-in user id; stored natively only as a hash to scope the snapshot to its account. */
+  ownerId: string;
   items: WidgetItemInput[];
   unwatchedCount: number;
 }
@@ -36,6 +38,8 @@ interface BibNativePlugin {
   signInWithApple(options: { nonce: string }): Promise<AppleSignInResult>;
   setWidgetData(options: WidgetDataInput): Promise<{ ok: boolean }>;
   clearWidgetData(): Promise<{ ok: boolean }>;
+  /** Clears the widget snapshot if it belongs to a different user. */
+  ensureWidgetOwner(options: { ownerId: string }): Promise<{ cleared: boolean }>;
 }
 
 export const BibNative = registerPlugin<BibNativePlugin>('BibNative');
@@ -77,6 +81,11 @@ export function generateRawNonce(byteLength = 32): string {
 export async function setWidgetData(data: WidgetDataInput): Promise<void> {
   if (!isBibNativeAvailable()) return;
   await BibNative.setWidgetData(data);
+}
+
+export async function ensureWidgetOwner(ownerId: string): Promise<void> {
+  if (!isBibNativeAvailable()) return;
+  await BibNative.ensureWidgetOwner({ ownerId });
 }
 
 export async function clearWidgetData(): Promise<void> {

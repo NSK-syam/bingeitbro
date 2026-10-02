@@ -43,6 +43,27 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 const APPLE_PRIVATE_RELAY_DOMAIN = 'privaterelay.appleid.com';
 
+/** `sub` claim of a JWT (unverified decode; only used to key local state). */
+function getJwtSubject(token: string): string | null {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '='));
+    const sub = (JSON.parse(json) as { sub?: unknown }).sub;
+    return typeof sub === 'string' && sub ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True if this Supabase user is signed in via (or linked to) the given Apple subject. */
+function isAppleIdentityFor(user: User, appleSub: string): boolean {
+  if (user.identities?.some((identity) => identity.provider === 'apple' && (identity.id === appleSub || identity.identity_data?.sub === appleSub))) {
+    return true;
+  }
+  return user.app_metadata?.provider === 'apple' && user.user_metadata?.sub === appleSub;
+}
+
 function slugifyUsernameBase(raw: string): string {
   return raw.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18);
 }
@@ -61,7 +82,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const initializedRef = useRef(false);
   const ensuredProfileRef = useRef<string | null>(null);
   // Full name from Apple's first authorization, consumed by ensureUserProfile.
-  const pendingAppleNameRef = useRef<string | null>(null);
+  // Keyed by the Apple subject (`sub` of the identity token) so it can only apply to that
+  // Apple identity; cleared after use and on any other auth transition.
+  const pendingAppleNameRef = useRef<{ sub: string; name: string } | null>(null);
   const appleSignInInFlightRef = useRef(false);
   const previousUserIdRef = useRef<string | null>(null);
   const [birthdayOpen, setBirthdayOpen] = useState(false);
@@ -84,7 +107,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const supabase = createClient();
 
+    /** Takes the pending Apple name if it belongs to this user's Apple identity; always clears it otherwise. */
+    const takePendingAppleName = (authUser: User | null): string | null => {
+      const pending = pendingAppleNameRef.current;
+      if (!pending) return null;
+      if (!authUser || !isAppleIdentityFor(authUser, pending.sub)) {
+        pendingAppleNameRef.current = null;
+        return null;
+      }
+      return pending.name;
+    };
+
     const ensureUserProfile = async (authUser: User | null) => {
+      // Captured synchronously (before any await) so it matches this auth transition.
+      const pendingAppleName = takePendingAppleName(authUser);
       if (!authUser) return;
       if (ensuredProfileRef.current === authUser.id) return;
 
@@ -97,6 +133,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (existingUser) {
           ensuredProfileRef.current = authUser.id;
+          if (pendingAppleName) pendingAppleNameRef.current = null;
           return;
         }
 
@@ -109,7 +146,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         // Sign in with Apple: the name only arrives on the first authorization (stashed
         // by signInWithApple), and "Hide My Email" yields a random relay address.
-        const pendingAppleName = pendingAppleNameRef.current;
         const isAppleRelayEmail = email.endsWith(`@${APPLE_PRIVATE_RELAY_DOMAIN}`);
         const metadataName = (metadata?.full_name || metadata?.name || pendingAppleName || '') as string;
         const emailLocal = email.split('@')[0] || '';
@@ -150,6 +186,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         ensuredProfileRef.current = authUser.id;
+        if (pendingAppleName) pendingAppleNameRef.current = null;
       } catch (err) {
         console.error('Error ensuring user profile:', err);
       }
@@ -400,7 +437,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (!result?.identityToken) return { error: new Error('Apple did not return an identity token.') };
 
       const fullName = appleFullName(result.givenName, result.familyName);
-      pendingAppleNameRef.current = fullName;
+      const appleSub = getJwtSubject(result.identityToken);
+      pendingAppleNameRef.current = fullName && appleSub ? { sub: appleSub, name: fullName } : null;
 
       const supabase = createClient();
       const { data, error } = await supabase.auth.signInWithIdToken({
@@ -444,6 +482,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       return { error: null };
     } finally {
+      // ensureUserProfile captures the name synchronously during the SIGNED_IN event,
+      // so nothing needs it after this point.
+      pendingAppleNameRef.current = null;
       appleSignInInFlightRef.current = false;
     }
   };

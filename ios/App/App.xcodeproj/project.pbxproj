@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		1AF50337F4955C85CAE9F5FE /* BibWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = E357BEA7456FFE8900616A14 /* BibWidget.swift */; };
 		2817A074A634AC9EA6FF336A /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4BBB4753621962330D6A8860 /* MainViewController.swift */; };
+		2ECC89F472022A666D60E65C /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = BE2E8200384DE4A712907B8B /* PrivacyInfo.xcprivacy */; };
 		2FAD9763203C412B000D30F8 /* config.xml in Resources */ = {isa = PBXBuildFile; fileRef = 2FAD9762203C412B000D30F8 /* config.xml */; };
 		4D22ABE92AF431CB00220026 /* CapApp-SPM in Frameworks */ = {isa = PBXBuildFile; productRef = 4D22ABE82AF431CB00220026 /* CapApp-SPM */; };
 		50379B232058CBB4000EE86E /* capacitor.config.json in Resources */ = {isa = PBXBuildFile; fileRef = 50379B222058CBB4000EE86E /* capacitor.config.json */; };
@@ -17,6 +18,7 @@
 		504EC30F1FED79650016851F /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 504EC30E1FED79650016851F /* Assets.xcassets */; };
 		504EC3121FED79650016851F /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 504EC3101FED79650016851F /* LaunchScreen.storyboard */; };
 		50B271D11FEDC1A000F3C39B /* public in Resources */ = {isa = PBXBuildFile; fileRef = 50B271D01FEDC1A000F3C39B /* public */; };
+		8CAFA3C3A55CD98BBB40460F /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 383CB71FB36E28ED66005BAF /* PrivacyInfo.xcprivacy */; };
 		9582B6832FE993A70072D4E8 /* SceneDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9582B6822FE993A50072D4E8 /* SceneDelegate.swift */; };
 		A79767C7E76565D7442A3C7C /* BibWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7E71642BBB06C076CDDC58F4 /* BibWidgetBundle.swift */; };
 		CD990A7BBBA15CFA34BB72C7 /* BibWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 3DE8B10467C2AF07BD868362 /* BibWidget.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -50,6 +52,7 @@
 /* Begin PBXFileReference section */
 		0E7F609DE975CEECE1D4775D /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		2FAD9762203C412B000D30F8 /* config.xml */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = config.xml; sourceTree = "<group>"; };
+		383CB71FB36E28ED66005BAF /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		3DE8B10467C2AF07BD868362 /* BibWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BibWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		4BBB4753621962330D6A8860 /* MainViewController.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = MainViewController.swift; sourceTree = "<group>"; };
 		50379B222058CBB4000EE86E /* capacitor.config.json */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.json; path = capacitor.config.json; sourceTree = "<group>"; };
@@ -65,6 +68,7 @@
 		9582B6822FE993A50072D4E8 /* SceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SceneDelegate.swift; sourceTree = "<group>"; };
 		958DCC722DB07C7200EA8C5F /* debug.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; name = debug.xcconfig; path = ../debug.xcconfig; sourceTree = SOURCE_ROOT; };
 		B77C21B1D3B91C46E56595C4 /* BibWidget.entitlements */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.entitlements; path = BibWidget.entitlements; sourceTree = "<group>"; };
+		BE2E8200384DE4A712907B8B /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; includeInIndex = 1; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		E357BEA7456FFE8900616A14 /* BibWidget.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = BibWidget.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
@@ -120,6 +124,7 @@
 				50B271D01FEDC1A000F3C39B /* public */,
 				596F408D7983B0F16E69538C /* BibNativePlugin.swift */,
 				4BBB4753621962330D6A8860 /* MainViewController.swift */,
+				383CB71FB36E28ED66005BAF /* PrivacyInfo.xcprivacy */,
 			);
 			path = App;
 			sourceTree = "<group>";
@@ -131,6 +136,7 @@
 				7E71642BBB06C076CDDC58F4 /* BibWidgetBundle.swift */,
 				0E7F609DE975CEECE1D4775D /* Info.plist */,
 				B77C21B1D3B91C46E56595C4 /* BibWidget.entitlements */,
+				BE2E8200384DE4A712907B8B /* PrivacyInfo.xcprivacy */,
 			);
 			name = BibWidget;
 			path = BibWidget;
@@ -227,6 +233,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2ECC89F472022A666D60E65C /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -240,6 +247,7 @@
 				50379B232058CBB4000EE86E /* capacitor.config.json in Resources */,
 				504EC30D1FED79650016851F /* Main.storyboard in Resources */,
 				2FAD9763203C412B000D30F8 /* config.xml in Resources */,
+				8CAFA3C3A55CD98BBB40460F /* PrivacyInfo.xcprivacy in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

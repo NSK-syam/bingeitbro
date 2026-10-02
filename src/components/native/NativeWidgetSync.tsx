@@ -3,7 +3,7 @@
 import { useEffect, useRef } from 'react';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient } from '@/lib/supabase';
-import { clearWidgetData, isBibNativeAvailable, setWidgetData, type WidgetItemInput } from '@/lib/native/bib-native';
+import { clearWidgetData, ensureWidgetOwner, isBibNativeAvailable, setWidgetData, type WidgetItemInput } from '@/lib/native/bib-native';
 
 const MAX_ITEMS = 3;
 const REFRESH_INTERVAL_MS = 15 * 60 * 1000;
@@ -109,7 +109,6 @@ async function buildWidgetPayload(userId: string): Promise<{ items: WidgetItemIn
 export function NativeWidgetSync() {
   const { user, loading } = useAuth();
   const userId = user?.id ?? null;
-  const syncedUserRef = useRef<string | null>(null);
   const inFlightRef = useRef<Promise<void> | null>(null);
   const queuedRef = useRef(false);
   const latestSyncRef = useRef<(() => void) | null>(null);
@@ -123,21 +122,23 @@ export function NativeWidgetSync() {
     const runSync = async (): Promise<void> => {
       if (disposed) return;
       if (!userId) {
-        syncedUserRef.current = null;
         await clearWidgetData().catch(() => undefined);
         return;
       }
-      // Account changed: never show the previous user's picks.
-      if (syncedUserRef.current && syncedUserRef.current !== userId) {
+      // The snapshot's owner is persisted natively (App Group). Clear another account's
+      // snapshot BEFORE fetching, so a failed fetch can never leave it visible.
+      try {
+        await ensureWidgetOwner(userId);
+      } catch {
         await clearWidgetData().catch(() => undefined);
       }
+      if (disposed) return;
       try {
         const payload = await buildWidgetPayload(userId);
         if (disposed) return;
-        await setWidgetData(payload);
-        syncedUserRef.current = userId;
+        await setWidgetData({ ownerId: userId, ...payload });
       } catch {
-        // Keep the last snapshot on transient failures.
+        // Keep this user's last snapshot on transient failures.
       }
     };
 

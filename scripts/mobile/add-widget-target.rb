@@ -35,6 +35,17 @@ APP_LOCAL_SOURCES.each do |name|
   end
 end
 
+# --- Privacy manifests (App Store required-reason APIs) ---------------------------------
+def add_resource(target, group, name)
+  ref = group.files.find { |f| f.path == name } || group.new_reference(name)
+  unless target.resources_build_phase.files_references.include?(ref)
+    target.resources_build_phase.add_file_reference(ref, true)
+  end
+  ref
+end
+
+add_resource(app_target, app_group, 'PrivacyInfo.xcprivacy')
+
 # --- Widget target -------------------------------------------------------------------
 widget_target = project.targets.find { |t| t.name == WIDGET_NAME }
 unless widget_target
@@ -50,6 +61,7 @@ WIDGET_SOURCES.each do |name|
     widget_target.source_build_phase.add_file_reference(ref, true)
   end
 end
+add_resource(widget_target, widget_group, 'PrivacyInfo.xcprivacy')
 WIDGET_OTHER_FILES.each do |name|
   widget_group.files.find { |f| f.path == name } || widget_group.new_reference(name)
 end
