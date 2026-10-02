@@ -3,6 +3,7 @@
 import { isNativeApp } from '@/lib/native-app';
 import type { FriendRecommendationReminder, WatchReminder } from '@/lib/supabase-rest';
 import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
+import { registerNativeLogoutCleanup } from '@/lib/native/logout-cleanup';
 import {
   createNativeAccountSync,
   readNotificationExtra,
@@ -68,12 +69,31 @@ let controller: NativeAccountSync | null = null;
 /** The app-wide controller, or null on the web. */
 export function getNativeAccountSync(): NativeAccountSync | null {
   if (!isNativeApp()) return null;
-  controller ??= createNativeAccountSync({
-    notifications: notificationsPort,
-    storage: storagePort,
-    pathForMovie: getWatchReminderOpenPath,
-  });
+  if (!controller) {
+    controller = createNativeAccountSync({
+      notifications: notificationsPort,
+      storage: storagePort,
+      pathForMovie: getWatchReminderOpenPath,
+    });
+    // Startup: finish a sign-out that was interrupted (pending-logout marker).
+    // Queued first, so it runs before any sync or cache write of this session.
+    void controller.finishPendingLogout().catch(() => {});
+  }
   return controller;
+}
+
+// Registered at module load (not in a React effect) so AuthProvider.signOut
+// can await it before revoking the session and before callers navigate away.
+// If the registry's timeout wins, the persisted marker makes the next startup
+// finish the cleanup.
+if (typeof window !== 'undefined') {
+  registerNativeLogoutCleanup('device-sync', async (ctx) => {
+    const sync = getNativeAccountSync();
+    if (!sync) return;
+    await sync.logout(ctx.userId);
+  });
+  // Create the controller now in the app so an interrupted sign-out is finished at startup.
+  getNativeAccountSync();
 }
 
 /** Only allow in-app relative paths from notification payloads. */

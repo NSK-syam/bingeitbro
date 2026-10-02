@@ -123,6 +123,22 @@ singleton, `getNativeAccountSync()`.
     owner it shows no private data.
 - **Watchlist stays device-wide:** it comes from localStorage and is device-local today, so it
   is cached with `userId: null` and shown for any account.
+- **Sign-out is awaited:** `watch-reminders.ts` registers `device-sync` with
+  `registerNativeLogoutCleanup` when the module loads, not in a React effect.
+  `AuthProvider.signOut` awaits it before revoking the session and before the caller navigates
+  away. The steps are:
+  1. `logout()` invalidates any in-flight work.
+  2. It persists `bib_offline_logout_pending` (`{ token, userId, at }`) *before* cleaning up.
+  3. It cancels notifications, clears the private caches and removes the owner key.
+  4. It removes the marker, but only if the marker still carries its own token and only after
+     every step succeeded. The registry's 5-second timeout never clears it.
+- **Unfinished sign-out:**
+  - While the marker exists, the in-app saved list and the `capacitor-www` fallback page show
+    no private data.
+  - The controller is created at module load in the app, and its first queued task
+    (`finishPendingLogout`) finishes the cleanup before any sync or cache write.
+  - A startup with an owner key but no session (cleanup never ran) is cleaned by
+    `setAccount(null)`.
 - **Tests:** `node scripts/mobile/test-native-account-sync.mjs` runs `node:test` with mocked
   plugins. It needs Node 22.18+ or 23.6+ for native TypeScript type stripping. It covers:
   - a sign-out during a slow fetch
@@ -132,6 +148,12 @@ singleton, `getNativeAccountSync()`.
   - owner filtering
   - stale schedule and friend-reminder calls
   - recovery from a failed mutation
+  - logout followed by a reload while signed out
+  - an app killed before cleanup ran
+  - cleanup cut off after the marker was written (the timeout wins), then a reload
+  - a failed cleanup step keeping the marker
+  - a stale cleanup not clearing a newer marker
+  - B signing in after A's sign-out did not finish
 
 ## Mounting
 

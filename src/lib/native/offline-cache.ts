@@ -6,6 +6,7 @@
 export {
   OFFLINE_CACHE_KEYS,
   OFFLINE_OWNER_KEY,
+  LOGOUT_PENDING_KEY,
   type OfflineCacheEntry,
   type OfflineCacheKind,
   type OfflineItem,

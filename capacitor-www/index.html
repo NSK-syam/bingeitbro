@@ -42,6 +42,8 @@
       // OWNER_KEY (set at sign-in, removed at sign-out). The watchlist is
       // device-local, like its localStorage source.
       var OWNER_KEY = 'bib_offline_owner';
+      // Present while a sign-out has not finished: show nothing private.
+      var LOGOUT_PENDING_KEY = 'bib_offline_logout_pending';
       var SECTIONS = [
         { key: 'bib_offline_scheduled', heading: 'Scheduled watches', meta: 'when', private: true },
         { key: 'bib_offline_watchlist', heading: 'Watchlist', meta: '', private: false },
@@ -146,10 +148,11 @@
           .then(function (res) { return res && typeof res.value === 'string' ? res.value : null; })
           .catch(function () { return null; });
       }
-      Promise.all([readKey(OWNER_KEY)].concat(SECTIONS.map(function (section) {
+      Promise.all([readKey(OWNER_KEY), readKey(LOGOUT_PENDING_KEY)].concat(SECTIONS.map(function (section) {
         return readKey(section.key).then(parse);
       }))).then(function (values) {
-        render(values[0] || null, values.slice(1));
+        var owner = values[1] ? null : (values[0] || null);
+        render(owner, values.slice(2));
       }).catch(function () { /* keep the plain offline screen */ });
     })();
   </script>

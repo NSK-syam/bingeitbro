@@ -7,6 +7,7 @@ import {
   createNativeAccountSync,
   OFFLINE_CACHE_KEYS,
   OFFLINE_OWNER_KEY,
+  LOGOUT_PENDING_KEY,
 } from '../../src/lib/native/account-sync-core.ts';
 
 const NOW = Date.parse('2026-10-01T12:00:00Z');
@@ -25,22 +26,20 @@ function deferred() {
 function mockNotifications() {
   const pending = new Map();
   const log = [];
-  let getPendingGate = null;
+  const gates = [];
   return {
     pending,
     log,
-    /** Make the next getPending() wait for the returned deferred. */
+    /** Make the next not-yet-gated getPending() call wait for the returned deferred (FIFO). */
     holdNextGetPending() {
-      getPendingGate = deferred();
-      return getPendingGate;
+      const gate = deferred();
+      gates.push(gate);
+      return gate;
     },
     port: {
       async getPending() {
-        if (getPendingGate) {
-          const gate = getPendingGate;
-          getPendingGate = null;
-          await gate.promise;
-        }
+        const gate = gates.shift();
+        if (gate) await gate.promise;
         log.push('getPending');
         return [...pending.values()].map((n) => ({ id: n.id, extra: n.extra }));
       },
@@ -87,6 +86,32 @@ function setup(storageInitial) {
     now: () => NOW,
   });
   return { sync, notifications, storage };
+}
+
+/** Simulate a page reload: drop the controller, keep device state (Preferences + OS notifications). */
+function reload(device, notificationsPort = device.notifications.port) {
+  return createNativeAccountSync({
+    notifications: notificationsPort,
+    storage: device.storage.port,
+    pathForMovie: (id) => `/movie/${id}`,
+    now: () => NOW,
+  });
+}
+
+function assertDeviceClean(device, label) {
+  assert.equal(device.notifications.pending.size, 0, `${label}: no reminders`);
+  assert.equal(device.storage.map.has(OFFLINE_CACHE_KEYS.scheduled), false, `${label}: no scheduled cache`);
+  assert.equal(device.storage.map.has(OFFLINE_CACHE_KEYS.friendRecs), false, `${label}: no friend-rec cache`);
+  assert.equal(device.storage.map.has(OFFLINE_OWNER_KEY), false, `${label}: no owner key`);
+  assert.equal(device.storage.map.has(LOGOUT_PENDING_KEY), false, `${label}: no pending-logout marker`);
+}
+
+async function signedInDevice(user = 'A') {
+  const device = setup();
+  await device.sync.setAccount(user);
+  assert.equal(await device.sync.sync(user, fetchersFor(user)), 'synced');
+  assert.equal(device.notifications.pending.size, 2);
+  return device;
 }
 
 const reminder = (id, user, hours = 2) => ({
@@ -260,4 +285,135 @@ test('queue: a failing mutation does not block later ones', async () => {
   await assert.rejects(sync.scheduleReminder(reminder(1, 'A'), 'A'));
   assert.equal(await sync.scheduleReminder(reminder(1, 'A'), 'A'), true);
   assert.equal(notifications.pending.size, 1);
+});
+
+// ---- Awaited sign-out cleanup (logout registry) + pending-logout marker ----
+
+test('logout -> controller disposed -> reload signed out: nothing private remains', async () => {
+  const device = await signedInDevice('A');
+  assert.equal(await device.sync.logout('A'), true);
+  assertDeviceClean(device, 'after logout');
+
+  const next = reload(device);
+  assert.equal(await next.finishPendingLogout(), true);
+  await next.setAccount(null);
+  await next.idle();
+  assertDeviceClean(device, 'after reload');
+  const saved = await next.readSaved(null);
+  assert.equal(saved.scheduled, null);
+  assert.equal(saved.friendRecs, null);
+});
+
+test('logout while a sync result is still in flight: the late result is discarded', async () => {
+  const device = setup();
+  await device.sync.setAccount('A');
+  const slow = deferred();
+  const inflight = device.sync.sync('A', { reminders: () => slow.promise, friendRecs: async () => [] });
+  const done = device.sync.logout('A');
+  slow.resolve([reminder(1, 'A')]);
+  assert.equal(await inflight, 'stale');
+  assert.equal(await done, true);
+  await device.sync.idle();
+  assertDeviceClean(device, 'after logout + late sync');
+});
+
+test('cleanup never ran (app killed before logout cleanup) -> next signed-out startup cleans up', async () => {
+  const device = await signedInDevice('A');
+  // No logout() call: the process died. Session is gone on reload.
+  const next = reload(device);
+  assert.equal((await next.readSaved(null)).scheduled, null, 'signed out: private data hidden');
+  await next.finishPendingLogout(); // no marker: nothing to do
+  await next.setAccount(null); // owner key present while signed out -> cleanup
+  await next.idle();
+  assertDeviceClean(device, 'after startup');
+});
+
+test('cleanup interrupted after the marker was written (timeout won) -> reload hides private data, then completes cleanup', async () => {
+  const device = await signedInDevice('A');
+  // OS call hangs forever: cleanup cannot finish this session.
+  const hangingPort = { ...device.notifications.port, getPending: () => new Promise(() => {}) };
+  const hung = createNativeAccountSync({
+    notifications: hangingPort,
+    storage: device.storage.port,
+    pathForMovie: (id) => `/movie/${id}`,
+    now: () => NOW,
+  });
+  await hung.setAccount('A');
+  // Registry timeout wins (bounded sign-out), the app reloads.
+  const winner = await Promise.race([hung.logout('A').then(() => 'cleanup'), new Promise((r) => setTimeout(() => r('timeout'), 30))]);
+  assert.equal(winner, 'timeout');
+  assert.equal(device.storage.map.has(LOGOUT_PENDING_KEY), true, 'marker persisted before cleanup');
+  assert.equal(device.notifications.pending.size, 2, 'cleanup did not finish: reminders still scheduled');
+  assert.equal(device.storage.map.get(OFFLINE_OWNER_KEY), 'A', 'cleanup did not finish: owner key still set');
+  // Re-plant a private cache as if the (parallel) cache removal had not run either.
+  device.storage.map.set(
+    OFFLINE_CACHE_KEYS.scheduled,
+    JSON.stringify({ version: 1, savedAt: '', userId: 'A', items: [{ id: '1', title: 'A secret' }] }),
+  );
+
+  const next = reload(device);
+  // Before the cleanup is finished, no private data is exposed for any owner hint.
+  for (const hint of [undefined, 'A', null]) {
+    const saved = await next.readSaved(hint);
+    assert.equal(saved.scheduled, null, `hint ${hint}: scheduled hidden`);
+    assert.equal(saved.friendRecs, null, `hint ${hint}: friend recs hidden`);
+  }
+  assert.equal(await next.finishPendingLogout(), true);
+  assertDeviceClean(device, 'after startup recovery');
+});
+
+test('a failed cleanup step keeps the marker (never cleared just because the call returned)', async () => {
+  const device = await signedInDevice('A');
+  const failingStorage = {
+    ...device.storage.port,
+    async remove(key) {
+      if (key === OFFLINE_CACHE_KEYS.friendRecs) throw new Error('disk error');
+      return device.storage.port.remove(key);
+    },
+  };
+  const ctl = createNativeAccountSync({
+    notifications: device.notifications.port,
+    storage: failingStorage,
+    pathForMovie: (id) => `/movie/${id}`,
+    now: () => NOW,
+  });
+  await ctl.setAccount('A');
+  assert.equal(await ctl.logout('A'), false);
+  assert.equal(device.storage.map.has(LOGOUT_PENDING_KEY), true);
+  assert.equal((await ctl.readSaved(undefined)).friendRecs, null, 'private data hidden while marker exists');
+
+  const next = reload(device);
+  assert.equal(await next.finishPendingLogout(), true);
+  assertDeviceClean(device, 'after retry on startup');
+});
+
+test('a stale in-flight cleanup does not clear a newer marker', async () => {
+  const device = await signedInDevice('A');
+  const gate1 = device.notifications.holdNextGetPending();
+  const gate2 = device.notifications.holdNextGetPending();
+  const first = device.sync.logout('A');
+  await new Promise((r) => setTimeout(r, 0));
+  const second = device.sync.logout('A'); // newer marker written while the first cleanup is in flight
+  await new Promise((r) => setTimeout(r, 0));
+  const newerMarker = device.storage.map.get(LOGOUT_PENDING_KEY);
+  assert.ok(newerMarker);
+
+  gate1.resolve();
+  assert.equal(await first, true);
+  assert.equal(device.storage.map.get(LOGOUT_PENDING_KEY), newerMarker, 'first cleanup left the newer marker alone');
+
+  gate2.resolve();
+  assert.equal(await second, true);
+  assertDeviceClean(device, 'after both cleanups');
+});
+
+test('sign-in of B after an unfinished sign-out of A: A data cleared, marker removed, B owns the device', async () => {
+  const device = await signedInDevice('A');
+  device.storage.map.set(LOGOUT_PENDING_KEY, JSON.stringify({ token: 'old', userId: 'A' }));
+  const next = reload(device);
+  await next.setAccount('B');
+  assert.equal(device.notifications.pending.size, 0);
+  assert.equal(device.storage.map.has(OFFLINE_CACHE_KEYS.scheduled), false);
+  assert.equal(device.storage.map.has(LOGOUT_PENDING_KEY), false);
+  assert.equal(device.storage.map.get(OFFLINE_OWNER_KEY), 'B');
 });

@@ -16,6 +16,9 @@
  *   stale results are dropped.
  * - Account transitions (sign-out, A -> B) cancel this app's notifications and
  *   clear private caches regardless of network state.
+ * - Sign-out persists a pending-logout marker before cleaning up and only
+ *   removes it after the cleanup really finished (never on a timeout); a
+ *   leftover marker hides private data and is honored on the next startup.
  * - Private caches (scheduled watches, friend recommendations) carry the
  *   owner's userId and are only returned for that owner. The watchlist is
  *   device-local (localStorage) and is cached with userId null.
@@ -29,6 +32,14 @@ export const OFFLINE_CACHE_KEYS = {
 
 /** userId of the signed-in account that owns the private caches; absent when signed out. */
 export const OFFLINE_OWNER_KEY = 'bib_offline_owner';
+
+/**
+ * Pending sign-out marker: `{ token, userId, at }`. Written before sign-out
+ * cleanup starts and removed (by the same token only) once cancel + cache
+ * clear + owner removal have really completed. While it exists no private
+ * offline data is shown, and the next startup finishes the cleanup.
+ */
+export const LOGOUT_PENDING_KEY = 'bib_offline_logout_pending';
 
 export type OfflineCacheKind = keyof typeof OFFLINE_CACHE_KEYS;
 export type PrivateCacheKind = Exclude<OfflineCacheKind, 'watchlist'>;
@@ -252,13 +263,78 @@ export function createNativeAccountSync(deps: AccountSyncDeps) {
   };
 
   /** Cancel every notification this app scheduled and drop private caches. Runs inside the queue. */
-  const clearAccountData = async () => {
-    await Promise.allSettled([
+  /** Returns true only if every step succeeded. */
+  const clearAccountData = async (): Promise<boolean> => {
+    const results = await Promise.allSettled([
       cancelWhere(() => true),
       storage.remove(OFFLINE_CACHE_KEYS.scheduled),
       storage.remove(OFFLINE_CACHE_KEYS.friendRecs),
     ]);
+    return results.every((r) => r.status === 'fulfilled');
   };
+
+  /** Full sign-out cleanup: notifications, private caches, owner key. True only if all completed. */
+  const clearEverythingPrivate = async (): Promise<boolean> => {
+    const cleared = await clearAccountData();
+    try {
+      await storage.remove(OFFLINE_OWNER_KEY);
+    } catch {
+      return false;
+    }
+    return cleared;
+  };
+
+  // Marker reads/writes get their own queue so a marker write is never stuck
+  // behind a slow native mutation, and compare-and-delete can't race a newer write.
+  const markerQueue = createSerialQueue();
+  let tokenCounter = 0;
+
+  const readMarker = async (): Promise<{ token: string; userId: string | null } | null> => {
+    let raw: string | null = null;
+    try {
+      raw = await storage.get(LOGOUT_PENDING_KEY);
+    } catch {
+      return null;
+    }
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as { token?: unknown; userId?: unknown };
+      return {
+        token: typeof parsed.token === 'string' ? parsed.token : raw,
+        userId: typeof parsed.userId === 'string' ? parsed.userId : null,
+      };
+    } catch {
+      // Unreadable marker still counts as pending.
+      return { token: raw, userId: null };
+    }
+  };
+
+  const writeMarker = (userId: string | null): Promise<string> =>
+    markerQueue(async () => {
+      tokenCounter += 1;
+      const token = `${now()}-${tokenCounter}-${Math.random().toString(36).slice(2, 10)}`;
+      await storage.set(LOGOUT_PENDING_KEY, JSON.stringify({ token, userId, at: new Date(now()).toISOString() }));
+      return token;
+    });
+
+  /** Remove the marker only if it is still the one this task owns. */
+  const clearMarkerIf = (token: string): Promise<boolean> =>
+    markerQueue(async () => {
+      const current = await readMarker();
+      if (!current || current.token !== token) return false;
+      await storage.remove(LOGOUT_PENDING_KEY);
+      return true;
+    });
+
+  /** Finish an interrupted sign-out (queued). True when no marker remains for that run. */
+  const finishPendingLogout = (): Promise<boolean> =>
+    enqueue(async () => {
+      const marker = await markerQueue(readMarker);
+      if (!marker) return true;
+      if (!(await clearEverythingPrivate())) return false;
+      await clearMarkerIf(marker.token);
+      return true;
+    });
 
   /**
    * Tell the controller which account is signed in (null = signed out). Call
@@ -277,10 +353,14 @@ export function createNativeAccountSync(deps: AccountSyncDeps) {
       } catch {
         storedOwner = null;
       }
-      // Known in-memory switch, or the device was left with another owner's
-      // data (e.g. sign-out / switch happened in a previous app session).
-      const switched = previous !== undefined || storedOwner !== userId;
-      if (switched) await clearAccountData();
+      const marker = await markerQueue(readMarker);
+      // Known in-memory switch, the device was left with another owner's data
+      // (sign-out / switch in a previous session), or an unfinished sign-out.
+      const switched = previous !== undefined || storedOwner !== userId || marker !== null;
+      if (switched) {
+        const cleared = await clearEverythingPrivate();
+        if (cleared && marker) await clearMarkerIf(marker.token);
+      }
       try {
         if (userId) {
           await storage.set(OFFLINE_OWNER_KEY, userId);
@@ -366,6 +446,32 @@ export function createNativeAccountSync(deps: AccountSyncDeps) {
     });
   }
 
+  /**
+   * Sign-out cleanup (awaited by AuthProvider.signOut via the logout registry).
+   * 1. Invalidate in-flight work and mark the account signed out (sync).
+   * 2. Persist the pending-logout marker BEFORE any cleanup.
+   * 3. Cancel notifications, clear private caches, remove the owner key.
+   * 4. Remove the marker (only this run's token) once 3 fully succeeded.
+   * Resolves true when cleanup completed. If the caller gives up (timeout)
+   * the marker stays and the next startup finishes the job.
+   */
+  async function logout(userId: string | null = null): Promise<boolean> {
+    account = null;
+    generation += 1;
+    let token: string | null = null;
+    try {
+      token = await writeMarker(userId);
+    } catch {
+      // Could not persist the marker; still clean up now. The startup check
+      // (owner key present while signed out) remains as a fallback.
+    }
+    return enqueue(async () => {
+      if (!(await clearEverythingPrivate())) return false;
+      if (token) await clearMarkerIf(token);
+      return true;
+    });
+  }
+
   /** After the user saves / reschedules a watch reminder (user-initiated: may prompt). */
   function scheduleReminder(reminder: ReminderLike, userId: string): Promise<boolean> {
     const gen = generation;
@@ -441,7 +547,9 @@ export function createNativeAccountSync(deps: AccountSyncDeps) {
     } catch {
       storedOwner = null;
     }
-    const owner = currentUserId === undefined ? storedOwner : currentUserId;
+    // An unfinished sign-out hides all private data until it is completed.
+    const pendingLogout = (await markerQueue(readMarker)) !== null;
+    const owner = pendingLogout ? null : currentUserId === undefined ? storedOwner : currentUserId;
     const [watchlist, scheduled, friendRecs] = await Promise.all([
       read(OFFLINE_CACHE_KEYS.watchlist),
       read(OFFLINE_CACHE_KEYS.scheduled),
@@ -459,6 +567,8 @@ export function createNativeAccountSync(deps: AccountSyncDeps) {
 
   return {
     setAccount,
+    logout,
+    finishPendingLogout,
     sync,
     scheduleReminder,
     cancelReminder,
