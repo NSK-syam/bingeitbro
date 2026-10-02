@@ -42,14 +42,33 @@ async function appleIdentityToken({ sub, rawNonce, aud = 'com.bingeitbro.app', i
   return `${header}.${payload}.${b64u(new Uint8Array(sig))}`;
 }
 
-const BASE_ENV = { supabaseUrl: SUPABASE, anonKey: 'anon-key', serviceKey: SERVICE_KEY };
+/** id_token returned by Apple's code exchange (no nonce unless given). */
+async function appleExchangedIdToken({ sub, nonceHash }) {
+  const header = b64uJson({ alg: 'RS256', kid: APPLE_KID });
+  const iat = Math.floor(NOW / 1000);
+  const claims = { iss: 'https://appleid.apple.com', aud: 'com.bingeitbro.app', sub, iat, exp: iat + 600 };
+  if (nonceHash) claims.nonce = nonceHash;
+  const payload = b64uJson(claims);
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', rsa.privateKey, new TextEncoder().encode(`${header}.${payload}`));
+  return `${header}.${payload}.${b64u(new Uint8Array(sig))}`;
+}
+
+/** Authorization code -> the Apple ID it belongs to (null = Apple returns no id_token). */
+const APPLE_CODES = {
+  'good-code': { sub: '000123.apple.sub' },
+  'code-for-B': { sub: '000999.other.apple.sub' },
+  'code-bad-nonce': { sub: '000123.apple.sub', nonceHash: 'ffff' },
+  'code-no-id-token': null,
+};
+
+const BASE_ENV ={ supabaseUrl: SUPABASE, anonKey: 'anon-key', serviceKey: SERVICE_KEY };
 const APPLE_ENV = { ...BASE_ENV, appleTeamId: 'TEAM123456', appleKeyId: 'KEY1234567', applePrivateKey: P8_PEM };
 
 /**
  * Mock backend. users: id -> { token, email, password, providers, appleSub, lastSignIn }.
  * failOnce: set of "METHOD path-prefix" that fail with 500 the first time they are hit.
  */
-function makeBackend(users, { failOnce = [] } = {}) {
+function makeBackend(users, { failOnce = [], failAlways = [], timeoutAlways = [] } = {}) {
   const calls = [];
   const failures = new Set(failOnce);
   const alive = new Set(Object.keys(users));
@@ -73,6 +92,18 @@ function makeBackend(users, { failOnce = [] } = {}) {
         return res(500, { message: 'injected failure' });
       }
     }
+    for (const key of failAlways) {
+      const [m, prefix] = key.split(' ');
+      if (m === method && url.startsWith(prefix)) return res(500, { msg: 'Database error deleting user' });
+    }
+    for (const key of timeoutAlways) {
+      const [m, prefix] = key.split(' ');
+      if (m === method && url.startsWith(prefix)) {
+        const err = new Error('The operation was aborted');
+        err.name = 'AbortError';
+        throw err;
+      }
+    }
 
     const auth = (init.headers?.Authorization || init.headers?.authorization || '').replace(/^Bearer /, '');
 
@@ -84,8 +115,12 @@ function makeBackend(users, { failOnce = [] } = {}) {
       assert.equal(form.get('client_id'), 'com.bingeitbro.app');
       assert.equal(form.get('grant_type'), 'authorization_code');
       assert.equal(form.get('client_secret').split('.').length, 3);
-      if (form.get('code') !== 'good-code') return res(400, { error: 'invalid_grant' });
-      return res(200, { access_token: 'apple-at', refresh_token: 'apple-rt', id_token: 'x' });
+      const code = form.get('code');
+      if (!(code in APPLE_CODES)) return res(400, { error: 'invalid_grant' });
+      const spec = APPLE_CODES[code];
+      const out = { access_token: 'apple-at', refresh_token: 'apple-rt' };
+      if (spec) out.id_token = await appleExchangedIdToken(spec);
+      return res(200, out);
     }
     if (url === 'https://appleid.apple.com/auth/revoke') {
       const form = new URLSearchParams(String(init.body));
@@ -146,7 +181,8 @@ function makeBackend(users, { failOnce = [] } = {}) {
   return { fetch: fetchMock, calls, destructive, alive };
 }
 
-const deps = (backend) => ({ fetch: backend.fetch, now: () => NOW });
+const deps = (backend) => ({ fetch: backend.fetch, now: () => NOW, sleep: async () => {} });
+const profileDeletes = (be) => be.calls.filter((c) => c.method === 'DELETE' && c.url.includes('/rest/v1/users'));
 const run = (backend, env, token, body) =>
   handleAccountDeletion({ authorization: token ? `Bearer ${token}` : null, body }, env, deps(backend));
 
@@ -349,13 +385,100 @@ await test('failure mid-sequence -> 500 retryable (user still exists), retry com
   assert.ok(!be.alive.has(U_EMAIL));
 });
 
-await test('auth delete fails once -> falls back to deleting public.users, then succeeds', async () => {
+await test('auth delete fails once -> bounded retry succeeds, public.users never deleted directly', async () => {
   const be = makeBackend(users(), { failOnce: [`DELETE ${SUPABASE}/auth/v1/admin/users/`] });
   const r = await run(be, BASE_ENV, 'tok-email', { confirm: 'DELETE', password: 'hunter22' });
   assert.equal(r.status, 200, JSON.stringify(r.body));
-  assert.ok(be.calls.some((c) => c.method === 'DELETE' && c.url.includes('/rest/v1/users?id=eq.')));
+  assert.equal(profileDeletes(be).length, 0);
   assert.ok(!be.alive.has(U_EMAIL));
 });
+
+await test('auth delete times out every attempt -> 500 retryable, NO public.users DELETE, user survives', async () => {
+  const be = makeBackend(users(), { timeoutAlways: [`DELETE ${SUPABASE}/auth/v1/admin/users/`] });
+  const r = await run(be, BASE_ENV, 'tok-email', { confirm: 'DELETE', password: 'hunter22' });
+  assert.equal(r.status, 500);
+  assert.equal(r.body.retryable, true);
+  assert.equal(r.body.step, 'auth_user');
+  assert.equal(profileDeletes(be).length, 0);
+  const attempts = be.calls.filter((c) => c.method === 'DELETE' && c.url.includes('/auth/v1/admin/users/'));
+  assert.equal(attempts.length, 3, 'bounded retries');
+  assert.ok(be.alive.has(U_EMAIL));
+});
+
+await test('auth delete permanent 5xx -> 500 retryable, NO public.users DELETE, user survives', async () => {
+  const be = makeBackend(users(), { failAlways: [`DELETE ${SUPABASE}/auth/v1/admin/users/`] });
+  const r = await run(be, BASE_ENV, 'tok-email', { confirm: 'DELETE', password: 'hunter22' });
+  assert.equal(r.status, 500);
+  assert.equal(r.body.retryable, true);
+  assert.equal(profileDeletes(be).length, 0);
+  assert.ok(be.alive.has(U_EMAIL));
+});
+
+await test('Google: old amr + recent other-device last_sign_in_at -> reauth_required, nothing deleted', async () => {
+  const u = users();
+  u[U_GOOGLE].token = staleGoogleToken;
+  u[U_GOOGLE].lastSignIn = NOW - 30 * 1000;
+  const be = makeBackend(u);
+  const r = await run(be, BASE_ENV, staleGoogleToken, { confirm: 'DELETE' });
+  assert.equal(r.status, 403);
+  assert.equal(r.body.code, 'reauth_required');
+  assert.equal(be.destructive().length, 0);
+});
+
+await test('Google: recent token_refresh-only amr -> reauth_required, nothing deleted', async () => {
+  const tok = fakeJwt({ sub: U_GOOGLE, amr: [{ method: 'token_refresh', timestamp: NOW / 1000 - 10 }] });
+  const u = users();
+  u[U_GOOGLE].token = tok;
+  const be = makeBackend(u);
+  const r = await run(be, BASE_ENV, tok, { confirm: 'DELETE' });
+  assert.equal(r.status, 403);
+  assert.equal(r.body.code, 'reauth_required');
+  assert.equal(be.destructive().length, 0);
+});
+
+await test('Google: future amr timestamp -> reauth_required, nothing deleted', async () => {
+  const tok = fakeJwt({ sub: U_GOOGLE, amr: [{ method: 'oauth', timestamp: NOW / 1000 + 300 }] });
+  const u = users();
+  u[U_GOOGLE].token = tok;
+  const be = makeBackend(u);
+  const r = await run(be, BASE_ENV, tok, { confirm: 'DELETE' });
+  assert.equal(r.status, 403);
+  assert.equal(r.body.code, 'reauth_required');
+  assert.equal(be.destructive().length, 0);
+});
+
+await test('Google: no amr at all -> reauth_required (fails closed)', async () => {
+  const tok = fakeJwt({ sub: U_GOOGLE });
+  const u = users();
+  u[U_GOOGLE].token = tok;
+  u[U_GOOGLE].lastSignIn = NOW - 5 * 1000;
+  const be = makeBackend(u);
+  const r = await run(be, BASE_ENV, tok, { confirm: 'DELETE' });
+  assert.equal(r.status, 403);
+  assert.equal(be.destructive().length, 0);
+});
+
+for (const [label, code] of [
+  ['swapped code (token for A, code for B)', 'code-for-B'],
+  ['exchanged id_token nonce mismatch', 'code-bad-nonce'],
+  ['exchange returns no id_token', 'code-no-id-token'],
+]) {
+  await test(`Apple ${label} -> 403, NO revoke and NO deletes`, async () => {
+    const be = makeBackend(users());
+    const rawNonce = `n-${code}`;
+    const r = await run(be, APPLE_ENV, 'tok-apple', {
+      confirm: 'DELETE',
+      appleIdentityToken: await appleIdentityToken({ sub: '000123.apple.sub', rawNonce }),
+      appleAuthorizationCode: code,
+      appleNonce: rawNonce,
+    });
+    assert.equal(r.status, 403, JSON.stringify(r.body));
+    assert.equal(r.body.code, 'apple_account_mismatch');
+    assert.ok(be.calls.some((c) => c.url === 'https://appleid.apple.com/auth/token'));
+    assert.equal(be.destructive().length, 0, 'no revoke, no deletes');
+    assert.ok(be.alive.has(U_APPLE));
+  });
+}
 
 await test('already deleted user (valid JWT, user gone) -> 200 alreadyDeleted, idempotent', async () => {
   const be = makeBackend(users());

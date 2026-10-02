@@ -23,22 +23,34 @@
  *        nonce == sha256hex(raw nonce)) and its `sub` must equal the user's Apple identity.
  *      - else email identity: password re-entered and verified via
  *        POST /auth/v1/token?grant_type=password (returned user id must match).
- *      - else (OAuth only, e.g. Google): the session must be recent (JWT `amr`
- *        timestamp or last_sign_in_at within 10 minutes), otherwise `reauth_required`.
- *   4. Apple users only: the authorization code is exchanged for a refresh token and
- *      that token is revoked at Apple. Any failure aborts BEFORE deleting anything.
+ *      - else (OAuth only, e.g. Google): the VERIFIED caller session itself must contain a
+ *        recent qualifying authentication event: an `amr` entry of the access token (already
+ *        validated by /auth/v1/user, and its `sub` must equal the user id) with method in
+ *        {password, oauth, otp, magiclink, sso/saml, id_token} (never token_refresh), a finite
+ *        timestamp no more than 60 s in the future and no older than 10 minutes.
+ *        last_sign_in_at is NOT used (a sign-in on another device must not refresh an old
+ *        session). Fails closed with `reauth_required`.
+ *   4. Apple users only: the authorization code is exchanged at Apple; the id_token returned
+ *      by the exchange is verified (JWKS signature, iss, aud, exp, nonce if present) and its
+ *      `sub` must equal the verified request token's `sub` and the account's Apple identity
+ *      (so a code for another Apple ID cannot be revoked). Only then is the refresh token
+ *      revoked. Any failure aborts BEFORE deleting anything.
  *
  * Deletion order (every step is idempotent, so a retry simply continues):
  *   D1. native_push_tokens   DELETE user_id=eq.<id>   (stop pushes right away; also cascades)
  *   D2. chat_themes          DELETE themes of DM chats containing the user, and of
  *                            groups the user owns (chat_id is TEXT, no FK, never cascades)
- *   D3. auth.users           DELETE /auth/v1/admin/users/<id>  (404 = already gone)
- *       auth.users -> public.users -> every user-owned table is ON DELETE CASCADE in the
- *       schema files, so D3 removes all app data in ONE Postgres transaction.
- *   D3b (fallback) if D3 fails (e.g. production FK not cascading): DELETE public.users
- *       id=eq.<id> (cascades children), then retry D3 once.
- *   On any failure: 500 { retryable: true, step }. The user is still signed in
- *   (auth user only disappears in the final step) and can simply retry.
+ *   D3. auth.users           DELETE /auth/v1/admin/users/<id>  (404 = already gone),
+ *       up to 3 attempts. auth.users -> public.users -> every user-owned table is
+ *       ON DELETE CASCADE in the schema files, so D3 removes all app data in ONE Postgres
+ *       transaction. There is deliberately NO fallback that deletes public.users directly:
+ *       GoTrue does not surface the Postgres error code, so a timeout/401/5xx cannot be told
+ *       apart from an FK problem, and deleting the profile while the auth user survives would
+ *       wipe the data and let ensureUserProfile recreate an empty profile.
+ *   On any failure: 500 { retryable: true, step }. The user is still signed in (the auth
+ *   user only disappears in D3) and can simply retry. Note D1/D2 are separate requests:
+ *   if D3 fails after them, the push tokens and chat themes are already gone (the device
+ *   re-registers its push token on next launch; themes fall back to the default).
  *
  * Table -> strategy (from supabase-*.sql / production_migration.sql):
  *   CASCADE via public.users (FK ON DELETE CASCADE): recommendations, friends,
@@ -84,7 +96,15 @@ export type AccountDeletionEnv = {
 export type AccountDeletionDeps = {
   fetch: typeof fetch;
   now: () => number;
+  /** Optional delay between auth-delete attempts (tests pass a no-op). */
+  sleep?: (ms: number) => Promise<void>;
 };
+
+const AUTH_DELETE_ATTEMPTS = 3;
+const AUTH_DELETE_RETRY_DELAY_MS = 400;
+
+/** amr methods that represent a real (re-)authentication, not a token refresh. */
+const QUALIFYING_AMR_METHODS = new Set(['password', 'oauth', 'otp', 'magiclink', 'sso/saml', 'id_token']);
 
 export type AccountDeletionInput = {
   authorization: string | null;
@@ -232,12 +252,18 @@ type AppleTokenCheck =
   | { ok: true; sub: string }
   | { ok: false; reason: string; transient?: boolean };
 
+/**
+ * Verify an Apple id_token: RS256 signature against Apple's JWKS, iss, aud, exp,
+ * iat freshness (10 min) and the nonce (sha256hex(raw nonce)).
+ * `nonceRequired: false` (used for the id_token returned by the code exchange) still
+ * rejects a nonce claim that is present but does not match.
+ */
 export async function verifyAppleIdentityToken(
   deps: AccountDeletionDeps,
   token: string,
-  rawNonce: string,
-  clientId: string,
+  options: { rawNonce: string; clientId: string; nonceRequired: boolean },
 ): Promise<AppleTokenCheck> {
+  const { rawNonce, clientId, nonceRequired } = options;
   const parts = token.split('.');
   if (parts.length !== 3) return { ok: false, reason: 'malformed' };
   const header = decodeJwtPart(parts[0]);
@@ -284,8 +310,10 @@ export async function verifyAppleIdentityToken(
   const iat = typeof payload.iat === 'number' ? payload.iat * 1000 : 0;
   if (!iat || iat > now + CLOCK_SKEW_MS || now - iat > REAUTH_MAX_AGE_MS) return { ok: false, reason: 'stale' };
   const expectedNonce = await sha256Hex(rawNonce);
-  if (typeof payload.nonce !== 'string' || payload.nonce.toLowerCase() !== expectedNonce) {
-    return { ok: false, reason: 'bad_nonce' };
+  if (payload.nonce !== undefined || nonceRequired) {
+    if (typeof payload.nonce !== 'string' || payload.nonce.toLowerCase() !== expectedNonce) {
+      return { ok: false, reason: 'bad_nonce' };
+    }
   }
   if (typeof payload.sub !== 'string' || !payload.sub) return { ok: false, reason: 'no_sub' };
   return { ok: true, sub: payload.sub };
@@ -319,11 +347,18 @@ export async function createAppleClientSecret(env: AccountDeletionEnv, nowMs: nu
   return `${signingInput}.${base64UrlEncodeBytes(new Uint8Array(signature))}`;
 }
 
-/** Exchange the fresh authorization code for a refresh token and revoke it. Throws StepError. */
+/**
+ * Exchange the fresh authorization code, verify that the exchanged id_token belongs to
+ * `expectedSub` (the verified request token's sub == the account's Apple identity), and
+ * only then revoke the refresh token. Throws StepError ('apple_code_mismatch' when the
+ * code belongs to a different Apple ID or its id_token is missing/invalid).
+ */
 async function revokeAppleTokens(
   env: AccountDeletionEnv,
   deps: AccountDeletionDeps,
   authorizationCode: string,
+  expectedSub: string,
+  rawNonce: string,
 ): Promise<void> {
   let clientSecret: string;
   try {
@@ -359,6 +394,23 @@ async function revokeAppleTokens(
   const accessToken = typeof tokenJson?.access_token === 'string' ? tokenJson.access_token : '';
   const token = refreshToken || accessToken;
   if (!token) throw new StepError('apple_token', 'Apple returned no token to revoke.');
+
+  // Bind the code to the account: the id_token Apple returns for THIS code must be valid
+  // and belong to the same Apple ID that was verified from the request. Fail closed.
+  const exchangedIdToken = typeof tokenJson?.id_token === 'string' ? tokenJson.id_token : '';
+  if (!exchangedIdToken) throw new StepError('apple_code_mismatch', 'Apple returned no id_token for the code.');
+  const exchanged = await verifyAppleIdentityToken(deps, exchangedIdToken, {
+    rawNonce,
+    clientId,
+    nonceRequired: false,
+  });
+  if (!exchanged.ok) {
+    if (exchanged.transient) throw new StepError('apple_token', 'Could not verify the exchanged id_token.');
+    throw new StepError('apple_code_mismatch', 'Exchanged id_token is invalid.');
+  }
+  if (exchanged.sub !== expectedSub) {
+    throw new StepError('apple_code_mismatch', 'Authorization code belongs to a different Apple ID.');
+  }
 
   let revokeRes: Response;
   try {
@@ -451,17 +503,28 @@ function appleSubOf(user: AuthUser): string | null {
   return null;
 }
 
-/** Latest authentication time (ms) from the JWT `amr` claim or last_sign_in_at. */
-function lastAuthenticatedAt(accessToken: string, user: AuthUser): number {
-  let latest = 0;
+/**
+ * True when the caller's OWN session (the access token, whose signature was just verified
+ * by GET /auth/v1/user) records a qualifying authentication within REAUTH_MAX_AGE_MS.
+ * Uses only the token's `amr` entries: token_refresh does not count, timestamps must be
+ * finite and at most 60 s in the future. last_sign_in_at is deliberately ignored (it moves
+ * when the user signs in on ANOTHER device). Fails closed.
+ * See https://supabase.com/docs/guides/auth/jwt-fields
+ */
+export function sessionRecentlyAuthenticated(accessToken: string, userId: string, nowMs: number): boolean {
   const payload = decodeJwtPayload(accessToken);
-  const amr = Array.isArray(payload?.amr) ? (payload.amr as Array<Record<string, unknown>>) : [];
+  if (!payload || payload.sub !== userId) return false;
+  const amr = Array.isArray(payload.amr) ? (payload.amr as Array<Record<string, unknown>>) : [];
   for (const entry of amr) {
-    if (typeof entry?.timestamp === 'number') latest = Math.max(latest, entry.timestamp * 1000);
+    const method = typeof entry?.method === 'string' ? entry.method : '';
+    if (!QUALIFYING_AMR_METHODS.has(method)) continue;
+    const ts = typeof entry?.timestamp === 'number' ? entry.timestamp * 1000 : NaN;
+    if (!Number.isFinite(ts)) continue;
+    if (ts > nowMs + CLOCK_SKEW_MS) continue;
+    if (nowMs - ts > REAUTH_MAX_AGE_MS) continue;
+    return true;
   }
-  const lastSignIn = user.last_sign_in_at ? Date.parse(user.last_sign_in_at) : NaN;
-  if (Number.isFinite(lastSignIn)) latest = Math.max(latest, lastSignIn);
-  return latest;
+  return false;
 }
 
 type PasswordCheck = 'ok' | 'invalid' | 'error';
@@ -535,19 +598,27 @@ async function restSelect(
   return Array.isArray(json) ? (json as Array<Record<string, unknown>>) : [];
 }
 
-/** DELETE the auth user. Returns true when it is gone (deleted now or already). */
+/**
+ * DELETE the auth user, up to AUTH_DELETE_ATTEMPTS times. Returns true when it is gone
+ * (deleted now or already, 404). Never touches public.users on failure.
+ */
 async function deleteAuthUser(env: AccountDeletionEnv, deps: AccountDeletionDeps, userId: string): Promise<boolean> {
-  let res: Response;
-  try {
-    res = await timedFetch(deps, `${env.supabaseUrl}/auth/v1/admin/users/${userId}`, {
-      method: 'DELETE',
-      headers: serviceHeaders(env, { 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ should_soft_delete: false }),
-    });
-  } catch {
-    return false;
+  const sleep = deps.sleep ?? ((ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms)));
+  for (let attempt = 1; attempt <= AUTH_DELETE_ATTEMPTS; attempt += 1) {
+    try {
+      const res = await timedFetch(deps, `${env.supabaseUrl}/auth/v1/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: serviceHeaders(env, { 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ should_soft_delete: false }),
+      });
+      if (res.ok || res.status === 404) return true;
+      console.error('[account/delete] auth delete attempt failed', attempt, res.status);
+    } catch {
+      console.error('[account/delete] auth delete attempt failed', attempt, 'network/timeout');
+    }
+    if (attempt < AUTH_DELETE_ATTEMPTS) await sleep(AUTH_DELETE_RETRY_DELAY_MS * attempt);
   }
-  return res.ok || res.status === 404;
+  return false;
 }
 
 /* ----------------------------------------------------------------------------
@@ -615,6 +686,8 @@ export async function handleAccountDeletion(
 
   // ---- Gate 3: recent re-authentication ----
   let appleAuthorizationCode = '';
+  let verifiedAppleSub = '';
+  let appleRawNonce = '';
   if (isApple) {
     if (!appleConfigured(env)) {
       return fail(
@@ -633,7 +706,11 @@ export async function handleAccountDeletion(
         'Confirm with Sign in with Apple in the Binge It Bro iOS app to delete this account.',
       );
     }
-    const check = await verifyAppleIdentityToken(deps, identityToken, rawNonce, appleClientId(env));
+    const check = await verifyAppleIdentityToken(deps, identityToken, {
+      rawNonce,
+      clientId: appleClientId(env),
+      nonceRequired: true,
+    });
     if (!check.ok) {
       if (check.transient) {
         return fail(503, 'apple_unavailable', 'Could not reach Apple. Please try again.', { retryable: true });
@@ -648,6 +725,8 @@ export async function handleAccountDeletion(
         'That Apple ID is not the one linked to this account. Confirm with the Apple ID you use for Binge It Bro.',
       );
     }
+    verifiedAppleSub = check.sub;
+    appleRawNonce = rawNonce;
   } else if (providers.has('email')) {
     const password = str(body.password, 1024);
     if (!password) return fail(401, 'password_required', 'Enter your password to confirm.');
@@ -659,8 +738,7 @@ export async function handleAccountDeletion(
     }
     if (result === 'invalid') return fail(401, 'invalid_password', 'Incorrect password.');
   } else {
-    const last = lastAuthenticatedAt(accessToken, authUser);
-    if (!last || deps.now() - last > REAUTH_MAX_AGE_MS) {
+    if (!sessionRecentlyAuthenticated(accessToken, userId, deps.now())) {
       return fail(
         403,
         'reauth_required',
@@ -673,11 +751,19 @@ export async function handleAccountDeletion(
   let appleRevoked = false;
   if (isApple) {
     try {
-      await revokeAppleTokens(env, deps, appleAuthorizationCode);
+      await revokeAppleTokens(env, deps, appleAuthorizationCode, verifiedAppleSub, appleRawNonce);
       appleRevoked = true;
     } catch (err) {
       const step = err instanceof StepError ? err.step : 'apple_revoke';
       console.error('[account/delete] step failed', step);
+      if (step === 'apple_code_mismatch') {
+        return fail(
+          403,
+          'apple_account_mismatch',
+          'The Apple confirmation did not match this account. Nothing was deleted. Please try again.',
+          { step },
+        );
+      }
       return fail(
         502,
         'apple_revocation_failed',
@@ -703,14 +789,8 @@ export async function handleAccountDeletion(
     await restDelete(env, deps, 'chat_themes', `chat_themes?chat_id=like.${encodeURIComponent(`direct:*${userId}*`)}`);
 
     // D3. Auth user: cascades public.users and every user-owned table in one transaction.
-    let gone = await deleteAuthUser(env, deps, userId);
-    if (!gone) {
-      // D3b. Fallback if public.users does not cascade in production: delete the profile
-      // (which cascades the app tables), then retry the auth user once.
-      console.error('[account/delete] auth delete failed; deleting public.users first');
-      await restDelete(env, deps, 'public_users', `users?id=eq.${userId}`);
-      gone = await deleteAuthUser(env, deps, userId);
-    }
+    // No public.users fallback (see header): on failure the user retries.
+    const gone = await deleteAuthUser(env, deps, userId);
     if (!gone) throw new StepError('auth_user', 'auth user delete failed');
   } catch (err) {
     const step = err instanceof StepError ? err.step : 'unknown';

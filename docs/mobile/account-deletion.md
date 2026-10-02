@@ -55,13 +55,24 @@ Nothing is deleted until all of these pass:
    - **Email identity** (no Apple): the password is re-entered and checked with
      `POST /auth/v1/token?grant_type=password`; the returned user id must match
      (`401 password_required` / `401 invalid_password`). The extra session is logged out.
-   - **OAuth only (Google)**: the latest JWT `amr` timestamp or `last_sign_in_at` must be within
-     10 minutes, else `403 reauth_required`. The modal then offers "Sign in again with Google".
+   - **OAuth only (Google)**: the caller's own session must show a recent sign-in. The access
+     token has already been validated by `GET /auth/v1/user`, and its `sub` must equal the
+     user. Its `amr` claim
+     ([JWT fields](https://supabase.com/docs/guides/auth/jwt-fields)) must contain an entry with
+     method `password`, `oauth`, `otp`, `magiclink`, `sso/saml` or `id_token` (not
+     `token_refresh`), with a timestamp no more than 60 s in the future and no older than 10
+     minutes. `last_sign_in_at` is ignored, because a sign-in on another device must not make an
+     old or stolen session count as recent. If there is no such entry the server returns
+     `403 reauth_required`, and the modal offers "Sign in again with Google".
 4. **Apple only**: the authorization code is exchanged at `https://appleid.apple.com/auth/token`
-   with an ES256 `client_secret` JWT, and the refresh token is revoked at
-   `https://appleid.apple.com/auth/revoke` (`token_type_hint=refresh_token`). Any failure
-   returns `502 apple_revocation_failed` (retryable, needs a new Apple confirmation) and
-   nothing is deleted.
+   with an ES256 `client_secret` JWT. The `id_token` Apple returns for that code is verified
+   (JWKS signature, `iss`, `aud`, `exp`, and the nonce if present). Its `sub` must equal the `sub`
+   of the verified request token and the account's Apple identity. Otherwise the server returns
+   `403 apple_account_mismatch` and nothing is revoked or deleted, so a code for a different
+   Apple ID can never be used. Only after that check is the refresh token revoked at
+   `https://appleid.apple.com/auth/revoke` (`token_type_hint=refresh_token`). An exchange or
+   revoke failure returns `502 apple_revocation_failed` (retryable, needs a new Apple
+   confirmation) and nothing is deleted.
 
 Sign in with Apple accounts on the website (no native Apple sign-in there) are told to use
 the iOS app or email support. Such an account cannot be deleted on the web because its Apple
@@ -90,9 +101,19 @@ retryable: true, step }`. The auth user is deleted last, so the user is still si
      votes, watches and reactions in other groups
    - rows in other users' data that point at the user's recommendations (other users'
      `watchlist`, `top_10_picks`, `nudges`, `friend_recommendations`) also cascade.
-4. Fallback: if step 3 fails (for example if production's `public.users` foreign key does
-   not cascade), the route deletes `public.users` where `id = <id>` (cascading the app
-   tables) and retries step 3 once.
+
+Step 3 is tried up to 3 times. There is **no** fallback that deletes `public.users` directly.
+GoTrue does not expose the Postgres error code, so a timeout, 401 or 5xx can't be told apart
+from a foreign-key problem. Deleting the profile while the auth user survives would wipe the
+data and let the app recreate an empty profile on the next sign-in. If step 3 keeps failing,
+the response is a retryable `500` (`step: "auth_user"`), and the auth user and all cascaded
+data are untouched.
+
+Side effects that are already applied when a later step fails: steps 1 and 2 are separate
+requests. If step 3 then fails, the user's push tokens and chat themes are already gone. The
+app re-registers its push token on the next launch, chats fall back to the default theme, and
+a retry finishes the deletion. For Apple accounts the Apple tokens are also already revoked;
+the user can still sign in with Apple again (which re-authorizes the app) and retry.
 
 Not touched: `ai_budget_guard` (a global counter, not user data). There are no Supabase
 Storage buckets (avatars are emoji or static paths) and no payment or subscription tables.
@@ -154,6 +175,16 @@ node scripts/test-account-deletion.mjs
 
 This covers non-Apple success, Apple token exchange followed by revoke, missing Apple env,
 missing Apple re-auth, Apple `sub` mismatch, bad nonce, Apple exchange failure, bad or missing
-password, a stale Google session, a 401 on a missing or invalid bearer, a 400 on a missing
-confirm, a mid-sequence failure that is then retried, the `public.users` fallback, and an
-already-deleted account. Every rejection case asserts that no DELETE or revoke was sent.
+password, a 401 on a missing or invalid bearer, a 400 on a missing confirm, and an
+already-deleted account. It also covers:
+
+- **Google sessions:** a stale session, an old `amr` with a recent sign-in on another device,
+  a `token_refresh`-only `amr`, a future `amr` timestamp, and a token with no `amr`.
+- **Apple code binding:** a code for a different Apple ID, a nonce mismatch in the exchanged
+  `id_token`, and an exchange that returns no `id_token`. None of these revokes or deletes
+  anything.
+- **Retries:** a mid-sequence failure that is then retried; an auth delete that fails once and
+  then succeeds on retry; and an auth delete that times out or returns 5xx on every attempt,
+  which leaves the account intact and never deletes `public.users` directly.
+
+Every rejection case asserts that no DELETE or revoke was sent.
