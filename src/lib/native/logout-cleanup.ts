@@ -35,7 +35,8 @@ export function registerNativeLogoutCleanup(key: string, cleanup: NativeLogoutCl
 export async function runNativeLogoutCleanup(ctx: NativeLogoutContext, timeoutMs = 5000): Promise<void> {
   if (cleanups.size === 0) return;
   let timer: ReturnType<typeof setTimeout> | null = null;
-  const all = Promise.allSettled([...cleanups.values()].map((cleanup) => cleanup(ctx)));
+  // Promise.resolve().then(...) so a callback that throws synchronously can't escape.
+  const all = Promise.allSettled([...cleanups.values()].map((cleanup) => Promise.resolve().then(() => cleanup(ctx))));
   const timeout = new Promise<void>((resolve) => {
     timer = setTimeout(resolve, timeoutMs);
   });
