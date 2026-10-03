@@ -35,6 +35,8 @@ const path = () => { const u = new URL(page.url()); return u.pathname + u.search
 const dialog = () => page.getByRole('dialog');
 const settle = () => page.waitForTimeout(700);
 
+try {
+
 await page.goto(BASE + '/app', { waitUntil: 'networkidle' }); await settle();
 check('signed-in /app stays on Home', path() === '/app', path());
 await page.getByRole('link', { name: 'Picks', exact: true }).click(); await page.waitForURL('**/app/picks'); await settle();
@@ -51,8 +53,7 @@ check('Back closes the sheet and stays on Picks', path() === '/app/picks' && !(a
 await page.goBack(); await settle();
 check('second Back goes to Home (no phantom entry)', path() === '/app', path());
 await page.goForward(); await settle();
-check('Forward returns to Picks (not a duplicate sheet entry)', path() === '/app/picks' || path() === '/app/picks?sheet=recommend', path());
-if (path() !== '/app/picks') { await page.goBack(); await settle(); }
+check('Forward returns to Picks (exactly one entry forward)', path() === '/app/picks' && !(await dialog().count()), path());
 
 // 2. close button, Escape, swipe; focus returns to the opener
 for (const how of ['button', 'escape', 'swipe', 'backdrop']) {
@@ -101,7 +102,11 @@ for (const bad of ['/app/title/movie/%E0%A4%A', '/app/profile/%FF', '/app/welcom
   await page.goto(BASE + bad, { waitUntil: 'networkidle' }); await settle();
   { const st = await page.evaluate(() => document.body.innerText.includes('Bad Request') ? 'server 400' : 'app'); check(`malformed ${bad} rejected safely`, st === 'server 400' || ['/app','/app/welcome'].includes(path()), st + ' ' + path()); }
 }
-console.log(results.join('\n'));
-console.log('page errors:', errors.length ? errors : 'none');
-console.log(`TOTAL: ${results.filter(r => r.startsWith('PASS')).length} pass, ${results.filter(r => r.startsWith('FAIL')).length} fail`);
-await browser.close();
+} finally {
+  console.log(results.join('\n'));
+  console.log('page errors:', errors.length ? errors : 'none');
+  const failed = results.filter((r) => r.startsWith('FAIL')).length;
+  console.log(`TOTAL: ${results.length - failed} pass, ${failed} fail`);
+  if (failed > 0 || errors.length > 0) process.exitCode = 1;
+  await browser.close();
+}
