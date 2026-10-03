@@ -7,11 +7,13 @@ type PosterRowProps = {
   title: string;
   /** Optional link at the right of the heading ("See all", "3 new"). */
   action?: { label: string; href: string };
-  children: ReactNode;
+  /** Shown under the heading instead of / before the posters (error, empty, offline). */
+  message?: ReactNode;
+  children?: ReactNode;
 };
 
 /** A titled, horizontally scrolling row of posters. */
-export function PosterRow({ title, action, children }: PosterRowProps) {
+export function PosterRow({ title, action, message, children }: PosterRowProps) {
   const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="mt-7">
@@ -23,9 +25,12 @@ export function PosterRow({ title, action, children }: PosterRowProps) {
           </Link>
         ) : null}
       </div>
-      <div className="app-hide-scrollbar flex snap-x gap-2.5 overflow-x-auto px-5 pb-1 [scroll-padding-inline:20px]">
-        {children}
-      </div>
+      {message}
+      {children ? (
+        <div className="app-hide-scrollbar flex snap-x gap-2.5 overflow-x-auto px-5 pb-1 [scroll-padding-inline:20px]">
+          {children}
+        </div>
+      ) : null}
     </section>
   );
 }

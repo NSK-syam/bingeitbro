@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { isNativeApp } from '@/lib/native-app';
 import { createClient } from '@/lib/supabase';
 import { getWidgetOpenPath } from '@/lib/native/widget-deeplink';
+import { consumeAuthReturnPath } from '@/lib/native/auth-return';
 
 // Auth callback URLs already handled. appUrlOpen and getLaunchUrl can both
 // deliver the same URL, React strict mode runs effects twice, and getLaunchUrl
@@ -68,9 +69,13 @@ async function handleAuthCallbackUrl(url: URL) {
       goToCallbackError('auth', exchangeError.message || 'Authentication failed');
       return;
     }
-    // onAuthStateChange in AuthProvider picks up the session; go home if we
-    // are somewhere else (e.g. the /auth/callback error page).
-    if (window.location.pathname !== '/') {
+    // onAuthStateChange in AuthProvider picks up the session. If sign-in started in the app
+    // shell, return there (it forwards to the requested screen); otherwise go home if we are
+    // somewhere else (e.g. the /auth/callback error page).
+    const returnPath = consumeAuthReturnPath();
+    if (returnPath) {
+      window.location.replace(returnPath);
+    } else if (window.location.pathname !== '/') {
       window.location.replace('/');
     }
   } catch (err) {

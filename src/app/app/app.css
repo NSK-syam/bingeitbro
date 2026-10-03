@@ -58,3 +58,17 @@
     scroll-behavior: auto !important;
   }
 }
+
+/*
+ * Reminder toasts (WatchReminderCenter, FriendRecommendationReminderCenter) are mounted globally and
+ * pinned bottom-right for the website. Inside the app shell, lift them above the bottom bar.
+ * Only applies while the shell is on the page, so the website is unaffected.
+ */
+html:has(.bib-app) .bib-floating-toasts {
+  bottom: calc(64px + env(safe-area-inset-bottom) + 24px);
+  right: 16px;
+  left: 16px;
+  width: auto;
+  max-width: 420px;
+  margin-left: auto;
+}
