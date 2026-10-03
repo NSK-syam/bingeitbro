@@ -8,6 +8,7 @@ import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { hasNativeAuthBridge, postNativeAuthMessage } from '@/lib/native-webview';
 import { isNativeApp, signInWithGoogleNative } from '@/lib/native-app';
 import { runNativeLogoutCleanup } from '@/lib/native/logout-cleanup';
+import { clearAuthReturnPath, prepareNativeOAuthReturn } from '@/lib/native/auth-return';
 import { BibNative, generateRawNonce, isAppleSignInCanceled, isBibNativeAvailable } from '@/lib/native/bib-native';
 import { trackFunnelEvent } from '@/lib/funnel';
 import { BirthdayPopup } from './BirthdayPopup';
@@ -372,14 +373,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     if (isNativeApp()) {
       // Capacitor app: run OAuth in the system browser; NativeAppBridge
-      // exchanges the code when the app deep link comes back.
+      // exchanges the code when the app deep link comes back. Remember the app-shell screen
+      // to return to (or clear a stale marker when sign-in starts outside the shell).
+      prepareNativeOAuthReturn(`${window.location.pathname}${window.location.search}`);
       const nativeSupabase = createClient();
       try {
         await nativeSupabase.auth.signOut();
       } catch {
         // Ignore signout errors
       }
-      return signInWithGoogleNative(nativeSupabase);
+      const result = await signInWithGoogleNative(nativeSupabase);
+      if (result.error) clearAuthReturnPath();
+      return result;
     }
     if (typeof window !== 'undefined' && isLikelyInAppBrowser(window.navigator.userAgent || '')) {
       return {

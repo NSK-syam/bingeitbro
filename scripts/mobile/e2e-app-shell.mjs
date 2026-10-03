@@ -16,6 +16,12 @@ const session = { access_token: jwt, token_type: 'bearer', expires_in: 3600, exp
 const browser = await webkit.launch();
 const ctx = await browser.newContext({ ...devices['iPhone 15'] });
 await ctx.addInitScript(([s]) => { try { localStorage.setItem('sb-mock-auth-token', s); } catch {} }, [JSON.stringify(session)]);
+// next dev only: its indicator / "Compiling" badge (<nextjs-portal>) overlaps the tab bar. Hide it so
+// taps behave as in production, where it doesn't exist.
+await ctx.addInitScript(() => {
+  const style = () => { const el = document.createElement('style'); el.textContent = 'nextjs-portal{display:none!important}'; document.documentElement.appendChild(el); };
+  if (document.documentElement) style(); else document.addEventListener('DOMContentLoaded', style);
+});
 await ctx.route('http://mock.supabase.test:54399/**', async (route) => {
   const req = route.request(); const url = new URL(req.url());
   if (url.pathname === '/auth/v1/user') return route.fulfill({ json: USER });

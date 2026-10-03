@@ -22,9 +22,15 @@ const USERS = [{ id: 'u2', name: 'Rahul', avatar: '🍿' }, { id: 'u3', name: 'P
 const REMINDERS = [{ id: 'w1', movieId: 'tmdb-666277', movieTitle: 'Past Lives', moviePoster: null, movieYear: 2023, remindAt: tonight.toISOString(), createdAt: '', updatedAt: '', notifiedAt: null, canceledAt: null }];
 const TRENDING = Array.from({ length: 6 }, (_, i) => ({ id: 1000 + i, title: ['Pushpa 2', 'Stree 2', 'Devara', 'Kalki 2898 AD', 'Jawan', 'Premalu'][i], poster_path: null, backdrop_path: null, release_date: '2024-08-01', vote_average: 7, overview: '', genre_ids: [], original_language: 'hi' }));
 
-async function setup(device, { recs = RECS, failing = { recs: false }, offline = false, signedIn = true } = {}) {
+async function setup(device, { recs = RECS, failing = { recs: false, tmdb: false }, tmdbDelayMs = 0, offline = false, signedIn = true } = {}) {
   const browser = await webkit.launch();
   const ctx = await browser.newContext({ ...devices[device] });
+  // next dev only: its indicator / "Compiling" badge (<nextjs-portal>) overlaps the tab bar. Hide it so
+  // taps behave as in production, where it doesn't exist.
+  await ctx.addInitScript(() => {
+    const style = () => { const el = document.createElement('style'); el.textContent = 'nextjs-portal{display:none!important}'; document.documentElement.appendChild(el); };
+    if (document.documentElement) style(); else document.addEventListener('DOMContentLoaded', style);
+  });
   if (signedIn) await ctx.addInitScript(([s]) => { try { localStorage.setItem('sb-mock-auth-token', s); } catch {} }, [session]);
   let recCalls = 0;
   await ctx.route('http://mock.supabase.test:54399/**', async (route) => {
@@ -43,7 +49,9 @@ async function setup(device, { recs = RECS, failing = { recs: false }, offline =
     return route.fulfill({ json: [] });
   });
   await ctx.route('**/api/watch-reminders**', (route) => route.fulfill({ json: { reminders: REMINDERS } }));
-  await ctx.route('**/api/tmdb/**', (route) => {
+  await ctx.route('**/api/tmdb/**', async (route) => {
+    if (tmdbDelayMs) await new Promise((r) => setTimeout(r, tmdbDelayMs));
+    if (failing.tmdb) return route.fulfill({ status: 503, json: { status_message: 'unavailable' } });
     const u = new URL(route.request().url()).searchParams.get('u') || '';
     const tmdb = Buffer.from(u, 'base64url').toString();
     if (tmdb.includes('/watch/providers')) return route.fulfill({ json: { results: { IN: { flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/n.png' }] } } } });
@@ -79,6 +87,8 @@ try {
     const trending = page.getByRole('region', { name: 'Trending today' });
     check('Trending row shows titles', (await trending.getByRole('link').count()) >= 5, String(await trending.getByRole('link').count()));
     check('TMDB attribution present', (await page.locator('main').innerText()).includes('TMDB'));
+    check('hero has a readable title heading', await page.getByRole('heading', { name: /Dune: Part Two/ }).first().isVisible());
+    check('schedule copy is neutral (no unverified reminder claim)', !(await page.locator('main').innerText()).includes('Reminder set on this phone'));
     await page.screenshot({ path: 'home-iphone.png', fullPage: true });
     allErrors.push(...errors); await browser.close();
   }
@@ -167,6 +177,47 @@ try {
     await ctx.route('**/api/tmdb/**', (route) => route.fulfill({ json: { results: [] } }));
     await page.evaluate(() => window.__setOnline(true)); await settle(page, 3000);
     check('offline: reloads automatically when back online', await page.getByRole('link', { name: 'Dune: Part Two' }).first().isVisible());
+    allErrors.push(...errors); await browser.close();
+  }
+  // G. network failing while navigator.onLine stays true: error + Retry (no cache on the web)
+  {
+    const { browser, ctx, page, errors } = await setup('iPhone 15');
+    await ctx.route('http://mock.supabase.test:54399/rest/v1/friend_recommendations**', (r) => r.abort('internetdisconnected'));
+    await page.goto(BASE + '/app', { waitUntil: 'networkidle' }); await settle(page, 4000);
+    const text = await page.locator('main').innerText();
+    check('net failure with onLine=true: error with Retry, not offline banner', text.includes("Couldn't load your picks") && !text.includes("You're offline"), text.slice(0, 100).replace(/\s+/g, ' '));
+    allErrors.push(...errors); await browser.close();
+  }
+  // H. connection lost while Home is shown: banner, content kept
+  {
+    const { browser, page, errors } = await setup('iPhone 15');
+    await page.goto(BASE + '/app', { waitUntil: 'networkidle' }); await settle(page, 2500);
+    await page.evaluate(() => window.dispatchEvent(new Event('offline'))); await settle(page, 500);
+    const text = await page.locator('main').innerText();
+    check('connection lost after load: banner shown, picks kept', text.includes("You're offline") && text.includes('Dune: Part Two'));
+    allErrors.push(...errors); await browser.close();
+  }
+  // I. slow trending doesn't hold friend picks
+  {
+    const { browser, page, errors } = await setup('iPhone 15', { tmdbDelayMs: 8000 });
+    await page.goto(BASE + '/app'); await settle(page, 3500);
+    const picksShown = await page.getByRole('link', { name: 'Dune: Part Two' }).first().isVisible();
+    const trendingLinks = await page.getByRole('region', { name: 'Trending today' }).getByRole('link').count().catch(() => 0);
+    check('slow trending: picks and schedule render while trending still loads', picksShown && trendingLinks === 0, `picks=${picksShown} trendingLinks=${trendingLinks}`);
+    allErrors.push(...errors); await browser.close();
+  }
+  // J. TMDB 5xx: Trending error + Retry recovers
+  {
+    const failing = { recs: false, tmdb: true };
+    const { browser, page, errors } = await setup('iPhone 15', { failing });
+    await page.goto(BASE + '/app', { waitUntil: 'networkidle' }); await settle(page, 3000);
+    const region = page.getByRole('region', { name: 'Trending today' });
+    check('TMDB 5xx: Trending shows an error with Retry', (await region.innerText()).includes("Couldn't load trending titles"));
+    failing.tmdb = false;
+    // Dismiss the (mocked) watch-reminder toast if it is showing over the content, as a user would.
+    for (const later of await page.getByRole('button', { name: 'Later' }).all()) await later.click().catch(() => {});
+    await region.getByRole('button', { name: 'Retry' }).click(); await settle(page, 3000);
+    check('TMDB 5xx: Retry recovers trending', (await page.getByRole('region', { name: 'Trending today' }).getByRole('link').count()) >= 5);
     allErrors.push(...errors); await browser.close();
   }
   // F. Welcome (signed out)

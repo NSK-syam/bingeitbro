@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useState } from 'react';
-import { posterTint, posterUrl } from '../PosterTile';
+import { PosterTile, posterTint, posterUrl } from '../PosterTile';
 import { ChevronRightIcon, PlayIcon } from '../icons';
 import type { HomeItem } from './useHomeData';
 
@@ -73,24 +73,15 @@ export function HeroPoster({ item }: { item: HomeItem }) {
   );
 }
 
-/** One scheduled watch in the Tonight section. */
+/** One scheduled watch in the Coming up section. */
 export function ScheduleCard({ item }: { item: HomeItem }) {
   const content = (
     <>
-      <span
-        className="relative flex h-[84px] w-14 flex-none items-end overflow-hidden rounded-lg p-1.5"
-        style={{ background: posterTint(item.title) }}
-      >
-        {posterUrl(item.poster, 'w185') ? (
-          <img src={posterUrl(item.poster, 'w185') as string} alt="" width={56} height={84} loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
-        ) : (
-          <span className="app-poster-title text-[11px]" aria-hidden="true">{item.title}</span>
-        )}
-      </span>
+      <PosterTile title={item.title} poster={item.poster} size="thumb" caption={false} />
       <span className="flex min-w-0 flex-1 flex-col gap-1">
         <span className="text-[13px] font-semibold text-[var(--app-accent)]">{formatWhen(item.at)}</span>
         <span className="truncate text-[17px] font-semibold">{item.title}</span>
-        <span className="text-[13px] text-[var(--app-muted)]">Reminder set on this phone</span>
+        <span className="text-[13px] text-[var(--app-muted)]">Scheduled watch</span>
       </span>
       <ChevronRightIcon size={18} className="flex-none text-[#8a8a94]" />
     </>

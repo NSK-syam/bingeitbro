@@ -2,14 +2,11 @@
 
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { usePathname, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/components/AuthProvider';
 import { AuthModal } from '@/components/AuthModal';
 import { AppleSignInButton } from '@/components/native/AppleSignInButton';
 import { AppButton } from '@/components/app/AppButton';
 import { posterTint, posterUrl } from '@/components/app/PosterTile';
-import { saveAuthReturnPath } from '@/lib/native/auth-return';
-import { isNativeApp } from '@/lib/native-app';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
 
 type CollagePoster = { id: string; title: string; poster: string | null };
@@ -46,6 +43,21 @@ function usePosterCollage(): CollagePoster[] {
   return posters;
 }
 
+/** One collage poster; falls back to the tinted title tile if the image fails. */
+function CollageTile({ poster }: { poster: CollagePoster }) {
+  const src = posterUrl(poster.poster, 'w185');
+  const [failed, setFailed] = useState(false);
+  return (
+    <span className="relative flex aspect-[2/3] items-end overflow-hidden rounded-[10px] p-2" style={{ background: posterTint(poster.title) }}>
+      {src && !failed ? (
+        <img src={src} alt="" loading="lazy" decoding="async" onError={() => setFailed(true)} className="absolute inset-0 h-full w-full object-cover" />
+      ) : (
+        <span className="app-poster-title text-[15px] text-white">{poster.title}</span>
+      )}
+    </span>
+  );
+}
+
 function GoogleMark() {
   return (
     <svg width="18" height="18" viewBox="0 0 24 24" aria-hidden="true">
@@ -60,14 +72,10 @@ function GoogleMark() {
  */
 export default function AppWelcomePage() {
   const { signInWithApple, signInWithGoogle } = useAuth();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const posters = usePosterCollage();
   const [busy, setBusy] = useState<'apple' | 'google' | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
-
-  const currentUrl = searchParams.toString() ? `${pathname}?${searchParams.toString()}` : pathname;
 
   const onApple = async () => {
     setError(null);
@@ -80,8 +88,6 @@ export default function AppWelcomePage() {
   const onGoogle = async () => {
     setError(null);
     setBusy('google');
-    // The native Google flow leaves the page (system browser); come back to this screen after.
-    if (isNativeApp()) saveAuthReturnPath(currentUrl);
     const { error: googleError } = await signInWithGoogle();
     setBusy(null);
     if (googleError) setError(googleError.message || 'Google sign-in failed. Try again.');
@@ -94,18 +100,7 @@ export default function AppWelcomePage() {
         aria-hidden="true"
         className="pointer-events-none absolute -left-10 -top-8 grid w-[calc(100%+80px)] -rotate-6 grid-cols-4 gap-2.5 opacity-55 md:grid-cols-6"
       >
-        {posters.map((p) => {
-          const src = posterUrl(p.poster, 'w185');
-          return (
-            <span key={p.id} className="relative flex aspect-[2/3] items-end overflow-hidden rounded-[10px] p-2" style={{ background: posterTint(p.title) }}>
-              {src ? (
-                <img src={src} alt="" loading="lazy" decoding="async" className="absolute inset-0 h-full w-full object-cover" />
-              ) : (
-                <span className="app-poster-title text-[15px] text-white">{p.title}</span>
-              )}
-            </span>
-          );
-        })}
+        {posters.map((p) => <CollageTile key={p.id} poster={p} />)}
       </div>
       <div
         aria-hidden="true"

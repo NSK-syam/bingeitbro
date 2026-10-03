@@ -1,109 +1,80 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  getReceivedFriendRecommendations,
-  getUpcomingWatchReminders,
-  type ReceivedRecommendationRow,
-  type WatchReminder,
-} from '@/lib/supabase-rest';
-import { getTrendingToday, type NewRelease } from '@/lib/tmdb';
-import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
-import { mapToAppDestination } from '@/lib/native/app-routes';
+import { getReceivedFriendRecommendations, getUpcomingWatchReminders } from '@/lib/supabase-rest';
+import { getTrendingToday } from '@/lib/tmdb';
 import { getNativeAccountSync } from '@/lib/native/watch-reminders';
+import {
+  cachedToItems,
+  failedSection,
+  friendRecToItem,
+  reminderToItem,
+  sectionFor,
+  trendingToItem,
+  upcomingReminders,
+  type HomeItem,
+  type OwnedSection,
+  type SectionState,
+} from './home-data-core';
 
-/** One poster-ready item for Home, already mapped to its app screen. */
-export type HomeItem = {
-  id: string;
-  /** Watchlist key, same ids the website uses (tmdb-123 or a recommendation id). */
-  movieId: string;
-  title: string;
-  poster: string | null;
-  year: number | null;
-  href: string | null;
-  from?: { name: string; avatar?: string | null } | null;
-  note?: string | null;
-  unread?: boolean;
-  at?: string | null;
-};
+export type { HomeItem, SectionState } from './home-data-core';
 
-export type SectionState<T> =
-  | { status: 'loading' }
-  | { status: 'ready'; items: T[] }
-  | { status: 'error' }
-  /** Network unavailable: items are what's saved on this phone (may be empty). */
-  | { status: 'offline'; items: T[] };
+const REQUEST_TIMEOUT_MS = 12_000;
+const TRENDING_TIMEOUT_MS = 15_000;
 
-function appHref(websitePath: string | null): string | null {
-  if (!websitePath) return null;
-  const dest = mapToAppDestination(websitePath, { signedIn: true });
-  return dest?.kind === 'app' ? dest.path : null;
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => reject(new Error('timeout')), ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (error) => { clearTimeout(timer); reject(error); },
+    );
+  });
 }
 
-function recMovieId(rec: Pick<ReceivedRecommendationRow, 'tmdb_id' | 'recommendation_id'>): string | null {
-  if (rec.tmdb_id !== null && rec.tmdb_id !== undefined && String(rec.tmdb_id).trim()) return `tmdb-${String(rec.tmdb_id).trim()}`;
-  return rec.recommendation_id || null;
-}
-
-export function friendRecToItem(rec: ReceivedRecommendationRow): HomeItem {
-  const movieId = recMovieId(rec);
-  return {
-    id: rec.id,
-    movieId: movieId ?? rec.id,
-    title: rec.movie_title || 'A movie',
-    poster: rec.movie_poster || null,
-    year: rec.movie_year ?? null,
-    href: movieId ? appHref(`/movie/${encodeURIComponent(movieId)}`) : null,
-    from: rec.sender ? { name: rec.sender.name || 'A friend', avatar: rec.sender.avatar ?? null } : null,
-    note: rec.personal_message || null,
-    unread: !rec.is_read,
-    at: rec.created_at,
-  };
-}
-
-export function reminderToItem(reminder: WatchReminder): HomeItem {
-  return {
-    id: reminder.id,
-    movieId: reminder.movieId,
-    title: reminder.movieTitle,
-    poster: reminder.moviePoster,
-    year: reminder.movieYear,
-    href: appHref(getWatchReminderOpenPath(reminder.movieId)),
-    at: reminder.remindAt,
-  };
-}
-
-export function trendingToItem(movie: NewRelease): HomeItem {
-  const movieId = `tmdb-${movie.id}`;
-  return {
-    id: String(movie.id),
-    movieId,
-    title: movie.title,
-    poster: movie.poster_path,
-    year: movie.release_date ? Number(movie.release_date.slice(0, 4)) || null : null,
-    href: appHref(`/movie/${movieId}`),
-  };
-}
-
-function isOffline(): boolean {
+function browserOffline(): boolean {
   return typeof navigator !== 'undefined' && navigator.onLine === false;
 }
 
+type Cached = { picks: HomeItem[]; tonight: HomeItem[] };
+
+/** Account-scoped saved items (native app only; null on the web or when unreadable). */
+async function readCached(userId: string): Promise<Cached | null> {
+  try {
+    const saved = await getNativeAccountSync()?.readSaved(userId);
+    if (!saved) return null;
+    const now = Date.now();
+    return {
+      picks: cachedToItems(saved.friendRecs?.items, { now }),
+      tonight: cachedToItems(saved.scheduled?.items, { now, upcomingOnly: true }),
+    };
+  } catch {
+    return null;
+  }
+}
+
 type HomeData = {
-  picks: SectionState<HomeItem>;
-  tonight: SectionState<HomeItem>;
-  trending: SectionState<HomeItem>;
+  picks: SectionState;
+  tonight: SectionState;
+  trending: SectionState;
+  /** The phone reported going offline (loaded content stays visible). */
+  offline: boolean;
   reload: () => void;
 };
 
+const LOADING = (owner: string | null): OwnedSection => ({ owner, state: { status: 'loading' } });
+
 /**
- * Loads Home's three sections in parallel; each fails independently. When the phone is offline,
- * picks and the schedule come from the account-scoped offline cache (native app only).
+ * Loads Home's three sections independently (a slow section never holds the others). Every
+ * section's state is tagged with the account it belongs to, so another account's data is never
+ * returned, even for the first render after an account change. Offline: shows what's saved on
+ * this phone, keeps loaded content when the connection drops, and reloads when it returns.
  */
 export function useHomeData(userId: string | null): HomeData {
-  const [picks, setPicks] = useState<SectionState<HomeItem>>({ status: 'loading' });
-  const [tonight, setTonight] = useState<SectionState<HomeItem>>({ status: 'loading' });
-  const [trending, setTrending] = useState<SectionState<HomeItem>>({ status: 'loading' });
+  const [picks, setPicks] = useState<OwnedSection>(LOADING(null));
+  const [tonight, setTonight] = useState<OwnedSection>(LOADING(null));
+  const [trending, setTrending] = useState<OwnedSection>(LOADING(null));
+  const [offline, setOffline] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const runRef = useRef(0);
 
@@ -113,53 +84,46 @@ export function useHomeData(userId: string | null): HomeData {
     if (!userId) return;
     const run = ++runRef.current;
     const live = () => run === runRef.current;
-
-    const offlineFallback = async () => {
-      const saved = await getNativeAccountSync()?.readSaved(userId).catch(() => null);
-      const fromCache = (entry: { items: { id: string; title: string; poster?: string | null; year?: number | null; path?: string; at?: string | null; note?: string | null }[] } | null | undefined): HomeItem[] =>
-        (entry?.items ?? []).map((item) => ({
-          id: item.id,
-          movieId: item.id,
-          title: item.title,
-          poster: item.poster ?? null,
-          year: item.year ?? null,
-          href: appHref(item.path ?? null),
-          note: item.note ?? null,
-          at: item.at ?? null,
-        }));
-      return { picks: fromCache(saved?.friendRecs), tonight: fromCache(saved?.scheduled) };
+    let cachedPromise: Promise<Cached | null> | null = null;
+    const cached = () => (cachedPromise ??= readCached(userId));
+    const set = (setter: typeof setPicks, state: SectionState) => {
+      if (live()) setter({ owner: userId, state });
     };
 
     void (async () => {
-      setPicks({ status: 'loading' });
-      setTonight({ status: 'loading' });
-      setTrending({ status: 'loading' });
-      const [recs, reminders, trend] = await Promise.allSettled([
-        getReceivedFriendRecommendations(userId),
-        getUpcomingWatchReminders(),
-        getTrendingToday(),
-      ]);
-      if (!live()) return;
+      set(setPicks, { status: 'loading' });
+      set(setTonight, { status: 'loading' });
+      set(setTrending, { status: 'loading' });
+      if (live()) setOffline(browserOffline());
 
-      const offline = isOffline();
-      const cached = offline || recs.status === 'rejected' || reminders.status === 'rejected' ? await offlineFallback() : null;
-      if (!live()) return;
-
-      if (recs.status === 'fulfilled') setPicks({ status: 'ready', items: recs.value.map(friendRecToItem) });
-      else setPicks(offline ? { status: 'offline', items: cached?.picks ?? [] } : { status: 'error' });
-
-      if (reminders.status === 'fulfilled') {
-        const now = Date.now();
-        const upcoming = reminders.value
-          .filter((r) => !r.canceledAt && new Date(r.remindAt).getTime() > now)
-          .sort((a, b) => new Date(a.remindAt).getTime() - new Date(b.remindAt).getTime());
-        setTonight({ status: 'ready', items: upcoming.map(reminderToItem) });
-      } else {
-        setTonight(offline ? { status: 'offline', items: cached?.tonight ?? [] } : { status: 'error' });
+      if (browserOffline()) {
+        // Known offline: don't wait on the network, show what's saved right away.
+        const saved = await cached();
+        set(setPicks, failedSection(saved?.picks ?? null, true));
+        set(setTonight, failedSection(saved?.tonight ?? null, true));
+        set(setTrending, { status: 'cached', items: [], reason: 'offline' });
+        return;
       }
 
-      if (trend.status === 'fulfilled') setTrending({ status: 'ready', items: trend.value.map(trendingToItem) });
-      else setTrending(offline ? { status: 'offline', items: [] } : { status: 'error' });
+      const picksTask = withTimeout(getReceivedFriendRecommendations(userId), REQUEST_TIMEOUT_MS)
+        .then((rows) => set(setPicks, { status: 'ready', items: rows.map(friendRecToItem) }))
+        .catch(async () => {
+          const saved = await cached();
+          set(setPicks, failedSection(saved?.picks ?? null, browserOffline()));
+        });
+
+      const tonightTask = withTimeout(getUpcomingWatchReminders(), REQUEST_TIMEOUT_MS)
+        .then((rows) => set(setTonight, { status: 'ready', items: upcomingReminders(rows, Date.now()).map(reminderToItem) }))
+        .catch(async () => {
+          const saved = await cached();
+          set(setTonight, failedSection(saved?.tonight ?? null, browserOffline()));
+        });
+
+      const trendingTask = withTimeout(getTrendingToday({ throwOnError: true }), TRENDING_TIMEOUT_MS)
+        .then((movies) => set(setTrending, { status: 'ready', items: movies.map(trendingToItem) }))
+        .catch(() => set(setTrending, browserOffline() ? { status: 'cached', items: [], reason: 'offline' } : { status: 'error' }));
+
+      await Promise.allSettled([picksTask, tonightTask, trendingTask]);
     })();
 
     return () => {
@@ -168,12 +132,26 @@ export function useHomeData(userId: string | null): HomeData {
     };
   }, [userId, attempt]);
 
-  // Reload automatically when the connection comes back.
+  // Connection changes: keep what's loaded when it drops; reload when it comes back.
   useEffect(() => {
-    const onOnline = () => reload();
+    const onOffline = () => setOffline(true);
+    const onOnline = () => {
+      setOffline(false);
+      reload();
+    };
+    window.addEventListener('offline', onOffline);
     window.addEventListener('online', onOnline);
-    return () => window.removeEventListener('online', onOnline);
+    return () => {
+      window.removeEventListener('offline', onOffline);
+      window.removeEventListener('online', onOnline);
+    };
   }, [reload]);
 
-  return { picks, tonight, trending, reload };
+  return {
+    picks: sectionFor(picks, userId),
+    tonight: sectionFor(tonight, userId),
+    trending: sectionFor(trending, userId),
+    offline,
+    reload,
+  };
 }

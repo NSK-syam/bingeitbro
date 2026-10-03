@@ -723,7 +723,11 @@ export function tmdbWatchProvidersToOttLinks(
 }
 
 // OTT only. Popular on streaming in USA + India (recent movies).
-export async function getTrendingToday(): Promise<NewRelease[]> {
+/**
+ * Trending titles with streaming providers. By default failures return [] (website behaviour).
+ * With `throwOnError`, a failure throws instead, so callers can tell an error from an empty list.
+ */
+export async function getTrendingToday(options: { throwOnError?: boolean } = {}): Promise<NewRelease[]> {
   try {
     const threeMonthsAgo = getDateDaysAgo(90);
 
@@ -776,6 +780,9 @@ export async function getTrendingToday(): Promise<NewRelease[]> {
       ),
     ]);
 
+    if (options.throwOnError && ![usRecent, usIndian, inRecent, inIndian].some((res) => res.ok)) {
+      throw new Error('Trending titles are unavailable right now.');
+    }
     const collect = async (res: Response) => (res.ok ? (await res.json()).results || [] : []);
     const [usR, usI, inR, inI] = await Promise.all([
       collect(usRecent), collect(usIndian), collect(inRecent), collect(inIndian),
@@ -796,6 +803,7 @@ export async function getTrendingToday(): Promise<NewRelease[]> {
 
     return moviesWithProviders.filter(m => m.providers && m.providers.length > 0).slice(0, 10);
   } catch (error) {
+    if (options.throwOnError) throw error;
     console.error('Error fetching trending movies:', error);
     return [];
   }
