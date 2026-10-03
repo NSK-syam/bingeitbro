@@ -1,7 +1,8 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { ADSENSE_CLIENT_ID, ADSENSE_SCRIPT_SRC } from '@/lib/adsense';
+import { isNativeApp } from '@/lib/native-app';
 
 declare global {
   interface Window {
@@ -13,8 +14,15 @@ const DISPLAY_SLOT_ID = (process.env.NEXT_PUBLIC_ADSENSE_DISPLAY_SLOT || '').tri
 
 export function AdDisplayUnit({ className = '' }: { className?: string }) {
   const pushedRef = useRef(false);
+  // AdSense display ads aren't allowed inside app WebViews; hide them in the native app.
+  const [nativeApp, setNativeApp] = useState(false);
 
   useEffect(() => {
+    if (isNativeApp()) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setNativeApp(true);
+      return;
+    }
     if (!DISPLAY_SLOT_ID) return;
     if (pushedRef.current) return;
 
@@ -54,7 +62,7 @@ export function AdDisplayUnit({ className = '' }: { className?: string }) {
     return () => window.clearInterval(intervalId);
   }, []);
 
-  if (!DISPLAY_SLOT_ID) return null;
+  if (!DISPLAY_SLOT_ID || nativeApp) return null;
 
   return (
     <div className={`rounded-2xl border border-white/10 bg-[var(--bg-secondary)]/75 p-3 ${className}`}>

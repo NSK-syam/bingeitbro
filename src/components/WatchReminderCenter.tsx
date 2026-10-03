@@ -8,6 +8,7 @@ import {
   type WatchReminder,
 } from '@/lib/supabase-rest';
 import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
+import { isNativeApp } from '@/lib/native-app';
 
 type ToastReminder = WatchReminder & { toastId: string };
 
@@ -25,6 +26,7 @@ export function WatchReminderCenter() {
   const permissionRequestedRef = useRef(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setToasts([]);
     seenIdsRef.current = new Set();
     permissionRequestedRef.current = false;
@@ -49,6 +51,9 @@ export function WatchReminderCenter() {
 
     const showBrowserNotifications = async (reminders: WatchReminder[]) => {
       if (typeof window === 'undefined' || reminders.length === 0) return;
+      // Native app: the OS already delivered an on-device LocalNotification at
+      // remindAt (see lib/native/watch-reminders); never use the web API there.
+      if (isNativeApp()) return;
       if (!('Notification' in window)) return;
 
       let permission = Notification.permission;

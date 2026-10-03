@@ -170,6 +170,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
 
   useEffect(() => {
     // Country affects watch providers; reset derived states so UI updates immediately.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setProviderLogos({});
     setStreamingStatus({});
   }, [country]);
@@ -602,6 +603,7 @@ export function TrendingMovies({ searchQuery = '', country = 'IN' }: TrendingMov
   // For search results: determine OTT vs streaming soon (USA/India) (USA/India)
   useEffect(() => {
     if (!searchQuery.trim() || movies.length === 0) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setStreamingStatus({});
       return;
     }

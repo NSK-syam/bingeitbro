@@ -7,6 +7,8 @@ import {
   pollDueFriendRecommendationReminders,
   type FriendRecommendationReminder,
 } from '@/lib/supabase-rest';
+import { isNativeApp } from '@/lib/native-app';
+import { showNativeFriendReminders } from '@/lib/native/watch-reminders';
 
 type ToastReminder = FriendRecommendationReminder & { toastId: string };
 
@@ -31,6 +33,7 @@ export function FriendRecommendationReminderCenter() {
   const permissionRequestedRef = useRef(false);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setToasts([]);
     seenIdsRef.current = new Set();
     permissionRequestedRef.current = false;
@@ -38,6 +41,7 @@ export function FriendRecommendationReminderCenter() {
 
   useEffect(() => {
     if (!user?.id) return;
+    const userId = user.id;
     let cancelled = false;
 
     const pushToast = (reminders: FriendRecommendationReminder[]) => {
@@ -55,6 +59,10 @@ export function FriendRecommendationReminderCenter() {
 
     const showBrowserNotifications = async (reminders: FriendRecommendationReminder[]) => {
       if (typeof window === 'undefined' || reminders.length === 0) return;
+      if (isNativeApp()) {
+        await showNativeFriendReminders(reminders, getMoviePath, userId);
+        return;
+      }
       if (!('Notification' in window)) return;
 
       let permission = Notification.permission;

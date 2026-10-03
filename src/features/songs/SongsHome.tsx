@@ -101,8 +101,10 @@ export default function SongsHome() {
         .select('id,user_id,platform,url,title,created_at,users(id,name,username,avatar)')
         .order('created_at', { ascending: false });
       if (error) throw error;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const raw = Array.isArray(data) ? (data as any[]) : [];
       nextPlaylists = raw.map((r) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rel = (r as any).users;
         const u = Array.isArray(rel) ? rel[0] : rel;
         return {

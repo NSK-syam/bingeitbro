@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Monochrome status-bar icon for push notifications (white on transparent; Android tints it). -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- Rounded screen with a play triangle cut out. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:fillType="evenOdd"
+        android:pathData="M5,4L19,4A3,3 0,0 1,22 7L22,17A3,3 0,0 1,19 20L5,20A3,3 0,0 1,2 17L2,7A3,3 0,0 1,5 4ZM10,8.5L10,15.5L15.5,12Z" />
+</vector>

@@ -72,6 +72,14 @@ function getRateLimitRule(request: NextRequest): RateLimitRule | null {
     return { key: 'reminders', limit: 120, windowMs: 60 * 1000 };
   }
 
+  if (pathname === '/api/native-push/register' && (method === 'POST' || method === 'DELETE')) {
+    return { key: 'native-push', limit: 30, windowMs: 10 * 60 * 1000 };
+  }
+
+  if (method === 'POST' && pathname === '/api/account/delete') {
+    return { key: 'account-delete', limit: 10, windowMs: 15 * 60 * 1000 };
+  }
+
   if (pathname.startsWith('/api/tmdb/')) {
     return { key: 'tmdb-proxy', limit: 180, windowMs: 60 * 1000 };
   }

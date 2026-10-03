@@ -715,11 +715,14 @@ export async function GET(req: Request) {
     const seenIds = new Set<number>();
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const candidates = merged
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((m: any) => m && typeof m.id === 'number' && typeof m.title === 'string' && typeof m.release_date === 'string')
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((m: any) => {
         const year = Number(String(m.release_date).slice(0, 4));
         return Number.isFinite(year) && year >= 2000 && year <= 2026;
       })
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       .filter((m: any) => {
         if (seenIds.has(m.id)) return false;
         seenIds.add(m.id);
@@ -767,16 +770,19 @@ export async function GET(req: Request) {
     const poster = m.poster_path ? `https://image.tmdb.org/t/p/w342${m.poster_path}` : null;
 
     const genres: string[] = Array.isArray(json?.genres)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? json.genres.map((g: any) => String(g?.name || '')).filter(Boolean)
       : [];
 
     const runtime = Number.isFinite(Number(json?.runtime)) ? Number(json.runtime) : null;
 
     const director = Array.isArray(json?.credits?.crew)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? (json.credits.crew.find((c: any) => c?.job === 'Director')?.name as string | undefined)
       : undefined;
 
     const cast: string[] = Array.isArray(json?.credits?.cast)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       ? json.credits.cast.slice(0, 8).map((c: any) => String(c?.name || '')).filter(Boolean)
       : [];
 

@@ -36,3 +36,4 @@ export { ScheduleWatchModal } from './ScheduleWatchModal';
 export { HelpBotWidget } from './HelpBotWidget';
 export { AdDisplayUnit } from './AdDisplayUnit';
 export { AvatarPickerModal } from './AvatarPickerModal';
+export { DeleteAccountModal } from './DeleteAccountModal';

@@ -14,6 +14,7 @@ async function fetchAppleMostPlayed(country: string, limit: number): Promise<str
   const url = `https://rss.marketingtools.apple.com/api/v2/${safeCountry}/music/most-played/${safeLimit}/songs.json`;
   const res = await fetch(url, { next: { revalidate: 60 * 60 } }); // 1h
   if (!res.ok) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const json = (await res.json().catch(() => null)) as any;
   const results = json?.feed?.results;
   const list: AppleSong[] = Array.isArray(results) ? results : [];

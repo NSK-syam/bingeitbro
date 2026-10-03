@@ -181,6 +181,7 @@ export default function MoviesHome() {
     visitCount += 1;
     safeLocalStorageSet('cinema-chudu-hero-visit', String(visitCount));
     const dayIndex = getLocalDayIndex();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setVisitIndex((dayIndex + visitCount) % HERO_LINES.length);
   }, []);
 
@@ -326,6 +327,7 @@ export default function MoviesHome() {
   // Refetch friends when switching to Friends view so list matches Manage Friends
   useEffect(() => {
     if (activeView === 'friends' && user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       fetchFriendsData();
     }
   }, [activeView, user, fetchFriendsData]);
@@ -372,6 +374,7 @@ export default function MoviesHome() {
 
   useEffect(() => {
     if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setScheduledWatchCount(0);
       return;
     }
@@ -384,6 +387,7 @@ export default function MoviesHome() {
 
   useEffect(() => {
     if (!user) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setGroupWatchCount(0);
       return;
     }
@@ -397,6 +401,7 @@ export default function MoviesHome() {
   useEffect(() => {
     // When modal closes (and it may mark groups as seen), refresh badge.
     if (!showGroupWatch) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       void refreshGroupWatchCount();
     }
   }, [showGroupWatch, refreshGroupWatchCount]);

@@ -5,6 +5,8 @@ import { useAuth } from './AuthProvider';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { trackFunnelEvent } from '@/lib/funnel';
 import { hasNativeAuthBridge } from '@/lib/native-webview';
+import { isNativeApp } from '@/lib/native-app';
+import { AppleSignInButton } from './native/AppleSignInButton';
 
 declare global {
   interface Window {
@@ -81,7 +83,7 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
   const turnstileWidgetIdRef = useRef<string | null>(null);
   const turnstileSiteKey = (process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY || '').trim();
 
-  const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
+  const { signIn, signUp, signInWithGoogle, signInWithApple, checkUsernameAvailable } = useAuth();
 
   useEffect(() => {
     if (isOpen && initialError) setError(initialError);
@@ -138,7 +140,8 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    setInAppBrowser(isLikelyInAppBrowser(window.navigator.userAgent || ''));
+    // The Capacitor app opens Google sign-in in the system browser, so don't block it there.
+    setInAppBrowser(!isNativeApp() && isLikelyInAppBrowser(window.navigator.userAgent || ''));
   }, []);
 
   const nativeAuthBridge = hasNativeAuthBridge();
@@ -206,21 +209,25 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
           return;
         }
 
+        // Birthday is optional (App Store guideline 5.1.1(v)); only validate when provided.
         const y = Number(birthYear);
         const m = Number(birthMonth);
         const d = Number(birthDay);
-        if (!y || !m || !d) {
-          setError('Please select your birthday (day, month, year)');
-          setLoading(false);
-          return;
+        let birthdate: string | null = null;
+        if (y || m || d) {
+          if (!y || !m || !d) {
+            setError('Please complete your birthday (day, month, year) or leave it blank');
+            setLoading(false);
+            return;
+          }
+          const dt = new Date(Date.UTC(y, m - 1, d));
+          if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
+            setError('Please select a valid birthday');
+            setLoading(false);
+            return;
+          }
+          birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
         }
-        const dt = new Date(Date.UTC(y, m - 1, d));
-        if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) {
-          setError('Please select a valid birthday');
-          setLoading(false);
-          return;
-        }
-        const birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
 
         if (turnstileSiteKey && !captchaToken) {
           setError('Please complete the verification challenge.');
@@ -257,6 +264,22 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
     } else {
       trackFunnelEvent('oauth_redirect_started', { source: 'auth_modal', mode });
     }
+  };
+
+  const handleAppleSignIn = async () => {
+    setError('');
+    setLoading(true);
+    trackFunnelEvent('oauth_start', { source: 'auth_modal', mode, provider: 'apple' });
+    const { error, canceled } = await signInWithApple();
+    setLoading(false);
+    if (canceled) return;
+    if (error) {
+      setError(error.message);
+      trackFunnelEvent('oauth_error', { source: 'auth_modal', mode, provider: 'apple', message: error.message.slice(0, 120) });
+      return;
+    }
+    trackFunnelEvent('oauth_success', { mode, provider: 'apple' });
+    onClose();
   };
 
   const openInBrowser = () => {
@@ -341,6 +364,9 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
                 </button>
               </div>
             )}
+
+            {/* Sign in with Apple (iOS app only; renders nothing elsewhere) */}
+            <AppleSignInButton onClick={handleAppleSignIn} disabled={loading} className="mb-3" />
 
             {/* Google Sign In */}
             <button
@@ -460,7 +486,7 @@ export function AuthModal({ isOpen, onClose, initialError, initialMode = 'login'
               </div>
 
               <div>
-                <label className="block text-sm text-[var(--text-muted)] mb-1">Birthday</label>
+                <label className="block text-sm text-[var(--text-muted)] mb-1">Birthday <span className="opacity-70">(optional)</span></label>
                 <div className="grid grid-cols-3 gap-2">
                   <select
                     value={birthDay}

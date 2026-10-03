@@ -5,6 +5,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getWatchReminderOpenPath } from '@/lib/watch-reminder-path';
 import { buildBibEmailTemplate } from '@/lib/email-template';
 import { fetchWithTimeoutRetry } from '@/lib/fetch-with-retry';
+import { sendPushMessages } from '@/lib/server/fcm';
 
 export const runtime = 'nodejs';
 
@@ -335,6 +336,10 @@ async function dispatchWatchReminderEmails(
 
   const sendResult = await sendJobs(jobs);
 
+  // Native app push for reminders whose email went out (best effort, never throws).
+  const pushedWatch = due.filter((r) => sendResult.sentIds.includes(r.id));
+  await sendPushMessages(pushedWatch.map((r) => ({ userId: r.user_id, title: 'Time to watch', body: `Your reminder for ${r.movie_title} is here.`, data: { type: 'watch_reminder', path: getWatchReminderOpenPath(r.movie_id) } })));
+
   if (sendResult.sentIds.length > 0) {
     const updateNow = new Date().toISOString();
     const { error: updateError } = await supabase
@@ -466,6 +471,10 @@ async function dispatchFriendRecommendationReminderEmails(
   }
 
   const sendResult = await sendJobs(jobs);
+
+  // Native app push for reminders whose email went out (best effort, never throws).
+  const pushedRecs = due.filter((r) => sendResult.sentIds.includes(r.id));
+  await sendPushMessages(pushedRecs.map((r) => ({ userId: r.recipient_id, title: `${userMap.get(r.sender_id)?.name?.trim() || 'Your friend'} reminded you`, body: `Time to watch ${r.movie_title}.`, data: { type: 'friend_recommendation_reminder', path: r.tmdb_id != null && String(r.tmdb_id).trim() ? `/movie/tmdb-${encodeURIComponent(String(r.tmdb_id).trim())}` : '/?view=friends' } })));
 
   if (sendResult.sentIds.length > 0) {
     const updateNow = new Date().toISOString();

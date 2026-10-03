@@ -1,6 +1,7 @@
 'use client';
 
 import { useWatched } from '@/hooks';
+import { notificationSuccess } from '@/lib/native/haptics';
 
 interface WatchedButtonProps {
   movieId: string;
@@ -21,6 +22,7 @@ export function WatchedButton({ movieId, size = 'md', showLabel = false }: Watch
   const handleClick = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!watched) notificationSuccess();
     toggleWatched(movieId);
   };
 

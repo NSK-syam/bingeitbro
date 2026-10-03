@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { WatchedButton } from '@/components/WatchedButton';
 import { WatchlistButton } from '@/components/WatchlistButton';
 import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
+import { NativeShareButton } from '@/components/native/NativeShareButton';
 import { useWatched } from '@/hooks';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
@@ -172,6 +173,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
           const indiaData = providersData.results?.IN;
           const usaData = providersData.results?.US;
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const collectProviders = (regionData: any) => [
             ...(regionData.flatrate || []),
             ...(regionData.free || []),
@@ -313,6 +315,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
 
         setMovie(mappedRecommendation);
         // Trailer: only if this recommendation is linked to TMDB.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const rawTmdb = (rec as any)?.tmdb_id;
         const num = typeof rawTmdb === 'number' ? rawTmdb : Number(String(rawTmdb || ''));
         setTmdbTrailerId(Number.isFinite(num) && num > 0 ? num : null);
@@ -552,6 +555,7 @@ export default function MoviePageClient({ id }: MoviePageClientProps) {
                     Send
                   </button>
                 </div>
+                <NativeShareButton title={title} containerClassName="col-span-2 flex justify-center" />
               </div>
             </div>
 

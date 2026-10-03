@@ -7,6 +7,7 @@ import { AdDisplayUnit, AuthModal, BibSplash, Header, MovieBackground, useAuth }
 import { safeLocalStorageGet, safeLocalStorageSet } from '@/lib/safe-storage';
 import { trackFunnelEvent } from '@/lib/funnel';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
+import { isNativeApp } from '@/lib/native-app';
 
 type Hub = 'movies' | 'shows' | 'songs';
 type PreviewTab = 'movies' | 'shows' | 'friends';
@@ -389,6 +390,14 @@ export default function HomeGate() {
 
   const defaultHub = useMemo(() => (mounted ? readDefaultHub() : null), [mounted]);
 
+  // The native app skips the marketing landing page and opens the sign-in screen.
+  const nativeApp = mounted && isNativeApp();
+
+  useEffect(() => {
+    if (!nativeApp || loading || user) return;
+    router.replace('/signup');
+  }, [nativeApp, loading, user, router]);
+
   useEffect(() => {
     if (!mounted) return;
     if (loading) return;
@@ -481,7 +490,7 @@ export default function HomeGate() {
     return null;
   }
 
-  if (loading) {
+  if (loading || (nativeApp && !user)) {
     return (
       <div className="min-h-screen bg-[var(--bg-primary)] relative overflow-hidden">
         <MovieBackground />

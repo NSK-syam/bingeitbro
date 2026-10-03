@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+<!-- BingeItBro app icon: geometric lowercase "bib", play-triangle dot. Source for scripts/mobile/generate-asset-sources.cjs -->
+<rect width="1024" height="1024" fill="#F5A623"/>
+<mask id="counters"><rect width="1024" height="1024" fill="#fff"/><path d="M210 577a66 66 0 1 1 132 0a66 66 0 1 1 -132 0Z M682 577a66 66 0 1 1 132 0a66 66 0 1 1 -132 0Z" fill="#000"/></mask><g transform="translate(512 512) scale(0.86) translate(-512 -512)"><path d="M126 297h84V727h-84Z M126 577a150 150 0 1 1 300 0a150 150 0 1 1 -300 0Z M470 427h84V727h-84Z M470 275L570.8 331L470 387Z M598 297h84V727h-84Z M598 577a150 150 0 1 1 300 0a150 150 0 1 1 -300 0Z" fill="#0B0B0E" mask="url(#counters)"/></g>
+</svg>

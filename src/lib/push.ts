@@ -1,6 +1,7 @@
 'use client';
 
 import { savePushSubscription } from '@/lib/supabase-rest';
+import { isNativeApp } from '@/lib/native-app';
 
 const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || '';
 
@@ -16,6 +17,9 @@ function urlBase64ToUint8Array(base64String: string) {
 }
 
 export async function enablePushNotifications(userId: string) {
+  if (isNativeApp()) {
+    throw new Error('Push notifications are not supported in the app yet');
+  }
   if (!('Notification' in window)) {
     throw new Error('Notifications not supported');
   }

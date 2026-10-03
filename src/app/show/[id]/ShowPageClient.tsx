@@ -6,6 +6,7 @@ import { SendToFriendModal } from '@/components/SendToFriendModal';
 import { WatchlistButton } from '@/components/WatchlistButton';
 import { WatchedButton } from '@/components/WatchedButton';
 import { ScheduleWatchButton } from '@/components/ScheduleWatchButton';
+import { NativeShareButton } from '@/components/native/NativeShareButton';
 import { useAuth } from '@/components/AuthProvider';
 import { createClient, isSupabaseConfigured } from '@/lib/supabase';
 import { buildTmdbV3Url, fetchTmdbWithProxy } from '@/lib/tmdb-fetch';
@@ -77,6 +78,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
           if (error) throw error;
           if (!data) throw new Error('Not found');
 
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
           const rec = data as any;
           const mapped: Recommendation = {
             id: rec.id,
@@ -101,6 +103,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
           if (!cancelled) {
             setShow(mapped);
             setOttLinks(mapped.ottLinks || []);
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const rawTmdb = (rec as any)?.tmdb_id;
             const num = typeof rawTmdb === 'number' ? rawTmdb : Number(String(rawTmdb || ''));
             setTmdbTrailerId(Number.isFinite(num) && num > 0 ? num : null);
@@ -320,6 +323,7 @@ export default function ShowPageClient({ id }: ShowPageClientProps) {
                   Send
                 </button>
               </div>
+              <NativeShareButton title={title} containerClassName="col-span-2 flex justify-center" />
             </div>
           </div>
 

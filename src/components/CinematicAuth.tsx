@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { hasNativeAuthBridge } from '@/lib/native-webview';
+import { isNativeApp } from '@/lib/native-app';
+import { AppleSignInButton } from './native/AppleSignInButton';
 import { trackFunnelEvent } from '@/lib/funnel';
 
 declare global {
@@ -56,7 +58,7 @@ function loadTurnstileScript(): Promise<void> {
 
 export function CinematicAuth() {
     const router = useRouter();
-    const { signIn, signUp, signInWithGoogle, checkUsernameAvailable } = useAuth();
+    const { signIn, signUp, signInWithGoogle, signInWithApple, checkUsernameAvailable } = useAuth();
 
     // Animation Phases: 'viewfinder' -> 'auth'
     const [phase, setPhase] = useState<'viewfinder' | 'auth'>('viewfinder');
@@ -138,7 +140,8 @@ export function CinematicAuth() {
 
     useEffect(() => {
         if (typeof window === 'undefined') return;
-        setInAppBrowser(isLikelyInAppBrowser(window.navigator.userAgent || ''));
+        // The Capacitor app opens Google sign-in in the system browser, so don't block it there.
+        setInAppBrowser(!isNativeApp() && isLikelyInAppBrowser(window.navigator.userAgent || ''));
     }, []);
 
     const nativeAuthBridge = hasNativeAuthBridge();
@@ -183,13 +186,17 @@ export function CinematicAuth() {
                 if (!name.trim()) throw new Error('Please enter your name');
                 if (password.length < 8) throw new Error('Password must be at least 8 characters');
 
+                // Birthday is optional (App Store guideline 5.1.1(v)); only validate when provided.
                 const y = Number(birthYear);
                 const m = Number(birthMonth);
                 const d = Number(birthDay);
-                if (!y || !m || !d) throw new Error('Please select your birthday (day, month, year)');
-                const dt = new Date(Date.UTC(y, m - 1, d));
-                if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) throw new Error('Please select a valid birthday');
-                const birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                let birthdate: string | null = null;
+                if (y || m || d) {
+                    if (!y || !m || !d) throw new Error('Please complete your birthday (day, month, year) or leave it blank');
+                    const dt = new Date(Date.UTC(y, m - 1, d));
+                    if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m - 1 || dt.getUTCDate() !== d) throw new Error('Please select a valid birthday');
+                    birthdate = `${String(y).padStart(4, '0')}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+                }
 
                 if (turnstileSiteKey && !captchaToken) throw new Error('Please complete the verification challenge.');
 
@@ -223,6 +230,22 @@ export function CinematicAuth() {
         } else {
             trackFunnelEvent('oauth_redirect_started', { source: 'cinematic_auth', mode });
         }
+    };
+
+    const handleAppleSignIn = async () => {
+        setError('');
+        setLoading(true);
+        trackFunnelEvent('oauth_start', { source: 'cinematic_auth', mode, provider: 'apple' });
+        const { error, canceled } = await signInWithApple();
+        setLoading(false);
+        if (canceled) return;
+        if (error) {
+            setError(error.message);
+            trackFunnelEvent('oauth_error', { source: 'cinematic_auth', mode, provider: 'apple', message: error.message.slice(0, 120) });
+            return;
+        }
+        trackFunnelEvent('oauth_success', { mode, provider: 'apple' });
+        router.push('/');
     };
 
     const handlePasswordReset = async (e: React.FormEvent) => {
@@ -363,6 +386,7 @@ export function CinematicAuth() {
                                                     <button onClick={openInBrowser} className="mt-2 w-full rounded-lg bg-amber-400/20 px-3 py-2 font-medium">Open in Browser</button>
                                                 </div>
                                             )}
+                                            <AppleSignInButton onClick={handleAppleSignIn} disabled={loading} className="mb-3" />
                                             <button
                                                 onClick={handleGoogleSignIn}
                                                 disabled={loading || blockGoogleInBrowser}
@@ -420,17 +444,17 @@ export function CinematicAuth() {
                                                         {usernameStatus === 'available' && <p className="text-xs text-green-400 mt-1">Username is available!</p>}
                                                     </div>
                                                     <div>
-                                                        <label className="block text-sm text-white/60 mb-1">Birthday</label>
+                                                        <label className="block text-sm text-white/60 mb-1">Birthday <span className="text-white/40">(optional)</span></label>
                                                         <div className="grid grid-cols-3 gap-2">
-                                                            <select value={birthDay} onChange={e => setBirthDay(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors" required>
+                                                            <select value={birthDay} onChange={e => setBirthDay(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors">
                                                                 <option value="">DD</option>
                                                                 {Array.from({ length: 31 }, (_, i) => String(i + 1)).map(v => <option key={v} value={v}>{v}</option>)}
                                                             </select>
-                                                            <select value={birthMonth} onChange={e => setBirthMonth(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors" required>
+                                                            <select value={birthMonth} onChange={e => setBirthMonth(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors">
                                                                 <option value="">MM</option>
                                                                 {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map((l, i) => <option key={l} value={String(i + 1)}>{l}</option>)}
                                                             </select>
-                                                            <select value={birthYear} onChange={e => setBirthYear(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors" required>
+                                                            <select value={birthYear} onChange={e => setBirthYear(e.target.value)} className="bg-black/40 border border-white/10 rounded-xl p-3 text-white outline-none focus:border-cyan-400 focus:bg-white/5 transition-colors">
                                                                 <option value="">YYYY</option>
                                                                 {Array.from({ length: 100 }, (_, i) => String(new Date().getFullYear() - i)).map(v => <option key={v} value={v}>{v}</option>)}
                                                             </select>

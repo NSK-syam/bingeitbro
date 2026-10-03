@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "832093182717",
+    "project_id": "bingeitbro-d761b",
+    "storage_bucket": "bingeitbro-d761b.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:832093182717:android:fba7cc73c98f25dd1dfc94",
+        "android_client_info": {
+          "package_name": "com.bingeitbro.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAdK2EaWLisAOLec9R2c7id5HGwwQ37x9Y"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

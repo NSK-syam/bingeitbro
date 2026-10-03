@@ -6,6 +6,9 @@ import { safeLocalStorageGet, safeLocalStorageKeys, safeLocalStorageRemove, safe
 import { getRandomMovieAvatar } from '@/lib/avatar-options';
 import { isLikelyInAppBrowser } from '@/lib/browser-detect';
 import { hasNativeAuthBridge, postNativeAuthMessage } from '@/lib/native-webview';
+import { isNativeApp, signInWithGoogleNative } from '@/lib/native-app';
+import { runNativeLogoutCleanup } from '@/lib/native/logout-cleanup';
+import { BibNative, generateRawNonce, isAppleSignInCanceled, isBibNativeAvailable } from '@/lib/native/bib-native';
 import { trackFunnelEvent } from '@/lib/funnel';
 import { BirthdayPopup } from './BirthdayPopup';
 import { BalloonRain } from './BalloonRain';
@@ -27,12 +30,50 @@ interface AuthContextType {
     captchaToken?: string,
   ) => Promise<{ error: Error | null }>;
   signInWithGoogle: () => Promise<{ error: Error | null }>;
+  /**
+   * Native Sign in with Apple (iOS app only). Resolves { error: null, canceled: true }
+   * when the user dismisses the Apple sheet.
+   */
+  signInWithApple: () => Promise<{ error: Error | null; canceled?: boolean }>;
   checkUsernameAvailable: (username: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   isConfigured: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const APPLE_PRIVATE_RELAY_DOMAIN = 'privaterelay.appleid.com';
+
+/** `sub` claim of a JWT (unverified decode; only used to key local state). */
+function getJwtSubject(token: string): string | null {
+  try {
+    const payload = token.split('.')[1];
+    if (!payload) return null;
+    const json = atob(payload.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(payload.length / 4) * 4, '='));
+    const sub = (JSON.parse(json) as { sub?: unknown }).sub;
+    return typeof sub === 'string' && sub ? sub : null;
+  } catch {
+    return null;
+  }
+}
+
+/** True if this Supabase user is signed in via (or linked to) the given Apple subject. */
+function isAppleIdentityFor(user: User, appleSub: string): boolean {
+  if (user.identities?.some((identity) => identity.provider === 'apple' && (identity.id === appleSub || identity.identity_data?.sub === appleSub))) {
+    return true;
+  }
+  return user.app_metadata?.provider === 'apple' && user.user_metadata?.sub === appleSub;
+}
+
+function slugifyUsernameBase(raw: string): string {
+  return raw.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 18);
+}
+
+/** Display name from Apple's one-time name fields (null if Apple sent none). */
+function appleFullName(givenName?: string, familyName?: string): string | null {
+  const full = [givenName, familyName].map((part) => (part || '').trim()).filter(Boolean).join(' ');
+  return full ? full.slice(0, 80) : null;
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -41,6 +82,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isConfigured = isSupabaseConfigured();
   const initializedRef = useRef(false);
   const ensuredProfileRef = useRef<string | null>(null);
+  // Full name from Apple's first authorization, consumed by ensureUserProfile.
+  // Keyed by the Apple subject (`sub` of the identity token) so it can only apply to that
+  // Apple identity; cleared after use and on any other auth transition.
+  const pendingAppleNameRef = useRef<{ sub: string; name: string } | null>(null);
+  const appleSignInInFlightRef = useRef(false);
   const previousUserIdRef = useRef<string | null>(null);
   const [birthdayOpen, setBirthdayOpen] = useState(false);
   const [birthdayName, setBirthdayName] = useState('');
@@ -62,7 +108,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const supabase = createClient();
 
+    /** Takes the pending Apple name if it belongs to this user's Apple identity; always clears it otherwise. */
+    const takePendingAppleName = (authUser: User | null): string | null => {
+      const pending = pendingAppleNameRef.current;
+      if (!pending) return null;
+      if (!authUser || !isAppleIdentityFor(authUser, pending.sub)) {
+        pendingAppleNameRef.current = null;
+        return null;
+      }
+      return pending.name;
+    };
+
     const ensureUserProfile = async (authUser: User | null) => {
+      // Captured synchronously (before any await) so it matches this auth transition.
+      const pendingAppleName = takePendingAppleName(authUser);
       if (!authUser) return;
       if (ensuredProfileRef.current === authUser.id) return;
 
@@ -75,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (existingUser) {
           ensuredProfileRef.current = authUser.id;
+          if (pendingAppleName) pendingAppleNameRef.current = null;
           return;
         }
 
@@ -85,13 +145,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        const baseUsername = email.split('@')[0]?.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';
+        // Sign in with Apple: the name only arrives on the first authorization (stashed
+        // by signInWithApple), and "Hide My Email" yields a random relay address.
+        const isAppleRelayEmail = email.endsWith(`@${APPLE_PRIVATE_RELAY_DOMAIN}`);
+        const metadataName = (metadata?.full_name || metadata?.name || pendingAppleName || '') as string;
+        const emailLocal = email.split('@')[0] || '';
+
+        // Non-Apple-relay emails keep the original username scheme; relay addresses are
+        // random strings, so derive from Apple's name instead (kept within [a-z0-9_]{3,24}).
+        const baseUsername = isAppleRelayEmail
+          ? (() => {
+              const fromName = slugifyUsernameBase(metadataName.trim().replace(/\s+/g, '_'));
+              return fromName.length >= 3 ? fromName : 'user';
+            })()
+          : emailLocal.toLowerCase().replace(/[^a-z0-9_]/g, '') || 'user';
         const generatedUsername = `${baseUsername}_${Math.random().toString(36).slice(2, 6)}`;
 
         const baseInsert = {
           id: authUser.id,
           email,
-          name: metadata?.full_name || metadata?.name || email.split('@')[0] || 'New user',
+          name: metadataName || (isAppleRelayEmail ? 'New user' : emailLocal) || 'New user',
           avatar: getRandomMovieAvatar(),
         };
 
@@ -114,6 +187,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         ensuredProfileRef.current = authUser.id;
+        if (pendingAppleName) pendingAppleNameRef.current = null;
       } catch (err) {
         console.error('Error ensuring user profile:', err);
       }
@@ -296,6 +370,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       postNativeAuthMessage('BIB_AUTH_GOOGLE_SIGN_IN');
       return { error: null };
     }
+    if (isNativeApp()) {
+      // Capacitor app: run OAuth in the system browser; NativeAppBridge
+      // exchanges the code when the app deep link comes back.
+      const nativeSupabase = createClient();
+      try {
+        await nativeSupabase.auth.signOut();
+      } catch {
+        // Ignore signout errors
+      }
+      return signInWithGoogleNative(nativeSupabase);
+    }
     if (typeof window !== 'undefined' && isLikelyInAppBrowser(window.navigator.userAgent || '')) {
       return {
         error: new Error(
@@ -330,8 +415,89 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return { error };
   };
 
+  const signInWithApple = async (): Promise<{ error: Error | null; canceled?: boolean }> => {
+    if (!isConfigured) return { error: new Error('Supabase not configured') };
+    if (!isBibNativeAvailable()) {
+      return { error: new Error('Sign in with Apple is only available in the iOS app.') };
+    }
+    if (appleSignInInFlightRef.current) {
+      return { error: new Error('Sign in with Apple is already in progress.') };
+    }
+    appleSignInInFlightRef.current = true;
+
+    try {
+      // Raw nonce goes to Supabase; the plugin sends SHA-256(rawNonce) to Apple.
+      const rawNonce = generateRawNonce();
+      let result;
+      try {
+        result = await BibNative.signInWithApple({ nonce: rawNonce });
+      } catch (err) {
+        if (isAppleSignInCanceled(err)) return { error: null, canceled: true };
+        return { error: err instanceof Error ? err : new Error('Sign in with Apple failed.') };
+      }
+      if (!result?.identityToken) return { error: new Error('Apple did not return an identity token.') };
+
+      const fullName = appleFullName(result.givenName, result.familyName);
+      const appleSub = getJwtSubject(result.identityToken);
+      pendingAppleNameRef.current = fullName && appleSub ? { sub: appleSub, name: fullName } : null;
+
+      const supabase = createClient();
+      const { data, error } = await supabase.auth.signInWithIdToken({
+        provider: 'apple',
+        token: result.identityToken,
+        nonce: rawNonce,
+      });
+      if (error) {
+        pendingAppleNameRef.current = null;
+        return { error };
+      }
+
+      const signedInUser = data?.user ?? null;
+      if (fullName && signedInUser) {
+        // Apple sends the name only once: keep it in auth metadata and fill the
+        // profile name only if it is empty or still the auto-generated placeholder.
+        try {
+          if (!signedInUser.user_metadata?.full_name) {
+            await supabase.auth.updateUser({
+              data: { full_name: fullName, given_name: result.givenName ?? null, family_name: result.familyName ?? null },
+            });
+          }
+        } catch {
+          // Non-fatal.
+        }
+        try {
+          const { data: profile } = await supabase
+            .from('users')
+            .select('name,email')
+            .eq('id', signedInUser.id)
+            .maybeSingle();
+          const currentName = String((profile as { name?: string | null } | null)?.name ?? '').trim();
+          const profileEmail = String((profile as { email?: string | null } | null)?.email ?? signedInUser.email ?? '').toLowerCase();
+          const placeholderNames = new Set(['', 'new user', profileEmail.split('@')[0] || '']);
+          if (profile && placeholderNames.has(currentName.toLowerCase())) {
+            await supabase.from('users').update({ name: fullName }).eq('id', signedInUser.id);
+          }
+        } catch {
+          // Non-fatal: the profile may be created a moment later by ensureUserProfile with this name.
+        }
+      }
+      return { error: null };
+    } finally {
+      // ensureUserProfile captures the name synchronously during the SIGNED_IN event,
+      // so nothing needs it after this point.
+      pendingAppleNameRef.current = null;
+      appleSignInInFlightRef.current = false;
+    }
+  };
+
   const signOut = async () => {
     if (typeof window === 'undefined') return;
+
+    // Native app: finish device cleanup (reminders, caches, push token, widget) while the
+    // session is still valid and before callers navigate away. Bounded; never throws.
+    if (isNativeApp()) {
+      await runNativeLogoutCleanup({ userId: user?.id ?? null, accessToken: session?.access_token ?? null });
+    }
 
     if (isConfigured) {
       try {
@@ -367,6 +533,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     // 4. Clear React state after remote sign-out + local storage cleanup.
+    pendingAppleNameRef.current = null;
     setUser(null);
     setSession(null);
   };
@@ -379,6 +546,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       signIn,
       signUp,
       signInWithGoogle,
+      signInWithApple,
       checkUsernameAvailable,
       signOut,
       isConfigured

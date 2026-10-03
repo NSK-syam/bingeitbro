@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/components";
 import { HelpBotWidget } from "@/components/HelpBotWidget";
+import { NativeAppBridge } from "@/components/NativeAppBridge";
+import { NativeFeatures } from "@/components/native/NativeFeatures";
+import { NativePush } from "@/components/native/NativePush";
+import { NativeWidgetSync } from "@/components/native/NativeWidgetSync";
 
 // Local-first font stack so the build stays offline-safe without defaulting to generic system UI
 const fontClass = "font-sans antialiased";
@@ -38,6 +42,8 @@ export const metadata: Metadata = {
       "max-video-preview": -1,
     },
   },
+  // AdSense site verification (the AdSense script itself is injected by a loader below).
+  ...(adsensePublisherId ? { other: { "google-adsense-account": adsensePublisherId } } : {}),
   verification: {
     ...(googleVerification ? { google: googleVerification } : {}),
     ...(bingVerification ? { other: { "msvalidate.01": bingVerification } } : {}),
@@ -109,10 +115,12 @@ export default function RootLayout({
           />
         ) : null}
         {adsensePublisherId ? (
+          // Load AdSense on the website only: the Capacitor app injects window.Capacitor before
+          // page scripts run, and AdSense display ads aren't allowed inside app WebViews.
           <script
-            async
-            src={`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsensePublisherId}`}
-            crossOrigin="anonymous"
+            dangerouslySetInnerHTML={{
+              __html: `(function(){try{if(window.Capacitor&&window.Capacitor.isNativePlatform&&window.Capacitor.isNativePlatform())return;}catch(e){}var s=document.createElement('script');s.async=true;s.crossOrigin='anonymous';s.src=${JSON.stringify(`https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=${adsensePublisherId}`)};document.head.appendChild(s);})();`,
+            }}
           />
         ) : null}
       </head>
@@ -120,6 +128,10 @@ export default function RootLayout({
         <AuthProvider>
           {children}
           <HelpBotWidget />
+          <NativeAppBridge />
+          <NativeFeatures />
+          <NativePush />
+          <NativeWidgetSync />
         </AuthProvider>
       </body>
     </html>
