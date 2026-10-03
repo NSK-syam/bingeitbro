@@ -1,28 +1,39 @@
 'use client';
 
-import { useCallback, useEffect, useId, useRef, type ReactNode } from 'react';
+import { useEffect, useId, useRef, type ReactNode, type RefObject } from 'react';
 import { CloseIcon } from './icons';
 
 type SheetProps = {
   open: boolean;
+  /** Called for every user dismissal (close button, backdrop, Escape, swipe down). */
   onClose: () => void;
   title: string;
+  /**
+   * Where focus returns on close when the opener wasn't focused (WebKit doesn't focus buttons on
+   * tap, so document.activeElement is often <body> when the sheet opens).
+   */
+  returnFocusRef?: RefObject<HTMLElement | null>;
   children: ReactNode;
 };
 
-const FOCUSABLE = 'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])';
+const FOCUSABLE = 'a[href], button, textarea, input, select, [tabindex]:not([tabindex="-1"])';
 const SWIPE_CLOSE_PX = 80;
 
+function focusableIn(root: HTMLElement): HTMLElement[] {
+  return Array.from(root.querySelectorAll<HTMLElement>(FOCUSABLE)).filter(
+    (el) => !el.hasAttribute('disabled') && el.getAttribute('aria-hidden') !== 'true' && el.getClientRects().length > 0,
+  );
+}
+
 /**
- * Bottom sheet dialog. Closes on Cancel, backdrop tap, Escape, swipe down on the grabber, and the
- * Android back button / browser back (it adds a history entry while open). Traps focus while open
- * and returns focus to the element that opened it.
+ * Bottom sheet dialog. Fully controlled: it has no history or routing logic of its own. The app
+ * shell drives `open` from the URL (`?sheet=recommend`), so the Android back button and browser
+ * back close it through normal navigation. Traps focus while open and returns focus to the
+ * element that opened it.
  */
-export function Sheet({ open, onClose, title, children }: SheetProps) {
+export function Sheet({ open, onClose, title, returnFocusRef, children }: SheetProps) {
   const titleId = useId();
   const panelRef = useRef<HTMLDivElement>(null);
-  const openerRef = useRef<HTMLElement | null>(null);
-  const historyEntryRef = useRef(false);
   const onCloseRef = useRef(onClose);
   const dragStartRef = useRef<number | null>(null);
 
@@ -30,42 +41,25 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
     onCloseRef.current = onClose;
   }, [onClose]);
 
-  const requestClose = useCallback(() => {
-    if (historyEntryRef.current) {
-      // Pop our own history entry; the popstate handler then closes the sheet.
-      historyEntryRef.current = false;
-      window.history.back();
-    } else {
-      onCloseRef.current();
-    }
-  }, []);
-
   useEffect(() => {
     if (!open) return;
-    openerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    window.history.pushState({ ...(window.history.state ?? {}), bibSheet: true }, '');
-    historyEntryRef.current = true;
-    const onPopState = () => {
-      historyEntryRef.current = false;
-      onCloseRef.current();
-    };
-    window.addEventListener('popstate', onPopState);
+    const active = document.activeElement;
+    const opener =
+      active instanceof HTMLElement && active !== document.body ? active : (returnFocusRef?.current ?? null);
+    const panel = panelRef.current;
+    if (panel) focusableIn(panel)[0]?.focus();
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
-    const panel = panelRef.current;
-    panel?.querySelector<HTMLElement>(FOCUSABLE)?.focus();
-
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        requestClose();
+        onCloseRef.current();
         return;
       }
       if (event.key !== 'Tab' || !panel) return;
-      const items = Array.from(panel.querySelectorAll<HTMLElement>(FOCUSABLE));
+      const items = focusableIn(panel);
       if (items.length === 0) return;
       const first = items[0];
       const last = items[items.length - 1];
@@ -80,12 +74,11 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
     document.addEventListener('keydown', onKeyDown);
 
     return () => {
-      window.removeEventListener('popstate', onPopState);
       document.removeEventListener('keydown', onKeyDown);
       document.body.style.overflow = previousOverflow;
-      openerRef.current?.focus();
+      if (opener?.isConnected) opener.focus();
     };
-  }, [open, requestClose]);
+  }, [open, returnFocusRef]);
 
   if (!open) return null;
 
@@ -95,7 +88,7 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
         type="button"
         aria-label="Close"
         tabIndex={-1}
-        onClick={requestClose}
+        onClick={() => onCloseRef.current()}
         className="absolute inset-0 border-0 bg-black/60"
       />
       <div
@@ -108,13 +101,20 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
       >
         <div
           className="flex h-6 touch-none items-center justify-center"
-          onPointerDown={(e) => { dragStartRef.current = e.clientY; }}
+          aria-hidden="true"
+          onPointerDown={(e) => {
+            dragStartRef.current = e.clientY;
+            e.currentTarget.setPointerCapture(e.pointerId);
+          }}
           onPointerUp={(e) => {
-            if (dragStartRef.current !== null && e.clientY - dragStartRef.current > SWIPE_CLOSE_PX) requestClose();
+            const start = dragStartRef.current;
+            dragStartRef.current = null;
+            if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+            if (start !== null && e.clientY - start > SWIPE_CLOSE_PX) onCloseRef.current();
+          }}
+          onPointerCancel={() => {
             dragStartRef.current = null;
           }}
-          onPointerCancel={() => { dragStartRef.current = null; }}
-          aria-hidden="true"
         >
           <span className="h-[5px] w-10 rounded-full bg-[#3a3a44]" />
         </div>
@@ -122,7 +122,7 @@ export function Sheet({ open, onClose, title, children }: SheetProps) {
           <h2 id={titleId} className="app-display m-0 text-[30px]">{title}</h2>
           <button
             type="button"
-            onClick={requestClose}
+            onClick={() => onCloseRef.current()}
             aria-label="Close"
             className="flex h-11 w-11 items-center justify-center rounded-full border-0 bg-[var(--app-raised)] text-[var(--app-text)]"
           >

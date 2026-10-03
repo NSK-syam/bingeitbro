@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import type { RefObject } from 'react';
 import { APP_GROUPS, APP_HOME, APP_ME, APP_PICKS } from '@/lib/native/app-routes';
 import { GroupsIcon, HomeIcon, MeIcon, PicksIcon, PlusIcon } from './icons';
 
@@ -33,11 +34,20 @@ function TabLink({ href, label, Icon, active }: { href: string; label: string; I
  * Bottom bar: four navigation tabs with a centred Recommend action. The action is a button that
  * opens a sheet, not a tab, so it never gets aria-current.
  */
-export function TabBar({ onRecommend }: { onRecommend: () => void }) {
+export function TabBar({
+  onRecommend,
+  inert = false,
+  actionRef,
+}: {
+  onRecommend: () => void;
+  inert?: boolean;
+  actionRef?: RefObject<HTMLButtonElement | null>;
+}) {
   const pathname = usePathname();
   const [home, picks, groups, me] = TABS;
   return (
     <nav
+      inert={inert}
       aria-label="Main"
       className="fixed inset-x-0 bottom-0 z-40 flex items-start justify-around border-t border-[#1f1f25] bg-[#0e0e12] pt-2"
       style={{ paddingBottom: 'max(8px, env(safe-area-inset-bottom))' }}
@@ -45,6 +55,7 @@ export function TabBar({ onRecommend }: { onRecommend: () => void }) {
       <TabLink {...home} active={pathname === home.href} />
       <TabLink {...picks} active={pathname === picks.href} />
       <button
+        ref={actionRef}
         type="button"
         onClick={onRecommend}
         aria-label="Recommend a movie"

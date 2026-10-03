@@ -7,12 +7,19 @@ const TMDB_IMAGE_BASE = 'https://image.tmdb.org/t/p';
 
 /** Poster sizes per spec: bounded TMDB sizes, never `original`. */
 const SIZES = {
-  thumb: { width: 72, height: 108, tmdb: 'w185', titleSize: 'text-[13px]' },
-  row: { width: 112, height: 168, tmdb: 'w342', titleSize: 'text-[20px]' },
-  hero: { width: 350, height: 420, tmdb: 'w780', titleSize: 'text-[56px]' },
+  thumb: { width: 72, height: 108, tmdb: 'w185', titlePx: 13 },
+  row: { width: 112, height: 168, tmdb: 'w342', titlePx: 20 },
+  hero: { width: 350, height: 420, tmdb: 'w780', titlePx: 56 },
 } as const;
 
 export type PosterSize = keyof typeof SIZES;
+
+/** Placeholder title size that shrinks for long titles so they wrap inside the tile, not clip. */
+function placeholderTitlePx(title: string, basePx: number): number {
+  const longestWord = title.split(/\s+/).reduce((max, word) => Math.max(max, word.length), 0);
+  const scale = title.length > 28 || longestWord > 10 ? 0.6 : title.length > 16 || longestWord > 8 ? 0.78 : 1;
+  return Math.round(basePx * scale);
+}
 
 /** Muted tints for designed placeholders (title on a tinted tile). Picked from the title. */
 const TINTS = ['#3A2614', '#3D1F14', '#1E3446', '#4A1A1A', '#2B2F17', '#2A1838', '#13303A', '#3A3214'];
@@ -52,8 +59,9 @@ type PosterTileProps = {
 export function PosterTile({ title, poster, size = 'row', href, caption, badge, priority = false }: PosterTileProps) {
   const spec = SIZES[size];
   const src = posterUrl(poster, spec.tmdb);
-  const [failed, setFailed] = useState(false);
-  const showImage = Boolean(src) && !failed;
+  // Remember which src failed, so a reused tile with a new poster tries again.
+  const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  const showImage = Boolean(src) && failedSrc !== src;
   const showCaption = caption ?? size === 'row';
 
   const tile = (
@@ -71,11 +79,17 @@ export function PosterTile({ title, poster, size = 'row', href, caption, badge, 
           loading={priority ? 'eager' : 'lazy'}
           decoding="async"
           fetchPriority={priority ? 'high' : 'auto'}
-          onError={() => setFailed(true)}
+          onError={() => setFailedSrc(src)}
           className="absolute inset-0 h-full w-full object-cover"
         />
       ) : (
-        <span className={`app-poster-title relative ${spec.titleSize}`} aria-hidden="true">{title}</span>
+        <span
+          className="app-poster-title relative line-clamp-4 break-words"
+          style={{ fontSize: placeholderTitlePx(title, spec.titlePx) }}
+          aria-hidden="true"
+        >
+          {title}
+        </span>
       )}
       {badge ? <span className="absolute left-2 top-2">{badge}</span> : null}
     </span>

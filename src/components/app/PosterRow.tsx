@@ -1,5 +1,7 @@
+'use client';
+
 import Link from 'next/link';
-import type { ReactNode } from 'react';
+import { useId, type ReactNode } from 'react';
 
 type PosterRowProps = {
   title: string;
@@ -10,7 +12,7 @@ type PosterRowProps = {
 
 /** A titled, horizontally scrolling row of posters. */
 export function PosterRow({ title, action, children }: PosterRowProps) {
-  const headingId = `row-${title.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`;
+  const headingId = useId();
   return (
     <section aria-labelledby={headingId} className="mt-7">
       <div className="mb-3 flex items-baseline justify-between px-5">

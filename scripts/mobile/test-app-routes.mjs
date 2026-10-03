@@ -47,6 +47,10 @@ test('/app paths are identity for known screens, Home otherwise', () => {
   }
   assert.deepEqual(mapToAppDestination('/app/title/podcast/1', IN), app('/app'));
   assert.deepEqual(mapToAppDestination('/app/nope', IN), app('/app'));
+  assert.deepEqual(mapToAppDestination('/app/picks?sheet=recommend', IN), app('/app/picks?sheet=recommend'));
+  assert.deepEqual(mapToAppDestination('/app/me?sheet=recommend&x=1', IN), app('/app/me?sheet=recommend'));
+  assert.deepEqual(mapToAppDestination('/app/title/movie/tmdb-1?sheet=recommend', IN), app('/app/title/movie/tmdb-1'));
+  assert.deepEqual(mapToAppDestination('/app/groups?utm=1', IN), app('/app/groups'));
   assert.deepEqual(mapToAppDestination('/app/picks/', IN), app('/app/picks'));
 });
 
@@ -94,4 +98,26 @@ test('no redirect loops: mapping a mapped result is stable', () => {
       assert.deepEqual(second, first, `${input} (signedIn=${signedIn})`);
     }
   }
+});
+
+test('malformed percent-encoding never throws and maps stably', () => {
+  const bad = [
+    '/movie/%', '/movie/%E0%A4%A', '/show/%FF', '/profile/%FF', '/app/profile/%FF',
+    '/app/title/movie/%E0%A4%A', '/app/title/show/%', '/app/welcome?next=%2Fapp%2Ftitle%2Fmovie%2F%25FF',
+    '/app/welcome?next=%E0%A4%A', '/?view=%', '/app?sheet=%FF', '/%', '/app/%',
+  ];
+  for (const signedIn of [true, false]) {
+    for (const input of bad) {
+      let first;
+      assert.doesNotThrow(() => { first = mapToAppDestination(input, { signedIn }); }, input);
+      if (first === null) continue;
+      assert.equal(first.kind, 'app', input);
+      assert.doesNotThrow(() => mapToAppDestination(first.path, { signedIn }), input);
+      assert.deepEqual(mapToAppDestination(first.path, { signedIn }), first, `${input} stable (signedIn=${signedIn})`);
+    }
+  }
+  assert.deepEqual(mapToAppDestination('/movie/%', IN), app('/app'));
+  assert.deepEqual(mapToAppDestination('/app/title/movie/%E0%A4%A', IN), app('/app'));
+  assert.deepEqual(mapToAppDestination('/app/welcome?next=%2Fapp%2Ftitle%2Fmovie%2F%25FF', IN), app('/app'));
+  assert.deepEqual(mapToAppDestination('/app/profile/%FF', OUT), app('/app/welcome'));
 });

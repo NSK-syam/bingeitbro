@@ -34,6 +34,17 @@ const ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const LEGAL = new Set(['/privacy', '/terms', '/cookies', '/copyright', '/disclaimer']);
 const WEB_ONLY_PREFIXES = ['/songs', '/trivia', '/admin-picks'];
 
+/** Decodes one path segment and checks it is a valid id. Never throws: malformed input → null. */
+function decodeId(segment: string): string | null {
+  let value: string;
+  try {
+    value = decodeURIComponent(segment);
+  } catch {
+    return null;
+  }
+  return ID_RE.test(value) ? value : null;
+}
+
 /** True for '/app', '/app?…' and '/app/…' (not e.g. '/application'). */
 function isAppPathString(path: string): boolean {
   return path === APP_HOME || path.startsWith(`${APP_HOME}?`) || path.startsWith(`${APP_HOME}/`);
@@ -62,6 +73,7 @@ export function sanitizeRelativePath(raw: string | null | undefined): string | n
 }
 
 function pathParts(path: string): { pathname: string; params: URLSearchParams } {
+  // URL parsing never throws for an already-sanitized relative path; percent sequences stay encoded.
   const url = new URL(path, 'https://app.invalid');
   const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
   return { pathname, params: url.searchParams };
@@ -69,10 +81,10 @@ function pathParts(path: string): { pathname: string; params: URLSearchParams } 
 
 /** Maps an /app/* path to itself when it names a known screen; unknown /app paths go Home. */
 function mapAppPath(pathname: string, params: URLSearchParams): string {
-  if (pathname === APP_HOME) {
-    return params.get('sheet') === 'recommend' ? `${APP_HOME}?${RECOMMEND_SHEET_QUERY}` : APP_HOME;
+  if ([APP_HOME, APP_PICKS, APP_GROUPS, APP_ME].includes(pathname)) {
+    // Tab screens can show the Recommend sheet on top (?sheet=recommend); other params are dropped.
+    return params.get('sheet') === 'recommend' ? `${pathname}?${RECOMMEND_SHEET_QUERY}` : pathname;
   }
-  if ([APP_PICKS, APP_GROUPS, APP_ME].includes(pathname)) return pathname;
   if (pathname === APP_WELCOME) {
     const next = sanitizeRelativePath(params.get('next'));
     return next && isAppPathString(next) && !next.startsWith(APP_WELCOME)
@@ -80,13 +92,11 @@ function mapAppPath(pathname: string, params: URLSearchParams): string {
       : APP_WELCOME;
   }
   const title = /^\/app\/title\/(movie|show)\/([^/]+)$/.exec(pathname);
-  if (title && ID_RE.test(decodeURIComponent(title[2]))) {
-    return titlePath(title[1] as TitleKind, decodeURIComponent(title[2]));
-  }
+  const titleId = title ? decodeId(title[2]) : null;
+  if (title && titleId) return titlePath(title[1] as TitleKind, titleId);
   const profile = /^\/app\/profile\/([^/]+)$/.exec(pathname);
-  if (profile && ID_RE.test(decodeURIComponent(profile[1]))) {
-    return `/app/profile/${encodeURIComponent(decodeURIComponent(profile[1]))}`;
-  }
+  const profileId = profile ? decodeId(profile[1]) : null;
+  if (profileId) return `/app/profile/${encodeURIComponent(profileId)}`;
   return APP_HOME;
 }
 
@@ -120,12 +130,12 @@ export function mapToAppDestination(raw: string | null | undefined, options: Map
     target = mapAppPath(pathname, params);
   } else if (pathname === '/' && params.get('view') === 'friends') {
     target = APP_PICKS;
-  } else if (movie && ID_RE.test(decodeURIComponent(movie[1]))) {
-    target = titlePath('movie', decodeURIComponent(movie[1]));
-  } else if (show && ID_RE.test(decodeURIComponent(show[1]))) {
-    target = titlePath('show', decodeURIComponent(show[1]));
-  } else if (profile && ID_RE.test(decodeURIComponent(profile[1]))) {
-    target = `/app/profile/${encodeURIComponent(decodeURIComponent(profile[1]))}`;
+  } else if (movie && decodeId(movie[1])) {
+    target = titlePath('movie', decodeId(movie[1]) as string);
+  } else if (show && decodeId(show[1])) {
+    target = titlePath('show', decodeId(show[1]) as string);
+  } else if (profile && decodeId(profile[1])) {
+    target = `/app/profile/${encodeURIComponent(decodeId(profile[1]) as string)}`;
   } else if (pathname === '/add') {
     target = `${APP_HOME}?${RECOMMEND_SHEET_QUERY}`;
   } else if (pathname === '/signup') {
