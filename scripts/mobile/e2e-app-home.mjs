@@ -54,7 +54,12 @@ async function setup(device, { recs = RECS, failing = { recs: false, tmdb: false
     if (failing.tmdb) return route.fulfill({ status: 503, json: { status_message: 'unavailable' } });
     const u = new URL(route.request().url()).searchParams.get('u') || '';
     const tmdb = Buffer.from(u, 'base64url').toString();
-    if (tmdb.includes('/watch/providers')) return route.fulfill({ json: { results: { IN: { flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/n.png' }] } } } });
+    if (tmdb.includes('/watch/providers')) {
+      if (failing.providers === 'http') return route.fulfill({ status: 503, json: { status_message: 'unavailable' } });
+      if (failing.providers === 'network') return route.abort('internetdisconnected');
+      if (failing.providersEmpty) return route.fulfill({ json: { results: {} } });
+      return route.fulfill({ json: { results: { IN: { flatrate: [{ provider_id: 8, provider_name: 'Netflix', logo_path: '/n.png' }] } } } });
+    }
     if (tmdb.includes('/discover/movie') || tmdb.includes('/trending/')) return route.fulfill({ json: { results: TRENDING } });
     return route.fulfill({ json: {} });
   });
@@ -218,6 +223,29 @@ try {
     for (const later of await page.getByRole('button', { name: 'Later' }).all()) await later.click().catch(() => {});
     await region.getByRole('button', { name: 'Retry' }).click(); await settle(page, 3000);
     check('TMDB 5xx: Retry recovers trending', (await page.getByRole('region', { name: 'Trending today' }).getByRole('link').count()) >= 5);
+    allErrors.push(...errors); await browser.close();
+  }
+  // K. provider-stage outage (discover OK, every watch/providers call fails): error + Retry
+  for (const mode of ['http', 'network']) {
+    const failing = { recs: false, tmdb: false, providers: mode };
+    const { browser, page, errors } = await setup('iPhone 15', { failing });
+    await page.goto(BASE + '/app', { waitUntil: 'networkidle' }); await settle(page, 3500);
+    const region = page.getByRole('region', { name: 'Trending today' });
+    check(`providers ${mode} failure: Trending shows an error with Retry`, (await region.count()) === 1 && (await region.innerText()).includes("Couldn't load trending titles"));
+    failing.providers = false;
+    for (const later of await page.getByRole('button', { name: 'Later' }).all()) await later.click().catch(() => {});
+    if (await region.count()) await region.getByRole('button', { name: 'Retry' }).click().catch(() => {});
+    await settle(page, 3500);
+    check(`providers ${mode} failure: Retry recovers trending`, (await page.getByRole('region', { name: 'Trending today' }).getByRole('link').count()) >= 5);
+    allErrors.push(...errors); await browser.close();
+  }
+  // L. providers answer successfully but nothing streams: a valid empty result, not an error
+  {
+    const failing = { recs: false, tmdb: false, providersEmpty: true };
+    const { browser, page, errors } = await setup('iPhone 15', { failing });
+    await page.goto(BASE + '/app', { waitUntil: 'networkidle' }); await settle(page, 3500);
+    const text = await page.locator('main').innerText();
+    check('providers empty (success): no Trending error, row hidden', !text.includes("Couldn't load trending titles") && (await page.getByRole('region', { name: 'Trending today' }).count()) === 0);
     allErrors.push(...errors); await browser.close();
   }
   // F. Welcome (signed out)

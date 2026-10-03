@@ -283,7 +283,14 @@ export async function getTVDetails(tvId: number): Promise<TMDBTVDetails | null> 
   }
 }
 
-export async function getWatchProviders(movieId: number): Promise<TMDBWatchProviders | null> {
+/**
+ * Watch providers for a movie. By default failures return null (website behaviour); with
+ * `throwOnError` they throw, so callers can tell a failure from "no providers".
+ */
+export async function getWatchProviders(
+  movieId: number,
+  options: { throwOnError?: boolean } = {},
+): Promise<TMDBWatchProviders | null> {
   try {
     const response = await fetchTmdbWithProxy(
       buildTmdbV3Url(`/3/movie/${movieId}/watch/providers`)
@@ -295,6 +302,7 @@ export async function getWatchProviders(movieId: number): Promise<TMDBWatchProvi
 
     return await response.json();
   } catch (error) {
+    if (options.throwOnError) throw error;
     console.error('Error fetching watch providers:', error);
     return null;
   }
@@ -792,14 +800,25 @@ export async function getTrendingToday(options: { throwOnError?: boolean } = {})
     [...inI.slice(0, 6), ...inR, ...usI.slice(0, 6), ...usR].forEach((m: NewRelease) => byId.set(m.id, m));
     const movies: NewRelease[] = Array.from(byId.values()).slice(0, 15);
 
+    let providerFailures = 0;
     const moviesWithProviders = await mapWithConcurrency(
       movies,
       6,
       async (movie: NewRelease) => {
-        const providers = await getWatchProviders(movie.id);
+        let providers: TMDBWatchProviders | null = null;
+        try {
+          providers = await getWatchProviders(movie.id, { throwOnError: options.throwOnError });
+        } catch {
+          // Strict mode only: count it; titles whose providers loaded still show.
+          providerFailures += 1;
+        }
         return { ...movie, providers: mergeFlatrateProviders(providers, WATCH_REGIONS) };
       }
     );
+
+    if (options.throwOnError && movies.length > 0 && providerFailures === movies.length) {
+      throw new Error('Streaming availability is unavailable right now.');
+    }
 
     return moviesWithProviders.filter(m => m.providers && m.providers.length > 0).slice(0, 10);
   } catch (error) {

@@ -57,7 +57,8 @@ function appHref(websitePath: string | null | undefined): string | null {
  * anything else return null: the Home hero only offers Save for movies.
  */
 export function movieIdFromPath(path: string | null | undefined): string | null {
-  const match = /^\/(?:app\/title\/)?movie\/([^/?#]+)/.exec(String(path ?? ''));
+  // Exact movie destination only (optional query/hash): no extra segments or dot segments.
+  const match = /^\/(?:app\/title\/)?movie\/([^/?#]+)(?:[?#].*)?$/.exec(String(path ?? ''));
   if (!match) return null;
   let id: string;
   try {

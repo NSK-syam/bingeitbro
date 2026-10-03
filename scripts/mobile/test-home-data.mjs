@@ -50,6 +50,10 @@ test('movieIdFromPath derives the watchlist key from title paths only', () => {
   assert.equal(movieIdFromPath('/movie/%'), null);
   assert.equal(movieIdFromPath('/movie/<script>'), null);
   assert.equal(movieIdFromPath(undefined), null);
+  // Not an exact movie destination
+  assert.equal(movieIdFromPath('/movie/tmdb-1/extra'), null);
+  assert.equal(movieIdFromPath('/movie/tmdb-1/../../songs'), null);
+  assert.equal(movieIdFromPath('/movie/tmdb-1?from=push'), 'tmdb-1');
 });
 
 test('cached friend picks keep row id separate from the title id (real cache shape)', () => {
@@ -57,6 +61,7 @@ test('cached friend picks keep row id separate from the title id (real cache sha
   const cache = [
     { id: '9b1d6c55-row-id-0001', title: 'Dune: Part Two', poster: '/p.jpg', path: '/movie/tmdb-693134', at: '2026-10-01T10:00:00Z', note: 'From Rahul' },
     { id: 'row-2', title: 'Untitled', path: undefined },
+    { id: 'row-3', title: 'Odd path', path: '/movie/tmdb-1/../../songs' },
   ];
   const items = cachedToItems(cache, { now: Date.parse('2026-10-03T00:00:00Z') });
   assert.equal(items[0].id, '9b1d6c55-row-id-0001');
@@ -64,6 +69,7 @@ test('cached friend picks keep row id separate from the title id (real cache sha
   assert.equal(items[0].href, '/app/title/movie/tmdb-693134');
   assert.equal(items[1].movieId, null); // no safe title identity -> Save not offered
   assert.equal(items[1].href, null);
+  assert.equal(items[2].movieId, null); // malformed cached path: no identity
 });
 
 test('online and offline items for the same title share one watchlist key', () => {
