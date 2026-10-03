@@ -2,6 +2,7 @@
 
 import { Fragment, type DragEvent, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
+import { usePathname } from 'next/navigation';
 import { useAuth } from './AuthProvider';
 import {
   applyMentionTarget,
@@ -190,7 +191,14 @@ function writeKnownLatest(userId: string, value: Record<string, string>): void {
   }
 }
 
+/** The floating chat shortcut is website-only; the native app shell (/app) has its own navigation. */
 export function HelpBotWidget() {
+  const pathname = usePathname();
+  if (pathname === '/app' || pathname?.startsWith('/app/')) return null;
+  return <HelpBotWidgetInner />;
+}
+
+function HelpBotWidgetInner() {
   const { user } = useAuth();
   const instanceId = useMemo(() => Symbol('chat-shortcut-instance'), []);
   const [isActiveOwner, setIsActiveOwner] = useState(false);
