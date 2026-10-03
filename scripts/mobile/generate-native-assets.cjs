@@ -1,18 +1,19 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- CommonJS build script */
 // Fallback for @capacitor/assets: writes native icons/splash from assets/ using project sharp.
-const fs = require('fs');
 const path = require('path');
 const sharp = require(path.resolve('node_modules/sharp'));
 const BG = { r: 10, g: 10, b: 12 };
 const RES = 'android/app/src/main/res';
 const XC = 'ios/App/App/Assets.xcassets';
-const svg = fs.readFileSync('public/bib-icon.svg', 'utf8');
-
-const roundedIcon = (size) =>
-  sharp(Buffer.from(svg), { density: Math.ceil((72 * size) / 256) * 2 }).resize(size, size).png().toBuffer();
+// Rounded app icon (assets/icon-only.png, the amber "bib") for legacy launchers and splash.
+const roundedIcon = async (size) => {
+  const mask = Buffer.from(`<svg width="${size}" height="${size}"><rect width="${size}" height="${size}" rx="${Math.round(size * 0.2237)}" fill="#fff"/></svg>`);
+  return sharp(await sharp('assets/icon-only.png').resize(size, size).png().toBuffer())
+    .composite([{ input: mask, blend: 'dest-in' }]).png().toBuffer();
+};
 
 async function splash(w, h, file) {
-  const iconSize = Math.round(Math.min(w, h) * 0.4);
+  const iconSize = Math.round(Math.min(w, h) * 0.3);
   await sharp({ create: { width: w, height: h, channels: 3, background: BG } })
     .composite([{ input: await roundedIcon(iconSize), gravity: 'center' }])
     .flatten({ background: BG })
@@ -35,7 +36,7 @@ async function splash(w, h, file) {
     const legacy = Math.round(48 * s);
     const fg = Math.round(108 * s);
     const dir = `${RES}/mipmap-${d}`;
-    // legacy square icon: rounded-rect logo (transparent corners, as the web icon)
+    // legacy square icon: rounded-rect app icon (transparent corners)
     await sharp(await roundedIcon(legacy)).toFile(`${dir}/ic_launcher.png`);
     // legacy round icon: full-bleed icon masked to a circle
     const circle = Buffer.from(`<svg width="${legacy}" height="${legacy}"><circle cx="${legacy / 2}" cy="${legacy / 2}" r="${legacy / 2}" fill="#fff"/></svg>`);
