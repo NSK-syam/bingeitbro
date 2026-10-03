@@ -129,7 +129,7 @@ export function WatchReminderCenter() {
   if (!user || toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[90] flex w-[min(92vw,360px)] flex-col gap-3">
+    <div className="bib-floating-toasts fixed bottom-4 right-4 z-[90] flex w-[min(92vw,360px)] flex-col gap-3">
       {toasts.map((toast) => (
         <div key={toast.toastId} className="rounded-xl border border-blue-400/25 bg-[var(--bg-card)]/95 p-4 shadow-2xl backdrop-blur-xl">
           <div className="flex items-start justify-between gap-3">

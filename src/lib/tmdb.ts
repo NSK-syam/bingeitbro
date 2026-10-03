@@ -283,7 +283,14 @@ export async function getTVDetails(tvId: number): Promise<TMDBTVDetails | null> 
   }
 }
 
-export async function getWatchProviders(movieId: number): Promise<TMDBWatchProviders | null> {
+/**
+ * Watch providers for a movie. By default failures return null (website behaviour); with
+ * `throwOnError` they throw, so callers can tell a failure from "no providers".
+ */
+export async function getWatchProviders(
+  movieId: number,
+  options: { throwOnError?: boolean } = {},
+): Promise<TMDBWatchProviders | null> {
   try {
     const response = await fetchTmdbWithProxy(
       buildTmdbV3Url(`/3/movie/${movieId}/watch/providers`)
@@ -295,6 +302,7 @@ export async function getWatchProviders(movieId: number): Promise<TMDBWatchProvi
 
     return await response.json();
   } catch (error) {
+    if (options.throwOnError) throw error;
     console.error('Error fetching watch providers:', error);
     return null;
   }
@@ -723,7 +731,11 @@ export function tmdbWatchProvidersToOttLinks(
 }
 
 // OTT only. Popular on streaming in USA + India (recent movies).
-export async function getTrendingToday(): Promise<NewRelease[]> {
+/**
+ * Trending titles with streaming providers. By default failures return [] (website behaviour).
+ * With `throwOnError`, a failure throws instead, so callers can tell an error from an empty list.
+ */
+export async function getTrendingToday(options: { throwOnError?: boolean } = {}): Promise<NewRelease[]> {
   try {
     const threeMonthsAgo = getDateDaysAgo(90);
 
@@ -776,6 +788,9 @@ export async function getTrendingToday(): Promise<NewRelease[]> {
       ),
     ]);
 
+    if (options.throwOnError && ![usRecent, usIndian, inRecent, inIndian].some((res) => res.ok)) {
+      throw new Error('Trending titles are unavailable right now.');
+    }
     const collect = async (res: Response) => (res.ok ? (await res.json()).results || [] : []);
     const [usR, usI, inR, inI] = await Promise.all([
       collect(usRecent), collect(usIndian), collect(inRecent), collect(inIndian),
@@ -785,17 +800,29 @@ export async function getTrendingToday(): Promise<NewRelease[]> {
     [...inI.slice(0, 6), ...inR, ...usI.slice(0, 6), ...usR].forEach((m: NewRelease) => byId.set(m.id, m));
     const movies: NewRelease[] = Array.from(byId.values()).slice(0, 15);
 
+    let providerFailures = 0;
     const moviesWithProviders = await mapWithConcurrency(
       movies,
       6,
       async (movie: NewRelease) => {
-        const providers = await getWatchProviders(movie.id);
+        let providers: TMDBWatchProviders | null = null;
+        try {
+          providers = await getWatchProviders(movie.id, { throwOnError: options.throwOnError });
+        } catch {
+          // Strict mode only: count it; titles whose providers loaded still show.
+          providerFailures += 1;
+        }
         return { ...movie, providers: mergeFlatrateProviders(providers, WATCH_REGIONS) };
       }
     );
 
+    if (options.throwOnError && movies.length > 0 && providerFailures === movies.length) {
+      throw new Error('Streaming availability is unavailable right now.');
+    }
+
     return moviesWithProviders.filter(m => m.providers && m.providers.length > 0).slice(0, 10);
   } catch (error) {
+    if (options.throwOnError) throw error;
     console.error('Error fetching trending movies:', error);
     return [];
   }

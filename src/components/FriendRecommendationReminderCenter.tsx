@@ -138,7 +138,7 @@ export function FriendRecommendationReminderCenter() {
   if (!user || toasts.length === 0) return null;
 
   return (
-    <div className="fixed bottom-4 right-4 z-[89] flex w-[min(92vw,360px)] flex-col gap-3">
+    <div className="bib-floating-toasts fixed bottom-4 right-4 z-[89] flex w-[min(92vw,360px)] flex-col gap-3">
       {toasts.map((toast) => {
         const path = getMoviePath(toast);
         return (
